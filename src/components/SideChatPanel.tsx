@@ -482,7 +482,6 @@ const SideChatPanel: React.FC = () => {
                     maxLength={MAX_SIDE_CHAT_MESSAGE_LENGTH}
                     droppedFiles={droppedFiles.length > 0 ? droppedFiles : undefined}
                     onDroppedFilesConsumed={handleDroppedFilesConsumed}
-                    showTemplates={false}
                     prefillValue={pendingMessage || ''}
                     onPrefillConsumed={clearPendingMessage}
                     initialValue={getDraft('side-chat')}

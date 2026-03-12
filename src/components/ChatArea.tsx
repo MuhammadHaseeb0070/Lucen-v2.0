@@ -6,7 +6,6 @@ import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useCreditsStore } from '../store/creditsStore';
-import { useUIStore } from '../store/uiStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { TEMPLATES } from '../config/prompts';
@@ -27,7 +26,6 @@ const ChatArea: React.FC = () => {
     } = useChatStore();
 
     const { deductCredits, hasEnoughCredits } = useCreditsStore();
-    const { templateMode } = useUIStore(); // keeping templateMode for internal defaults if needed, though we hardcode 'General'
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);

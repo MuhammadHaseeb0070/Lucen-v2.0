@@ -5,11 +5,6 @@
 
 import { create } from 'zustand';
 
-interface TokenRequest {
-    id: string;
-    text: string;
-}
-
 interface TokenStore {
     worker: Worker | null;
     estimatedTokens: number;

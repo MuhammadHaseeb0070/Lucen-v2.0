@@ -4,7 +4,6 @@ import {
     MessageSquarePlus,
     FileText,
     HelpCircle,
-    ChevronRight,
 } from 'lucide-react';
 import { useSideChatStore } from '../store/sideChatStore';
 import { useUIStore } from '../store/uiStore';
