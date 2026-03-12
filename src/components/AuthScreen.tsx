@@ -1,0 +1,217 @@
+import React, { useState } from 'react';
+import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, Info } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+
+type AuthMode = 'signin' | 'signup' | 'forgot_password';
+
+const AuthScreen: React.FC = () => {
+    const { signIn, signUp, resetPasswordForEmail, error, isLoading, clearError } = useAuthStore();
+    const [mode, setMode] = useState<AuthMode>('signin');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [localError, setLocalError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
+
+    const toggleMode = (newMode: AuthMode) => {
+        setMode(newMode);
+        setLocalError('');
+        setSuccessMessage('');
+        clearError();
+        setConfirmPassword('');
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLocalError('');
+        clearError();
+
+        // Validation
+        if (!email.trim()) {
+            setLocalError('Email is required');
+            return;
+        }
+
+        if (mode === 'forgot_password') {
+            const err = await resetPasswordForEmail(email.trim());
+            if (!err) {
+                setSuccessMessage('Password reset link sent! Please check your email.');
+            }
+            return;
+        }
+
+        if (!password) {
+            setLocalError('Password is required');
+            return;
+        }
+        if (password.length < 6) {
+            setLocalError('Password must be at least 6 characters');
+            return;
+        }
+        if (mode === 'signup' && password !== confirmPassword) {
+            setLocalError('Passwords do not match');
+            return;
+        }
+
+        if (mode === 'signin') {
+            await signIn(email.trim(), password);
+        } else if (mode === 'signup') {
+            const err = await signUp(email.trim(), password);
+            // If sign up succeeds but we are still here, it probably means email confirmation is required
+            if (!err && !useAuthStore.getState().user) {
+                setSuccessMessage('Account created! Please check your email for a verification link to log in.');
+                setMode('signin');
+                setPassword('');
+            }
+        }
+    };
+
+    const displayError = localError || error;
+
+    return (
+        <div className="auth-screen">
+            <div className="auth-container">
+                {/* Branding */}
+                <div className="auth-brand">
+                    <div className="auth-logo">
+                        <Zap size={32} />
+                    </div>
+                    <h1 className="auth-title">Lucen</h1>
+                    <p className="auth-subtitle">
+                        {mode === 'signin' && 'Welcome back'}
+                        {mode === 'signup' && 'Create your account'}
+                        {mode === 'forgot_password' && 'Reset Password'}
+                    </p>
+                </div>
+
+                {/* Form */}
+                <form className="auth-form" onSubmit={handleSubmit}>
+                    {/* Email */}
+                    <div className="auth-field">
+                        <label className="auth-label" htmlFor="auth-email">Email</label>
+                        <div className="auth-input-wrapper">
+                            <Mail size={16} className="auth-input-icon" />
+                            <input
+                                id="auth-email"
+                                type="email"
+                                className="auth-input"
+                                placeholder="you@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="email"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+
+                    {/* Password */}
+                    {mode !== 'forgot_password' && (
+                        <div className="auth-field">
+                            <div className="auth-label-row">
+                                <label className="auth-label" htmlFor="auth-password">Password</label>
+                                {mode === 'signin' && (
+                                    <button
+                                        type="button"
+                                        className="auth-forgot-link"
+                                        onClick={() => toggleMode('forgot_password')}
+                                    >
+                                        Forgot?
+                                    </button>
+                                )}
+                            </div>
+                            <div className="auth-input-wrapper">
+                                <Lock size={16} className="auth-input-icon" />
+                                <input
+                                    id="auth-password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    className="auth-input"
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                                />
+                                <button
+                                    type="button"
+                                    className="auth-toggle-pass"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Confirm Password (signup only) */}
+                    {mode === 'signup' && (
+                        <div className="auth-field">
+                            <label className="auth-label" htmlFor="auth-confirm">Confirm Password</label>
+                            <div className="auth-input-wrapper">
+                                <Lock size={16} className="auth-input-icon" />
+                                <input
+                                    id="auth-confirm"
+                                    type={showPassword ? 'text' : 'password'}
+                                    className="auth-input"
+                                    placeholder="••••••••"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    autoComplete="new-password"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Success Message */}
+                    {successMessage && !displayError && (
+                        <div className="auth-success">
+                            <Info size={16} />
+                            {successMessage}
+                        </div>
+                    )}
+
+                    {/* Error */}
+                    {displayError && (
+                        <div className="auth-error">
+                            {displayError}
+                        </div>
+                    )}
+
+                    {/* Submit */}
+                    <button type="submit" className="auth-submit" disabled={isLoading}>
+                        {isLoading ? (
+                            <Loader2 size={18} className="auth-spinner" />
+                        ) : (
+                            <>
+                                {mode === 'signin' && 'Sign In'}
+                                {mode === 'signup' && 'Create Account'}
+                                {mode === 'forgot_password' && 'Send Reset Link'}
+                                <ArrowRight size={16} />
+                            </>
+                        )}
+                    </button>
+                </form>
+
+                {/* Toggle */}
+                {mode !== 'forgot_password' ? (
+                    <div className="auth-toggle">
+                        <span>
+                            {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
+                        </span>
+                        <button type="button" className="auth-toggle-btn" onClick={() => toggleMode(mode === 'signin' ? 'signup' : 'signin')}>
+                            {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+                        </button>
+                    </div>
+                ) : (
+                    <div className="auth-toggle">
+                        <button type="button" className="auth-toggle-btn" onClick={() => toggleMode('signin')}>
+                            Back to Sign In
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default AuthScreen;
