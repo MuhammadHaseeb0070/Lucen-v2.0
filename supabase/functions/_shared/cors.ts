@@ -1,10 +1,14 @@
 // Shared CORS headers for Edge Functions.
 // Restricts Access-Control-Allow-Origin when VITE_APP_URL is set in Supabase secrets.
-// When VITE_APP_URL is not set, allows all origins (falls back to '*') so production works.
+// VITE_APP_URL can be comma-separated: https://www.lucen.space,https://lucen.space
+// When not set, allows all origins (falls back to '*').
 
-const APP_URL = Deno.env.get('VITE_APP_URL');
+const APP_URLS = (Deno.env.get('VITE_APP_URL') || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
 const ALLOWED_ORIGINS = [
-    APP_URL,
+    ...APP_URLS,
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ].filter(Boolean) as string[];
@@ -13,7 +17,7 @@ const ALLOWED_ORIGINS = [
 export function getCorsHeaders(req: Request): Record<string, string> {
     const origin = req.headers.get('Origin') || '';
     let allowOrigin = '*';
-    if (APP_URL && ALLOWED_ORIGINS.length > 0) {
+    if (APP_URLS.length > 0 && ALLOWED_ORIGINS.length > 0) {
         const isAllowed = origin && ALLOWED_ORIGINS.some(
             (allowed) => origin === allowed || (allowed && origin.startsWith(allowed))
         );

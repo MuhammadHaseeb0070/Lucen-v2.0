@@ -36,12 +36,16 @@ jobs:
 
       - name: Set Edge Function Secrets
         run: |
-          supabase secrets set OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
-          supabase secrets set STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
-          supabase secrets set STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          supabase secrets set VITE_APP_URL=${{ secrets.VITE_APP_URL }}
+          supabase secrets set OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+          supabase secrets set VITE_APP_URL="$VITE_APP_URL"
+          [ -n "$STRIPE_SECRET_KEY" ] && supabase secrets set STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" || true
+          [ -n "$STRIPE_WEBHOOK_SECRET" ] && supabase secrets set STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" || true
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
       - name: Deploy Edge Functions
         run: supabase functions deploy --no-verify-jwt
