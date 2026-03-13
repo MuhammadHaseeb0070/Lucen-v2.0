@@ -15,16 +15,18 @@ const ALLOWED_ORIGINS = [
     'http://127.0.0.1:5173',
 ].filter(Boolean) as string[];
 
-/** Returns CORS headers. When VITE_APP_URL is set, restricts to allowed list; otherwise uses '*'. */
+/** Returns CORS headers. When VITE_APP_URL is set, restricts to allowed list + *.vercel.app; otherwise uses '*'. */
 export function getCorsHeaders(req: Request): Record<string, string> {
     const origin = req.headers.get('Origin') || '';
     const originNorm = norm(origin);
     let allowOrigin = '*';
     if (APP_URLS.length > 0 && ALLOWED_ORIGINS.length > 0) {
-        const isAllowed = originNorm && ALLOWED_ORIGINS.some(
+        const isInAllowedList = originNorm && ALLOWED_ORIGINS.some(
             (allowed) => originNorm === allowed || (allowed && originNorm.startsWith(allowed))
         );
-        // Echo the actual Origin header (no trailing slash) — CORS requires exact match
+        const isVercelPreview = origin.startsWith('https://') && origin.endsWith('.vercel.app');
+        const isAllowed = isInAllowedList || isVercelPreview;
+        // Echo the actual Origin header — CORS requires exact match
         allowOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] ?? '*');
     }
     return {
