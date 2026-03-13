@@ -209,10 +209,11 @@ export async function fetchCredits(): Promise<{ remaining: number; used: number 
         console.error('[DB] fetchCredits error:', error);
         return null;
     }
+    if (!data || data.remaining_credits == null) return null;
 
     return {
         remaining: data.remaining_credits,
-        used: data.total_used,
+        used: data.total_used ?? 0,
     };
 }
 
@@ -229,10 +230,11 @@ export async function deductCredits(amount: number): Promise<{ remaining: number
         console.error('[DB] deductCredits error:', error);
         return null;
     }
+    if (!data || data.remaining_credits == null) return null;
 
     return {
         remaining: data.remaining_credits,
-        used: data.total_used,
+        used: data.total_used ?? 0,
     };
 }
 

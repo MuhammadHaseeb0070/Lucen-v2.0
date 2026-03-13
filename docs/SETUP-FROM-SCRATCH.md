@@ -42,7 +42,17 @@ This guide assumes you are starting with empty Supabase, GitHub, and Vercel. Fol
    - **Project URL** (e.g. `https://xxxxxxxx.supabase.co`)
    - **anon public** key (starts with `eyJ...`)
 
-### 1.4 Deploy Database and Edge Functions (Local)
+### 1.4a If You Deleted Tables Manually (Repair)
+
+If you manually dropped tables, the migration history still thinks they exist, so `db push` does nothing. Run the repair script:
+
+1. Supabase Dashboard → **SQL Editor**
+2. Open `supabase/REPAIR-DATABASE.sql` from your repo
+3. Copy and run the entire script
+
+This recreates all tables. Then deploy Edge Functions (step 1.4b).
+
+### 1.4b Deploy Database and Edge Functions (Local)
 
 From your project root:
 
