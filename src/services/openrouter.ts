@@ -179,9 +179,13 @@ async function streamViaEdgeFunction(
         let errorMsg: string;
         try {
             const parsed = JSON.parse(errBody);
+            const details = parsed.details || '';
             errorMsg = parsed.error || `API Error ${response.status}`;
             if (response.status === 401) {
                 errorMsg = 'Session expired. Please sign out and sign in again.';
+                if (details) {
+                    console.warn('[Auth] 401 details:', details);
+                }
             }
         } catch {
             errorMsg = response.status === 401

@@ -51,10 +51,6 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // Create a client with the Service Role key to verify identity reliably
-        // (Sometimes anon-key-based clients have issues with JWT verification in Edge Functions)
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
         if (!token || token.split('.').length !== 3) {
             return new Response(
@@ -63,7 +59,11 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        // Verify user: use anon client with user's JWT (same pattern as deduct-credits, create-checkout)
+        const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+            global: { headers: { Authorization: authHeader } },
+        });
+        const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
         
         if (authError || !user) {
             console.error('[Auth Error] Supabase user verification failed:', authError?.message || 'No user found');
@@ -79,8 +79,8 @@ Deno.serve(async (req: Request) => {
         console.log(`[Auth Success] User authenticated: ${user.id} (${user.email})`);
 
 
-        // ─── Credit Check ───
-
+        // ─── Credit Check (service role to bypass RLS) ───
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         const { data: creditRow, error: creditError } = await supabaseAdmin
             .from('user_credits')
             .select('remaining_credits')
