@@ -7,12 +7,12 @@
 // ============================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req: Request) => {
-    // Handle CORS preflight
+    const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+        return new Response('ok', { headers: cors });
     }
 
     try {
@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
         if (!authHeader) {
             return new Response(
                 JSON.stringify({ error: 'Missing Authorization header' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
         if (authError || !user) {
             return new Response(
                 JSON.stringify({ error: 'Invalid or expired token' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -62,13 +62,13 @@ Deno.serve(async (req: Request) => {
                         .single();
                     return new Response(
                         JSON.stringify(newRow),
-                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        { headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
 
                 return new Response(
                     JSON.stringify(data),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    { headers: { ...cors, 'Content-Type': 'application/json' } }
                 );
             }
 
@@ -85,14 +85,14 @@ Deno.serve(async (req: Request) => {
                 if (error || !data) {
                     return new Response(
                         JSON.stringify({ error: 'Credit record not found' }),
-                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
 
                 if (data.remaining_credits < cost) {
                     return new Response(
                         JSON.stringify({ error: 'Insufficient credits', remaining: data.remaining_credits }),
-                        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
 
@@ -109,13 +109,13 @@ Deno.serve(async (req: Request) => {
                 if (updateError) {
                     return new Response(
                         JSON.stringify({ error: 'Failed to deduct credits' }),
-                        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
 
                 return new Response(
                     JSON.stringify(updated),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    { headers: { ...cors, 'Content-Type': 'application/json' } }
                 );
             }
 
@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
                 if (addAmount <= 0) {
                     return new Response(
                         JSON.stringify({ error: 'Amount must be positive' }),
-                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
 
@@ -137,7 +137,7 @@ Deno.serve(async (req: Request) => {
                 if (error || !data) {
                     return new Response(
                         JSON.stringify({ error: 'Credit record not found' }),
-                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
 
@@ -150,21 +150,21 @@ Deno.serve(async (req: Request) => {
 
                 return new Response(
                     JSON.stringify(updated),
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    { headers: { ...cors, 'Content-Type': 'application/json' } }
                 );
             }
 
             default:
                 return new Response(
                     JSON.stringify({ error: `Unknown action: ${action}` }),
-                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
                 );
         }
     } catch (err) {
         console.error('deduct-credits error:', err);
         return new Response(
             JSON.stringify({ error: err instanceof Error ? err.message : 'Internal server error' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
     }
 });

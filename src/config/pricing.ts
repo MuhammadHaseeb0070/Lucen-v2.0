@@ -22,7 +22,7 @@ export const PACKAGES: Record<string, PricingPackage> = {
         description: 'Perfect for testing the waters.',
     },
     PRO: {
-        id: 'pro_tier', // Will be replaced by Stripe Price ID in production
+        id: import.meta.env.VITE_STRIPE_PRO_PRICE_ID || 'pro_tier',
         name: 'Pro Access',
         priceUsd: 15.00,
         creditsProvided: 10000, // Massive psychological value

@@ -7,7 +7,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@12.0.0?target=deno';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2022-11-15',
@@ -15,9 +15,9 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
 });
 
 serve(async (req: Request) => {
-    // Handle CORS preflight
+    const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+        return new Response('ok', { headers: cors });
     }
 
     try {
@@ -26,7 +26,7 @@ serve(async (req: Request) => {
         if (!authHeader) {
             return new Response(
                 JSON.stringify({ error: 'Missing Authorization header' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -41,7 +41,7 @@ serve(async (req: Request) => {
         if (authError || !user) {
             return new Response(
                 JSON.stringify({ error: 'Invalid or expired token' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -49,7 +49,7 @@ serve(async (req: Request) => {
 
         if (!priceId) {
             return new Response(JSON.stringify({ error: 'Missing priceId' }), {
-                status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                status: 400, headers: { ...cors, 'Content-Type': 'application/json' }
             });
         }
 
@@ -71,14 +71,14 @@ serve(async (req: Request) => {
 
         return new Response(
             JSON.stringify({ url: session.url }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            { headers: { ...cors, 'Content-Type': 'application/json' }, status: 200 }
         );
 
     } catch (err: any) {
         console.error('Create checkout error:', err);
         return new Response(
             JSON.stringify({ error: err.message }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
     }
 });

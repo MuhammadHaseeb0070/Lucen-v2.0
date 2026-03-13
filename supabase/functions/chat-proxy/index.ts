@@ -9,14 +9,24 @@
 // ============================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+// Allowed models to prevent abuse (client cannot force expensive models)
+const ALLOWED_MODELS = [
+    'deepseek/deepseek-v3.2',
+    'deepseek/deepseek-r1',
+    'x-ai/grok-4.1-fast',
+    'anthropic/claude-sonnet-4',
+    'openai/gpt-4o-mini',
+];
+const DEFAULT_MODEL = 'deepseek/deepseek-v3.2';
+
 Deno.serve(async (req: Request) => {
-    // Handle CORS preflight
+    const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+        return new Response('ok', { headers: cors });
     }
 
     try {
@@ -25,7 +35,7 @@ Deno.serve(async (req: Request) => {
         if (!authHeader) {
             return new Response(
                 JSON.stringify({ error: 'Missing Authorization header' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -37,7 +47,7 @@ Deno.serve(async (req: Request) => {
         if (!openrouterApiKey) {
             return new Response(
                 JSON.stringify({ error: 'OpenRouter API key not configured on server' }),
-                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -57,7 +67,7 @@ Deno.serve(async (req: Request) => {
                     error: 'Authentication failed: Invalid or expired token',
                     details: authError?.message 
                 }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -82,7 +92,7 @@ Deno.serve(async (req: Request) => {
         } else if (creditRow && creditRow.remaining_credits <= 0) {
             return new Response(
                 JSON.stringify({ error: 'Insufficient credits' }),
-                { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -92,9 +102,11 @@ Deno.serve(async (req: Request) => {
         if (!messages || !Array.isArray(messages)) {
             return new Response(
                 JSON.stringify({ error: 'Invalid request: messages array required' }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
+
+        const modelToUse = (model && ALLOWED_MODELS.includes(model)) ? model : DEFAULT_MODEL;
 
         // ─── Forward to OpenRouter (streaming) ───
         const openrouterResponse = await fetch(OPENROUTER_URL, {
@@ -106,7 +118,7 @@ Deno.serve(async (req: Request) => {
                 'X-Title': 'Lucen',
             },
             body: JSON.stringify({
-                model: model || 'x-ai/grok-4.1-fast',
+                model: modelToUse,
                 messages,
                 stream: true,
                 max_tokens: max_tokens || 16384,
@@ -127,7 +139,7 @@ Deno.serve(async (req: Request) => {
                     details: errBody,
                     source: 'OpenRouter'
                 }),
-                { status: statusCode, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: statusCode, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -223,7 +235,7 @@ Deno.serve(async (req: Request) => {
 
         return new Response(readable, {
             headers: {
-                ...corsHeaders,
+                ...cors,
                 'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
@@ -233,7 +245,7 @@ Deno.serve(async (req: Request) => {
         console.error('chat-proxy error:', err);
         return new Response(
             JSON.stringify({ error: err instanceof Error ? err.message : 'Internal server error' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
     }
 });
