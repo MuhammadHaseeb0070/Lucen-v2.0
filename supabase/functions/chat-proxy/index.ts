@@ -41,21 +41,30 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // Create a client with the user's JWT to verify identity
-        const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-            global: { headers: { Authorization: authHeader } },
-        });
-
-        const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+        // Create a client with the Service Role key to verify identity reliably
+        // (Sometimes anon-key-based clients have issues with JWT verification in Edge Functions)
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        
+        // Extract the token itself (remove "Bearer " prefix)
+        const token = authHeader.replace('Bearer ', '');
+        
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        
         if (authError || !user) {
+            console.error('[Auth Error] Supabase user verification failed:', authError?.message || 'No user found');
             return new Response(
-                JSON.stringify({ error: 'Invalid or expired token' }),
+                JSON.stringify({ 
+                    error: 'Authentication failed: Invalid or expired token',
+                    details: authError?.message 
+                }),
                 { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
         }
 
-        // ─── Credit Check (service role bypasses RLS) ───
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        console.log(`[Auth Success] User authenticated: ${user.id} (${user.email})`);
+
+
+        // ─── Credit Check ───
 
         const { data: creditRow, error: creditError } = await supabaseAdmin
             .from('user_credits')
@@ -108,9 +117,17 @@ Deno.serve(async (req: Request) => {
 
         if (!openrouterResponse.ok) {
             const errBody = await openrouterResponse.text();
+            console.error(`[OpenRouter Error] Status: ${openrouterResponse.status}, Body:`, errBody);
+            
+            // Differentiate between 401 from OpenRouter vs 401 from Supabase
+            const statusCode = openrouterResponse.status;
             return new Response(
-                JSON.stringify({ error: `OpenRouter API Error ${openrouterResponse.status}: ${errBody}` }),
-                { status: openrouterResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                JSON.stringify({ 
+                    error: `OpenRouter API Error ${statusCode}`,
+                    details: errBody,
+                    source: 'OpenRouter'
+                }),
+                { status: statusCode, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
         }
 

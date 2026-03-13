@@ -157,15 +157,20 @@ async function streamViaEdgeFunction(
     signal?: AbortSignal
 ): Promise<void> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const templateMode = useUIStore.getState().templateMode;
     const isReasoning = model.supportsReasoning;
+
+    if (!anonKey) {
+        console.error('[OpenRouter] VITE_SUPABASE_ANON_KEY is missing. Edge Function call will likely fail.');
+    }
 
     const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'apikey': anonKey || '',
         },
         body: JSON.stringify({
             messages: apiMessages,
