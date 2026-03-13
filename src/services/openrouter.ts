@@ -5,7 +5,7 @@ import { TEMPLATES, BASE_SYSTEM_PROMPT } from '../config/prompts';
 import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// OpenRouter is only called server-side via chat-proxy; no direct client calls.
 
 interface StreamCallbacks {
     onChunk: (content: string) => void;
@@ -101,7 +101,7 @@ function buildApiMessages(messages: Message[], systemPromptOverride?: string): A
 
 /**
  * Stream chat via Edge Function proxy (secure — API key stays server-side).
- * Falls back to direct OpenRouter call if Supabase is not configured.
+ * When Supabase is configured, only the Edge Function is used; no direct API fallback.
  */
 export async function streamChat(
     messages: Message[],
@@ -111,38 +111,30 @@ export async function streamChat(
     const model = getActiveModel(options.isSideChat);
     const apiMessages = buildApiMessages(messages, options.systemPromptOverride);
 
-    // ─── Route 1: Supabase Edge Function (secure) ───
-    if (isSupabaseEnabled() && supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (session) {
-            try {
-                await streamViaEdgeFunction(
-                    apiMessages,
-                    model,
-                    session.access_token,
-                    callbacks,
-                    options.systemPromptOverride,
-                    options.signal
-                );
-                return;
-            } catch (err) {
-                console.warn('[OpenRouter] Edge Function failed, falling back to direct call:', err);
-                // Fall through to direct call
-            }
-        }
-    }
-
-    // ─── Route 2: Direct OpenRouter call (dev/fallback) ───
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-    if (!apiKey) {
-        callbacks.onError(
-            'No API key available. Either configure Supabase (recommended) or add VITE_OPENROUTER_API_KEY to your .env file.'
-        );
+    if (!isSupabaseEnabled() || !supabase) {
+        callbacks.onError('Please sign in to use chat.');
         return;
     }
 
-    await streamDirect(apiMessages, model, apiKey, callbacks, options.signal);
+    // ─── Ensure fresh JWT: refresh if expired (fixes 401 from stale tokens) ───
+    const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+        callbacks.onError('Session expired. Please sign in again.');
+        return;
+    }
+    if (!session?.access_token) {
+        callbacks.onError('Please sign in to use chat.');
+        return;
+    }
+
+    await streamViaEdgeFunction(
+        apiMessages,
+        model,
+        session.access_token,
+        callbacks,
+        options.systemPromptOverride,
+        options.signal
+    );
 }
 
 /**
@@ -184,51 +176,19 @@ async function streamViaEdgeFunction(
 
     if (!response.ok) {
         const errBody = await response.text();
-        let errorMsg = `API Error ${response.status}`;
+        let errorMsg: string;
         try {
             const parsed = JSON.parse(errBody);
-            errorMsg = parsed.error || errorMsg;
+            errorMsg = parsed.error || `API Error ${response.status}`;
+            if (response.status === 401) {
+                errorMsg = 'Session expired. Please sign out and sign in again.';
+            }
         } catch {
-            errorMsg += `: ${errBody}`;
+            errorMsg = response.status === 401
+                ? 'Session expired. Please sign out and sign in again.'
+                : `API Error ${response.status}`;
         }
         callbacks.onError(errorMsg);
-        return;
-    }
-
-    await processStream(response, callbacks, signal);
-}
-
-/**
- * Stream directly to OpenRouter (dev mode / fallback).
- */
-async function streamDirect(
-    apiMessages: Array<Record<string, unknown>>,
-    model: ReturnType<typeof getActiveModel>,
-    apiKey: string,
-    callbacks: StreamCallbacks,
-    signal?: AbortSignal
-): Promise<void> {
-    const response = await fetch(OPENROUTER_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-            'HTTP-Referer': window.location.origin,
-            'X-Title': import.meta.env.VITE_APP_NAME || 'Lucen',
-        },
-        body: JSON.stringify({
-            model: model.id,
-            messages: apiMessages,
-            stream: true,
-            max_tokens: model.maxTokens,
-            plugins: []
-        }),
-        signal,
-    });
-
-    if (!response.ok) {
-        const errBody = await response.text();
-        callbacks.onError(`API Error ${response.status}: ${errBody}`);
         return;
     }
 

@@ -44,6 +44,15 @@ export function hasActiveSessionSync(): boolean {
     return supabase !== null && _cachedSession;
 }
 
+/** Ensure session is fresh before Edge Function calls. Call before invoke/fetch to avoid 401. */
+export async function ensureFreshSession(): Promise<boolean> {
+    if (!supabase) return false;
+    const { data: { session }, error } = await supabase.auth.refreshSession();
+    if (error || !session) return false;
+    _cachedSession = true;
+    return true;
+}
+
 // Initialize session cache on load
 if (supabase) {
     supabase.auth.getSession().then(({ data: { session } }) => {

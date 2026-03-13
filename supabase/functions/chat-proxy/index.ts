@@ -55,9 +55,14 @@ Deno.serve(async (req: Request) => {
         // (Sometimes anon-key-based clients have issues with JWT verification in Edge Functions)
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         
-        // Extract the token itself (remove "Bearer " prefix)
-        const token = authHeader.replace('Bearer ', '');
-        
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        if (!token || token.split('.').length !== 3) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid token format' }),
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
+
         const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
         
         if (authError || !user) {

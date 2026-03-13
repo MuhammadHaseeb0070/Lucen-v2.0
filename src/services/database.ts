@@ -5,7 +5,7 @@
 // Each function checks if Supabase is enabled; if not, returns null
 // so callers can fall back to localStorage.
 
-import { supabase, hasActiveSessionSync } from '../lib/supabase';
+import { supabase, hasActiveSessionSync, ensureFreshSession } from '../lib/supabase';
 import type { Conversation, Message } from '../types';
 
 // ═══════════════════════════════════════════
@@ -199,6 +199,7 @@ export async function deleteMessagePair(
 /** Fetch credit balance from server */
 export async function fetchCredits(): Promise<{ remaining: number; used: number } | null> {
     if (!hasActiveSessionSync() || !supabase) return null;
+    if (!(await ensureFreshSession())) return null;
 
     const { data, error } = await supabase.functions.invoke('deduct-credits', {
         body: { action: 'get-balance' },
@@ -218,6 +219,7 @@ export async function fetchCredits(): Promise<{ remaining: number; used: number 
 /** Deduct credits via Edge Function (server-authoritative) */
 export async function deductCredits(amount: number): Promise<{ remaining: number; used: number } | null> {
     if (!hasActiveSessionSync() || !supabase) return null;
+    if (!(await ensureFreshSession())) return null;
 
     const { data, error } = await supabase.functions.invoke('deduct-credits', {
         body: { action: 'deduct', amount },
