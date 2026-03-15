@@ -26,6 +26,14 @@ const Layout: React.FC = () => {
         initialize();
     }, [initialize]);
 
+    // Collapse sidebar on mobile on first load
+    useEffect(() => {
+        if (window.innerWidth <= 768 && !sidebarCollapsed) {
+            toggleSidebar();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Admin Redirect Logic: If user is admin and not in admin view, switch to it automatically
     useEffect(() => {
         if (user && isAdminUser(user.email)) {

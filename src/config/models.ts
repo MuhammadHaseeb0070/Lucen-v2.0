@@ -1,7 +1,6 @@
 import type { ModelInfo } from '../types';
 
-// Fully driven by .env — just set VITE_OPENROUTER_MODEL and VITE_OPENROUTER_MODEL_NAME
-const DEFAULT_MODEL_ID = import.meta.env.VITE_OPENROUTER_MODEL || 'deepseek/deepseek-v3.2';
+const DEFAULT_MODEL_ID = import.meta.env.VITE_OPENROUTER_MODEL || 'openai/gpt-4o-mini';
 const DEFAULT_MODEL_NAME = import.meta.env.VITE_OPENROUTER_MODEL_NAME || DEFAULT_MODEL_ID.split('/').pop() || 'AI';
 
 const MAIN_MODEL_ID = import.meta.env.VITE_MAIN_CHAT_MODEL || DEFAULT_MODEL_ID;

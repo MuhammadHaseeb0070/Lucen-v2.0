@@ -206,6 +206,11 @@
 }
 
 /* ─── Common Table ─── */
+.table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .tab-pane h3 {
     margin-top: 0;
     margin-bottom: 20px;
@@ -387,4 +392,94 @@
 .health-status-bar .fill {
     height: 100%;
     background: var(--success);
+}
+
+/* ─── Mobile Responsive ─── */
+@media (max-width: 768px) {
+    .owner-dashboard {
+        padding: 16px 12px;
+        gap: 16px;
+    }
+
+    .owner-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .owner-header h1 {
+        font-size: 22px;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .admin-profile {
+        display: none;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .stat-card {
+        padding: 14px;
+        gap: 10px;
+    }
+
+    .stat-icon-wrapper {
+        width: 36px;
+        height: 36px;
+    }
+
+    .stat-value {
+        font-size: 18px;
+    }
+
+    .dashboard-nav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+    }
+
+    .nav-item {
+        padding: 8px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .dashboard-main {
+        padding: 16px 12px;
+        border-radius: 12px;
+        min-height: 300px;
+    }
+
+    .owner-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .health-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .health-card {
+        padding: 16px;
+    }
+
+    .health-value {
+        font-size: 22px;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
 }

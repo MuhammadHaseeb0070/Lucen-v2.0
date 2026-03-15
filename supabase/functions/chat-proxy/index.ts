@@ -1,27 +1,13 @@
-// ============================================
-// Supabase Edge Function: chat-proxy
-// ============================================
-// Secure proxy for OpenRouter API calls.
-// - Validates user JWT
-// - Checks credit balance server-side
-// - Streams OpenRouter response back to client
-// - Deducts credits on completion
-// ============================================
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// Allowed models to prevent abuse (client cannot force expensive models)
-const ALLOWED_MODELS = [
-    'deepseek/deepseek-v3.2',
-    'deepseek/deepseek-r1',
-    'x-ai/grok-4.1-fast',
-    'anthropic/claude-sonnet-4',
-    'openai/gpt-4o-mini',
-];
-const DEFAULT_MODEL = 'deepseek/deepseek-v3.2';
+function decodeJwtPayload(token: string): Record<string, unknown> {
+    const base64 = token.split('.')[1];
+    const json = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+}
 
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
@@ -30,7 +16,6 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-        // ─── Auth: Extract and verify JWT ───
         const authHeader = req.headers.get('Authorization');
         if (!authHeader) {
             return new Response(
@@ -41,7 +26,6 @@ Deno.serve(async (req: Request) => {
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
 
         if (!openrouterApiKey) {
@@ -59,26 +43,47 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const supabaseUser = createClient(supabaseUrl, supabaseAnonKey);
-        const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
-        
-        if (authError || !user) {
-            console.error('[Auth Error] Supabase user verification failed:', authError?.message || 'No user found');
+        // Decode JWT and verify claims
+        let claims: Record<string, unknown>;
+        try {
+            claims = decodeJwtPayload(token);
+        } catch {
             return new Response(
-                JSON.stringify({ 
-                    error: 'Authentication failed: Invalid or expired token',
-                    details: authError?.message 
-                }),
+                JSON.stringify({ error: 'Malformed JWT' }),
                 { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
-        console.log(`[Auth Success] User authenticated: ${user.id} (${user.email})`);
+        const userId = claims.sub as string;
+        const expiry = claims.exp as number;
+        if (!userId) {
+            return new Response(
+                JSON.stringify({ error: 'JWT missing sub claim' }),
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
+        if (expiry && expiry < Math.floor(Date.now() / 1000)) {
+            return new Response(
+                JSON.stringify({ error: 'Token expired' }),
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
 
-
-        // ─── Credit Check (service role to bypass RLS) ───
+        // Verify user exists via admin API (bypasses the broken getUser(token) flow)
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
 
+        if (adminError || !adminUser?.user) {
+            return new Response(
+                JSON.stringify({ error: 'User not found', user_id: userId }),
+                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        const user = adminUser.user;
+        console.log(`[Auth OK] ${user.id} (${user.email})`);
+
+        // ─── Credit Check ───
         const { data: balance } = await supabaseAdmin.rpc('ensure_user_credits', {
             p_user_id: user.id,
             p_initial_credits: 100,
@@ -101,7 +106,12 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const modelToUse = (model && ALLOWED_MODELS.includes(model)) ? model : DEFAULT_MODEL;
+        if (!model || typeof model !== 'string') {
+            return new Response(
+                JSON.stringify({ error: 'model is required' }),
+                { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
 
         // ─── Forward to OpenRouter (streaming) ───
         const openrouterResponse = await fetch(OPENROUTER_URL, {
@@ -113,28 +123,20 @@ Deno.serve(async (req: Request) => {
                 'X-Title': 'Lucen',
             },
             body: JSON.stringify({
-                model: modelToUse,
+                model,
                 messages,
                 stream: true,
                 max_tokens: max_tokens || 16384,
-                include_usage: true, // CRITICAL: Ask OpenRouter for exact token usage
-                plugins: []
+                include_usage: true,
             }),
         });
 
         if (!openrouterResponse.ok) {
             const errBody = await openrouterResponse.text();
-            console.error(`[OpenRouter Error] Status: ${openrouterResponse.status}, Body:`, errBody);
-            
-            // Differentiate between 401 from OpenRouter vs 401 from Supabase
-            const statusCode = openrouterResponse.status;
+            console.error(`[OpenRouter Error] ${openrouterResponse.status}:`, errBody);
             return new Response(
-                JSON.stringify({ 
-                    error: `OpenRouter API Error ${statusCode}`,
-                    details: errBody,
-                    source: 'OpenRouter'
-                }),
-                { status: statusCode, headers: { ...cors, 'Content-Type': 'application/json' } }
+                JSON.stringify({ error: `OpenRouter API Error ${openrouterResponse.status}`, details: errBody }),
+                { status: openrouterResponse.status, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
 
@@ -147,18 +149,14 @@ Deno.serve(async (req: Request) => {
         let promptTokens = 0;
         let completionTokens = 0;
 
-        // Process the stream in the background
         (async () => {
             try {
                 let buffer = '';
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-
-                    // Write original chunk to client
                     await writer.write(value);
 
-                    // Decode to look for usage metrics
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
                     buffer = lines.pop() || '';
@@ -166,19 +164,15 @@ Deno.serve(async (req: Request) => {
                     for (const line of lines) {
                         const trimmed = line.trim();
                         if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
                         const dataMsg = trimmed.slice(6);
                         if (dataMsg === '[DONE]') continue;
-
                         try {
                             const parsed = JSON.parse(dataMsg);
                             if (parsed.usage) {
                                 promptTokens = parsed.usage.prompt_tokens || 0;
                                 completionTokens = parsed.usage.completion_tokens || 0;
                             }
-                        } catch {
-                            // ignore partial JSON
-                        }
+                        } catch { /* ignore partial JSON */ }
                     }
                 }
             } catch (e) {

@@ -36,8 +36,11 @@ const Sidebar: React.FC = () => {
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [isResizing, setIsResizing] = useState(false);
 
+    const isMobile = () => window.innerWidth <= 768;
+
     const handleNewChat = () => {
         createConversation();
+        if (isMobile() && !sidebarCollapsed) toggleSidebar();
     };
 
     const startRename = (id: string, currentTitle: string) => {
@@ -120,7 +123,8 @@ const Sidebar: React.FC = () => {
                 </button>
                 <button className="new-chat-btn" onClick={() => {
                     setIsAdminView(false);
-                    handleNewChat();
+                    createConversation();
+                    if (isMobile() && !sidebarCollapsed) toggleSidebar();
                 }}>
                     <Plus size={16} />
                     <span>New Chat</span>
@@ -142,6 +146,7 @@ const Sidebar: React.FC = () => {
                             onClick={() => {
                                 setIsAdminView(false);
                                 setActiveConversation(conv.id);
+                                if (isMobile() && !sidebarCollapsed) toggleSidebar();
                             }}
                         >
                             {editingId === conv.id ? (
@@ -218,7 +223,10 @@ const Sidebar: React.FC = () => {
             {!sidebarCollapsed && isAdmin && (
                 <div
                     className={`sidebar-admin-link ${isAdminView ? 'active' : ''}`}
-                    onClick={() => setIsAdminView(true)}
+                    onClick={() => {
+                        setIsAdminView(true);
+                        if (isMobile() && !sidebarCollapsed) toggleSidebar();
+                    }}
                     title="System Mission Control"
                 >
                     <Terminal size={16} />

@@ -340,7 +340,7 @@ const SideChatPanel: React.FC = () => {
                 <div className="resize-corner resize-se" onMouseDown={(e) => handleResizeStart(e, 'se')} />
 
                 {/* Header / Drag handle */}
-                <div className="side-chat-header" onMouseDown={handleDragStart}>
+                <div className="side-chat-header" onMouseDown={window.innerWidth > 768 ? handleDragStart : undefined}>
                     <div className="side-chat-header-left">
                         <GripHorizontal size={16} className="drag-icon" />
                         <span className="side-chat-title">Side Chat</span>
