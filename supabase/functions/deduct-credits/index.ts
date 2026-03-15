@@ -75,43 +75,30 @@ Deno.serve(async (req: Request) => {
             case 'deduct': {
                 const cost = amount || 1;
 
-                // Atomic deduct: only succeeds if enough credits
-                const { data, error } = await supabaseAdmin
-                    .from('user_credits')
-                    .select('remaining_credits, total_used')
-                    .eq('user_id', user.id)
-                    .single();
+                const { data: newBalance, error: rpcError } = await supabaseAdmin.rpc('deduct_user_credits', {
+                    p_user_id: user.id,
+                    p_amount: cost,
+                });
 
-                if (error || !data) {
-                    return new Response(
-                        JSON.stringify({ error: 'Credit record not found' }),
-                        { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } }
-                    );
-                }
-
-                if (data.remaining_credits < cost) {
-                    return new Response(
-                        JSON.stringify({ error: 'Insufficient credits', remaining: data.remaining_credits }),
-                        { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
-                    );
-                }
-
-                const { data: updated, error: updateError } = await supabaseAdmin
-                    .from('user_credits')
-                    .update({
-                        remaining_credits: data.remaining_credits - cost,
-                        total_used: data.total_used + cost,
-                    })
-                    .eq('user_id', user.id)
-                    .select()
-                    .single();
-
-                if (updateError) {
+                if (rpcError) {
                     return new Response(
                         JSON.stringify({ error: 'Failed to deduct credits' }),
                         { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
+
+                if (newBalance === -1) {
+                    return new Response(
+                        JSON.stringify({ error: 'Insufficient credits' }),
+                        { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const { data: updated } = await supabaseAdmin
+                    .from('user_credits')
+                    .select('remaining_credits, total_used')
+                    .eq('user_id', user.id)
+                    .single();
 
                 return new Response(
                     JSON.stringify(updated),

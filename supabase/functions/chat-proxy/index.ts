@@ -81,20 +81,13 @@ Deno.serve(async (req: Request) => {
 
         // ─── Credit Check (service role to bypass RLS) ───
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        const { data: creditRow, error: creditError } = await supabaseAdmin
-            .from('user_credits')
-            .select('remaining_credits')
-            .eq('user_id', user.id)
-            .single();
 
-        if (creditError && creditError.code === 'PGRST116') {
-            // No credit row yet — create one with default credits
-            await supabaseAdmin.from('user_credits').insert({
-                user_id: user.id,
-                remaining_credits: 100,
-                total_used: 0,
-            });
-        } else if (creditRow && creditRow.remaining_credits <= 0) {
+        const { data: balance } = await supabaseAdmin.rpc('ensure_user_credits', {
+            p_user_id: user.id,
+            p_initial_credits: 100,
+        });
+
+        if (typeof balance === 'number' && balance <= 0) {
             return new Response(
                 JSON.stringify({ error: 'Insufficient credits' }),
                 { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
@@ -153,7 +146,6 @@ Deno.serve(async (req: Request) => {
         const writer = writable.getWriter();
         const reader = openrouterResponse.body!.getReader();
         const decoder = new TextDecoder();
-        const encoder = new TextEncoder();
 
         let promptTokens = 0;
         let completionTokens = 0;
@@ -197,34 +189,19 @@ Deno.serve(async (req: Request) => {
             } finally {
                 await writer.close();
 
-                // ─── Deduct Exact Credits & Log Usage ───
-                // Using exactly $0.50 per 1M tokens -> 500 credits per 1M tokens.
                 const COST_PER_MILLION = 500;
                 const totalTokens = promptTokens + completionTokens;
                 const exactCost = (totalTokens / 1_000_000) * COST_PER_MILLION;
-
-                // Ensure cost is at least 0.0001 to prevent absolute zero
                 const creditCost = Math.max(0.0001, exactCost);
 
                 try {
-                    // 1. Deduct Credits
-                    await supabaseAdmin
-                        .from('user_credits')
-                        .update({
-                            remaining_credits: (creditRow?.remaining_credits || 100) - creditCost,
-                            total_used: (creditRow?.total_used || 0) + creditCost,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('user_id', user.id);
-
-                    // 2. Log exact usage for dashboard
-                    const reqMessages = messages as any[];
-                    // Extract conversation_id if passed in future, for now log basic info
-                    const lastMsgId = reqMessages[reqMessages.length - 1]?.id || null;
+                    await supabaseAdmin.rpc('deduct_user_credits', {
+                        p_user_id: user.id,
+                        p_amount: creditCost,
+                    });
 
                     await supabaseAdmin.from('usage_logs').insert({
                         user_id: user.id,
-                        message_id: lastMsgId,
                         prompt_tokens: promptTokens,
                         completion_tokens: completionTokens,
                         reasoning_tokens: is_reasoning ? completionTokens : 0,
@@ -233,7 +210,7 @@ Deno.serve(async (req: Request) => {
 
                     console.log(`Deducted ${creditCost.toFixed(4)} credits for ${totalTokens} tokens (User: ${user.id})`);
                 } catch (dbErr) {
-                    console.error('Failed to deduct exact credits or log usage:', dbErr);
+                    console.error('Failed to deduct credits or log usage:', dbErr);
                 }
             }
         })();

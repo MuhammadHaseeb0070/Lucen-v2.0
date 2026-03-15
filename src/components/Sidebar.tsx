@@ -14,6 +14,7 @@ import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { useAuthStore } from '../store/authStore';
+import { isAdminUser } from '../config/admin';
 
 const Sidebar: React.FC = () => {
     const {
@@ -28,7 +29,7 @@ const Sidebar: React.FC = () => {
     const { sidebarCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth, isAdminView, setIsAdminView } = useUIStore();
     const { remainingCredits, isLoading: creditsLoading } = useCreditsStore();
     const { user } = useAuthStore();
-    const isAdmin = user?.email === 'admin@lucen.ai' || user?.email === 'haseeb@example.com';
+    const isAdmin = isAdminUser(user?.email);
 
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editTitle, setEditTitle] = useState('');

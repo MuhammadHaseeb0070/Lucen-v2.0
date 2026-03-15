@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
+import { isAdminUser } from '../config/admin';
 import {
     Activity, Database, ShieldAlert,
     Users, MessageSquare, CreditCard, TrendingUp,
@@ -49,7 +50,7 @@ const OwnerDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'health'>('analytics');
     const [error, setError] = useState<string | null>(null);
 
-    const isAdmin = currentUser?.email === 'admin@lucen.ai' || currentUser?.email === 'haseeb@example.com';
+    const isAdmin = isAdminUser(currentUser?.email);
 
     useEffect(() => {
         if (!isAdmin) return;

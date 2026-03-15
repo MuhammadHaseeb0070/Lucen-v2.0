@@ -12,6 +12,7 @@ import { useThemeStore, applyTheme } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
 import { isSupabaseEnabled } from '../lib/supabase';
+import { isAdminUser } from '../config/admin';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 const Layout: React.FC = () => {
@@ -27,7 +28,7 @@ const Layout: React.FC = () => {
 
     // Admin Redirect Logic: If user is admin and not in admin view, switch to it automatically
     useEffect(() => {
-        if (user && (user.email === 'admin@lucen.ai' || user.email === 'haseeb@example.com')) {
+        if (user && isAdminUser(user.email)) {
             if (!isAdminView) {
                 setIsAdminView(true);
             }

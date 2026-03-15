@@ -2,9 +2,14 @@ name: Deploy Supabase
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths:
+      - 'supabase/**'
   workflow_dispatch:
+
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -13,11 +18,6 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -36,18 +36,14 @@ jobs:
 
       - name: Set Edge Function Secrets
         run: |
-          supabase secrets set OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
-          supabase secrets set VITE_APP_URL="$VITE_APP_URL"
-          [ -n "$STRIPE_SECRET_KEY" ] && supabase secrets set STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" || true
-          [ -n "$STRIPE_WEBHOOK_SECRET" ] && supabase secrets set STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" || true
+          supabase secrets set OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}"
+          supabase secrets set VITE_APP_URL="${{ secrets.VITE_APP_URL }}"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
 
       - name: Deploy Edge Functions
-        run: supabase functions deploy --no-verify-jwt
+        run: |
+          supabase functions deploy chat-proxy --no-verify-jwt
+          supabase functions deploy deduct-credits --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
