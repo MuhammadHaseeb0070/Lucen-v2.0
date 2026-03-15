@@ -59,11 +59,8 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // Verify user: use anon client with user's JWT (same pattern as deduct-credits, create-checkout)
-        const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-            global: { headers: { Authorization: authHeader } },
-        });
-        const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+        const supabaseUser = createClient(supabaseUrl, supabaseAnonKey);
+        const { data: { user }, error: authError } = await supabaseUser.auth.getUser(token);
         
         if (authError || !user) {
             console.error('[Auth Error] Supabase user verification failed:', authError?.message || 'No user found');
