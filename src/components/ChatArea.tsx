@@ -7,6 +7,7 @@ import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { useArtifactStore } from '../store/artifactStore';
+import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
@@ -31,6 +32,8 @@ const ChatArea: React.FC = () => {
     const abortRef = useRef<AbortController | null>(null);
     const activeConv = getActiveConversation();
     const model = getActiveModel();
+    const pendingMainComposerPrefill = useComposerStore((s) => s.pendingMainComposerPrefill);
+    const consumePendingMainComposerPrefill = useComposerStore((s) => s.consumePendingMainComposerPrefill);
 
     const [highlightedPairId, setHighlightedPairId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -95,6 +98,13 @@ const ChatArea: React.FC = () => {
     useEffect(() => {
         clearArtifact();
     }, [activeConversationId, clearArtifact]);
+
+    useEffect(() => {
+        if (!pendingMainComposerPrefill) return;
+        setPrefillValue(pendingMainComposerPrefill);
+        setPrefillCounter((c) => c + 1);
+        consumePendingMainComposerPrefill();
+    }, [pendingMainComposerPrefill, consumePendingMainComposerPrefill]);
 
     const isStreaming = activeConv?.messages.some((m) => m.isStreaming) || false;
 

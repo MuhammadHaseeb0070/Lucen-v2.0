@@ -77,7 +77,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
         sideChatOpen,
         toggleSidebar,
         toggleSideChat,
-        setSideChatOpen,
     } = useUIStore();
 
     const {
@@ -230,7 +229,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
         activeConversationId, sideChatOpen, sidebarCollapsed, activeThemeId,
         createConversation, deleteConversation, getActiveConversation,
         toggleSideChat, clearSideChatMessages, toggleSidebar,
-        setSettingsOpen, setSettingsTab, setTheme, setSideChatOpen,
+        setSettingsOpen, setSettingsTab, setTheme,
     ]);
 
     // ─── Conversation jump-to results ───

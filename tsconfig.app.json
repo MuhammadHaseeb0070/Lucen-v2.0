@@ -24,5 +24,20 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/components/ReactWorkspaceScreen.tsx",
+    "src/components/react-workspace/**/*",
+    "src/components/ReactArtifactRenderer.tsx",
+    "src/services/projectArchive.ts",
+    "src/services/projectImport.ts",
+    "src/services/workspaceAi.ts",
+    "src/services/workspaceDiagnostics.ts",
+    "src/services/workspaceRuntimeClient.ts",
+    "src/store/projectStore.ts",
+    "src/store/workspaceSessionStore.ts",
+    "src/store/diagnosticsStore.ts",
+    "src/store/composerStore.ts",
+    "src/types/workspace.ts"
+  ]
 }

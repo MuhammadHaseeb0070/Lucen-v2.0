@@ -240,7 +240,7 @@ const ArtifactWorkspace: React.FC = () => {
           <button className="artifact-action-btn" onClick={handleCopy} title="Copy code">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
-          {activeArtifact.type !== 'html' && (
+          {(activeArtifact.type === 'svg' || activeArtifact.type === 'mermaid') && (
             <button className="artifact-action-btn" onClick={handleDownloadSvg} title="Download diagram (SVG)">
               <Download size={15} />
             </button>
@@ -254,6 +254,7 @@ const ArtifactWorkspace: React.FC = () => {
       <div className="artifact-workspace-body">
         <ArtifactRenderer
           content={activeArtifact.content}
+          title={activeArtifact.title}
           type={activeArtifact.type}
           viewMode={viewMode}
           viewport={previewViewport}

@@ -36,6 +36,7 @@ const SideChatPanel: React.FC = () => {
         clearContext,
         injectMainChatContext,
         getApiMessages,
+        getContextBlock,
         clearPendingMessage,
     } = useSideChatStore();
 
@@ -171,7 +172,12 @@ const SideChatPanel: React.FC = () => {
         abortRef.current = controller;
 
         const apiMessages = getApiMessages();
-        apiMessages.push({ role: 'user', content });
+        // Prepend the context block to the user message so it is always
+        // visible to the model, even when streamChat uses a systemPromptOverride
+        // (which would otherwise discard any injected system messages).
+        const contextBlock = getContextBlock();
+        const userContentWithContext = contextBlock ? `${contextBlock}${content}` : content;
+        apiMessages.push({ role: 'user', content: userContentWithContext });
 
         const messagesToSend: Message[] = apiMessages.map((m, i) => ({
             id: String(i),

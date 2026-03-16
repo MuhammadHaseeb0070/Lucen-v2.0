@@ -7,6 +7,7 @@ import type { PreviewViewport } from '../store/artifactStore';
 
 interface RendererProps {
   content: string;
+  title?: string;
   viewport?: PreviewViewport;
 }
 
@@ -102,7 +103,7 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full' }) =
 // Wraps SVG and Mermaid renderers. Supports mouse drag to pan,
 // scroll/pinch to zoom, and toolbar buttons.
 
-const PanZoomContainer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const PanZoomContainer: React.FC<{ children: React.ReactNode; vectorMode?: boolean }> = ({ children, vectorMode = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -161,8 +162,15 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode }> = ({ children })
       >
         <div
           ref={innerRef}
-          className="artifact-panzoom-inner"
-          style={{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})` }}
+          className={`artifact-panzoom-inner ${vectorMode ? 'artifact-panzoom-inner--vector' : ''}`}
+          style={
+            vectorMode
+              ? {
+                  transform: `translate(${translate.x}px, ${translate.y}px)`,
+                  width: `${Math.max(25, scale * 100)}%`,
+                }
+              : { transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})` }
+          }
         >
           {children}
         </div>
@@ -222,7 +230,7 @@ const SvgRenderer: React.FC<RendererProps> = ({ content }) => {
   }
 
   return (
-    <PanZoomContainer>
+    <PanZoomContainer vectorMode>
       <div ref={containerRef} className="artifact-svg-container" />
     </PanZoomContainer>
   );
@@ -306,7 +314,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content }) => {
             const header = lines[0];
             const structural = lines.slice(1).filter((l) => {
               const t = l.trim();
-              return t && /^[\w\s]/.test(t) && (t.includes('-->') || t.includes('---') || t.includes('==>') || /^\s*\w+[\s\[\(\{]/.test(t) || /^\s*subgraph\b/.test(t) || /^\s*end\s*$/.test(t));
+              return t && /^[\w\s]/.test(t) && (t.includes('-->') || t.includes('---') || t.includes('==>') || /^\s*\w+[\s[({]/.test(t) || /^\s*subgraph\b/.test(t) || /^\s*end\s*$/.test(t));
             });
             const rendered = await tryRenderMermaid(header + '\n' + structural.join('\n'), `mermaid-r-${Date.now()}-${currentId}`);
             if (!cancelled && renderIdRef.current === currentId) { setSvg(rendered); setError(null); }
@@ -340,7 +348,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content }) => {
   if (!svg) return <div className="artifact-loading"><span className="artifact-loading-spinner" />Rendering diagram...</div>;
 
   return (
-    <PanZoomContainer>
+    <PanZoomContainer vectorMode>
       <SafeHtml html={svg} className="artifact-mermaid-container" />
     </PanZoomContainer>
   );
@@ -372,12 +380,13 @@ const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid
 
 interface ArtifactRendererProps {
   content: string;
+  title?: string;
   type: ArtifactType;
   viewMode: 'preview' | 'code';
   viewport?: PreviewViewport;
 }
 
-const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, type, viewMode, viewport }) => {
+const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport }) => {
   if (!content || !content.trim())
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
@@ -389,7 +398,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, type, view
   if (Renderer) {
     return (
       <RendererErrorBoundary content={content} language={language}>
-        <Renderer content={content} viewport={viewport} />
+        <Renderer content={content} title={title} viewport={viewport} />
       </RendererErrorBoundary>
     );
   }

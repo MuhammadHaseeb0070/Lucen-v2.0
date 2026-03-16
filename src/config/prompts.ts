@@ -223,7 +223,7 @@ export const BASE_SYSTEM_PROMPT = `<lucen_system>
   NEVER USE ARTIFACT TAGS FOR:
   - Code snippets, partial examples, or educational fragments
   - Backend code, scripts, configs, CLI tools
-  - React/Vue/Angular components (not self-contained HTML)
+  - React/Vue/Angular components
   - General Q&A, explanations, or conversation
   - When the user explicitly asks for code to copy, not to see
 

@@ -3133,6 +3133,11 @@ body {
     justify-content: center;
 }
 
+.artifact-panzoom-inner--vector {
+    width: 100%;
+    max-width: none;
+}
+
 /* ─── Renderers ─── */
 
 .artifact-iframe {
@@ -3154,6 +3159,9 @@ body {
 .artifact-svg-container svg {
     width: 100%;
     height: auto;
+    max-width: none;
+    shape-rendering: geometricPrecision;
+    text-rendering: geometricPrecision;
 }
 
 .artifact-mermaid-container {
@@ -3164,8 +3172,174 @@ body {
 }
 
 .artifact-mermaid-container svg {
-    max-width: 100%;
+    width: 100%;
+    max-width: none;
     height: auto;
+    shape-rendering: geometricPrecision;
+    text-rendering: geometricPrecision;
+}
+
+.artifact-react-shell {
+    position: relative;
+    min-height: 420px;
+    height: 100%;
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    background:
+        radial-gradient(circle at top, rgba(11, 186, 168, 0.08), transparent 35%),
+        var(--bg-surface);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}
+
+.artifact-react-layout {
+    height: 100%;
+    min-height: 420px;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+}
+
+.artifact-react-layout,
+.artifact-react-layout > div,
+.artifact-react-layout [class*="sp-preview"],
+.artifact-react-layout iframe {
+    min-height: 420px;
+}
+
+.artifact-react-layout [class*="sp-preview"] {
+    height: 100%;
+}
+
+.artifact-react-layout iframe {
+    width: 100%;
+    border: none;
+    background: #ffffff;
+}
+
+.artifact-react-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.artifact-react-overlay--loading {
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.92));
+}
+
+.artifact-react-loading-card,
+.artifact-react-error-card {
+    width: min(100%, 680px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(14px);
+}
+
+.artifact-react-loading-card {
+    padding: 18px;
+}
+
+.artifact-react-loading-skeleton {
+    height: 220px;
+    border-radius: 16px;
+    background:
+        linear-gradient(90deg, rgba(148, 163, 184, 0.12) 0%, rgba(148, 163, 184, 0.24) 50%, rgba(148, 163, 184, 0.12) 100%),
+        linear-gradient(180deg, rgba(241, 245, 249, 0.95), rgba(226, 232, 240, 0.7));
+    background-size: 200% 100%, 100% 100%;
+    animation: artifact-react-shimmer 1.4s ease-in-out infinite;
+}
+
+.artifact-react-loading-copy {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 6px 2px;
+    color: var(--text-secondary);
+}
+
+.artifact-react-loading-icon {
+    color: var(--accent);
+    animation: spin 1s linear infinite;
+}
+
+.artifact-react-loading-title,
+.artifact-react-error-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.artifact-react-loading-text,
+.artifact-react-error-subtitle {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+}
+
+.artifact-react-overlay--error {
+    align-items: flex-start;
+    padding-top: 32px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.88));
+}
+
+.artifact-react-error-card {
+    padding: 18px;
+    border-color: rgba(245, 158, 11, 0.18);
+}
+
+.artifact-react-error-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    color: var(--warning, #f59e0b);
+}
+
+.artifact-react-error-message {
+    margin: 16px 0 0;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.94);
+    color: rgba(241, 245, 249, 0.96);
+    font-size: 0.76rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+    max-height: 220px;
+}
+
+.artifact-react-error-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+.artifact-react-ai-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(11, 186, 168, 0.24);
+    border-radius: 999px;
+    padding: 9px 14px;
+    background: rgba(11, 186, 168, 0.1);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.artifact-react-ai-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(11, 186, 168, 0.16);
+    border-color: rgba(11, 186, 168, 0.38);
 }
 
 .artifact-code-fallback {
@@ -3219,6 +3393,15 @@ body {
     animation: spin 0.8s linear infinite;
 }
 
+@keyframes artifact-react-shimmer {
+    0% {
+        background-position: 200% 0, 0 0;
+    }
+    100% {
+        background-position: -200% 0, 0 0;
+    }
+}
+
 /* ─── Artifact Card (inline in chat) ─── */
 
 .artifact-card {
@@ -3236,6 +3419,656 @@ body {
     text-align: left;
     font-family: inherit;
     animation: fadeIn var(--dur) var(--ease);
+}
+
+/* ═══════════════════════════════════════════
+   REACT WORKSPACE
+   ═══════════════════════════════════════════ */
+
+.react-workspace-screen {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.04));
+}
+
+.react-workspace-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--divider);
+    background: var(--bg-surface);
+}
+
+.react-workspace-toolbar__left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.react-workspace-toolbar__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.react-workspace-toolbar__title > div {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.react-workspace-toolbar__title span {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.react-workspace-toolbar__title small,
+.react-workspace-toolbar__message {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.react-workspace-toolbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.react-workspace-toolbar__actions button,
+.react-workspace-empty-state__actions button,
+.react-workspace-toggle button,
+.react-workspace-pane-actions button,
+.react-workspace-ai-composer button,
+.react-workspace-ai-quick-prompts button,
+.react-workspace-patch-review__actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--divider);
+    background: var(--bg-base);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.react-workspace-toolbar__actions button:hover,
+.react-workspace-empty-state__actions button:hover,
+.react-workspace-toggle button:hover,
+.react-workspace-pane-actions button:hover,
+.react-workspace-ai-composer button:hover,
+.react-workspace-ai-quick-prompts button:hover,
+.react-workspace-patch-review__actions button:hover {
+    color: var(--text-primary);
+    border-color: rgba(11, 186, 168, 0.28);
+    background: rgba(11, 186, 168, 0.08);
+}
+
+.react-workspace-toolbar__actions button:disabled,
+.react-workspace-ai-composer button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.react-workspace-empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.react-workspace-empty-state__card {
+    width: min(100%, 720px);
+    padding: 28px;
+    border-radius: 24px;
+    border: 1px solid var(--divider);
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.14);
+    text-align: center;
+}
+
+.react-workspace-empty-state__card h2 {
+    margin: 18px 0 8px;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+}
+
+.react-workspace-empty-state__card p {
+    margin: 0 auto;
+    max-width: 52ch;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.react-workspace-empty-state__actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 22px;
+}
+
+.react-workspace-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr) minmax(360px, 42%);
+    overflow: hidden;
+}
+
+.react-workspace-layout__left,
+.react-workspace-layout__center,
+.react-workspace-layout__right {
+    min-width: 0;
+    min-height: 0;
+}
+
+.react-workspace-layout__left,
+.react-workspace-layout__center {
+    border-right: 1px solid var(--divider);
+}
+
+.react-workspace-layout__center,
+.react-workspace-layout__right {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.react-workspace-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    background: var(--bg-surface);
+}
+
+.react-workspace-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--divider);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+}
+
+.react-workspace-pane-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.react-workspace-pane-actions button {
+    padding: 6px 8px;
+}
+
+.react-workspace-pane-meta {
+    font-size: 0.7rem;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.react-workspace-file-explorer {
+    overflow: hidden;
+}
+
+.react-workspace-tree {
+    flex: 1;
+    overflow: auto;
+    padding: 8px 0 10px;
+}
+
+.react-workspace-tree-node {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.react-workspace-tree-node:hover,
+.react-workspace-tree-node--active {
+    background: rgba(11, 186, 168, 0.08);
+    color: var(--text-primary);
+}
+
+.react-workspace-tree-node__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.react-workspace-tree-node__icon--filetype {
+    color: var(--text-tertiary);
+}
+
+.react-workspace-tree-node__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.react-workspace-editor-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    padding: 8px 8px 0;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--divider);
+    overflow: auto hidden;
+}
+
+.react-workspace-editor-tabs__empty {
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+}
+
+.react-workspace-editor-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 12px 12px 0 0;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    min-width: 0;
+}
+
+.react-workspace-editor-tab--active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border-color: var(--divider);
+}
+
+.react-workspace-editor-tab__label {
+    font-size: 0.8rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.react-workspace-editor-tab__dirty {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.react-workspace-editor-tab__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+}
+
+.react-workspace-editor-pane {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #0b1220;
+}
+
+.react-workspace-editor-pane__path {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.76rem;
+    color: rgba(226, 232, 240, 0.72);
+}
+
+.react-workspace-code-editor {
+    flex: 1;
+    min-height: 0;
+}
+
+.react-workspace-code-editor,
+.react-workspace-code-editor .sp-stack,
+.react-workspace-code-editor .sp-code-editor {
+    height: 100%;
+    min-height: 0;
+}
+
+.react-workspace-preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--divider);
+    background: var(--bg-surface);
+}
+
+.react-workspace-toggle {
+    display: inline-flex;
+    background: var(--bg-muted);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 3px;
+}
+
+.react-workspace-toggle button {
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+
+.react-workspace-toggle button.is-active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border-color: transparent;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.react-workspace-preview-region {
+    flex: 1;
+    min-height: 0;
+    border-bottom: 1px solid var(--divider);
+    background: #f8fafc;
+}
+
+.react-workspace-bottom-region {
+    height: 260px;
+    min-height: 0;
+    background: var(--bg-surface);
+}
+
+.react-workspace-preview-shell,
+.react-workspace-preview-code {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.react-workspace-preview-frame,
+.react-workspace-preview-frame iframe,
+.react-workspace-preview-code > div {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+}
+
+.react-workspace-preview-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.react-workspace-preview-overlay--loading {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.9));
+}
+
+.react-workspace-preview-card,
+.react-workspace-preview-error {
+    width: min(100%, 520px);
+    border-radius: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
+.react-workspace-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+}
+
+.react-workspace-preview-card__spinner {
+    animation: spin 0.8s linear infinite;
+    color: var(--accent);
+}
+
+.react-workspace-preview-card__title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.react-workspace-preview-card__text {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+}
+
+.react-workspace-preview-overlay--error {
+    align-items: flex-start;
+    padding-top: 24px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.82));
+}
+
+.react-workspace-preview-error {
+    padding: 18px;
+}
+
+.react-workspace-preview-error__header {
+    display: flex;
+    gap: 10px;
+    color: var(--warning, #f59e0b);
+}
+
+.react-workspace-preview-error pre {
+    margin: 16px 0 0;
+    padding: 14px;
+    border-radius: 14px;
+    background: #0f172a;
+    color: #e2e8f0;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.76rem;
+    line-height: 1.6;
+}
+
+.react-workspace-terminal-pane,
+.react-workspace-diagnostics-pane,
+.react-workspace-ai-pane {
+    height: 100%;
+}
+
+.react-workspace-terminal-pane .sp-console {
+    height: calc(100% - 44px);
+    border: none;
+}
+
+.react-workspace-diagnostics-list,
+.react-workspace-ai-messages {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+}
+
+.react-workspace-diagnostic {
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid var(--divider);
+    background: var(--bg-base);
+    margin-bottom: 10px;
+}
+
+.react-workspace-diagnostic--error {
+    border-color: rgba(239, 68, 68, 0.22);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.react-workspace-diagnostic--warning {
+    border-color: rgba(245, 158, 11, 0.22);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.react-workspace-diagnostic__title {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.react-workspace-diagnostic__location {
+    margin-top: 4px;
+    font-size: 0.74rem;
+    color: var(--text-tertiary);
+}
+
+.react-workspace-diagnostic__message {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.react-workspace-ai-message {
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid var(--divider);
+    background: var(--bg-base);
+    margin-bottom: 12px;
+}
+
+.react-workspace-ai-message--assistant {
+    background: rgba(11, 186, 168, 0.04);
+}
+
+.react-workspace-ai-message__role {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+}
+
+.react-workspace-patch-review {
+    margin: 0 12px 12px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(11, 186, 168, 0.22);
+    background: rgba(11, 186, 168, 0.06);
+}
+
+.react-workspace-patch-review__title {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.react-workspace-patch-review__meta {
+    margin-top: 4px;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+}
+
+.react-workspace-patch-review__actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.react-workspace-ai-quick-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 12px 12px;
+}
+
+.react-workspace-ai-quick-prompts button {
+    padding: 7px 10px;
+    font-size: 0.74rem;
+}
+
+.react-workspace-ai-composer {
+    border-top: 1px solid var(--divider);
+    padding: 12px;
+    background: var(--bg-surface);
+}
+
+.react-workspace-ai-composer textarea {
+    width: 100%;
+    min-height: 92px;
+    resize: vertical;
+    border: 1px solid var(--divider);
+    border-radius: 12px;
+    padding: 12px;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font: inherit;
+    margin-bottom: 10px;
+}
+
+.react-workspace-empty-pane {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    color: var(--text-tertiary);
+    text-align: center;
+    line-height: 1.6;
+}
+
+@media (max-width: 1280px) {
+    .react-workspace-layout {
+        grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .react-workspace-layout__right {
+        grid-column: 1 / -1;
+        min-height: 640px;
+    }
+
+    .react-workspace-layout__center {
+        border-right: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .react-workspace-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .react-workspace-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .react-workspace-layout__left,
+    .react-workspace-layout__center {
+        border-right: none;
+        border-bottom: 1px solid var(--divider);
+    }
 }
 
 .artifact-card:hover {

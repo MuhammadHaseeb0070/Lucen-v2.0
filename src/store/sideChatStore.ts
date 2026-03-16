@@ -16,6 +16,7 @@ interface SideChatStore {
     clearContext: () => void;
     toggleContextEnabled: () => void;
     getApiMessages: () => { role: string; content: string }[];
+    getContextBlock: () => string;
     setPendingMessage: (msg: string) => void;
     clearPendingMessage: () => void;
 }
@@ -58,22 +59,26 @@ export const useSideChatStore = create<SideChatStore>()(
 
             getApiMessages: () => {
                 const state = get();
-                const contextMsgs = state.isContextEnabled && state.injectedContext.length > 0
-                    ? [
-                        {
-                            role: 'system' as const,
-                            content: `The user has explicitly provided context from their main chat:\n\n${state.injectedContext
-                                .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
-                                .join('\n\n')}`,
-                        },
-                    ]
-                    : [];
 
+                // Build prior side-chat history (excluding streaming messages).
                 const chatMsgs = state.messages
                     .filter((m) => !m.isStreaming)
                     .map((m) => ({ role: m.role, content: m.content }));
 
-                return [...contextMsgs, ...chatMsgs];
+                return chatMsgs;
+            },
+
+            // Returns the injected context as a formatted string block to be
+            // prepended to the user's message, ensuring it reaches the AI even
+            // when streamChat uses a systemPromptOverride (which replaces system
+            // messages, causing a separate system context entry to be lost).
+            getContextBlock: () => {
+                const state = get();
+                if (!state.isContextEnabled || state.injectedContext.length === 0) return '';
+                const lines = state.injectedContext
+                    .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+                    .join('\n\n');
+                return `<main_chat_context>\nThe user has linked the following messages from their main chat for reference:\n\n${lines}\n</main_chat_context>\n\n`;
             },
 
             setPendingMessage: (msg) => {

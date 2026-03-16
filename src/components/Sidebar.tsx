@@ -26,7 +26,14 @@ const Sidebar: React.FC = () => {
         setActiveConversation,
     } = useChatStore();
 
-    const { sidebarCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth, isAdminView, setIsAdminView } = useUIStore();
+    const {
+        sidebarCollapsed,
+        toggleSidebar,
+        sidebarWidth,
+        setSidebarWidth,
+        isAdminView,
+        setIsAdminView,
+    } = useUIStore();
     const { remainingCredits, isLoading: creditsLoading } = useCreditsStore();
     const { user } = useAuthStore();
     const isAdmin = isAdminUser(user?.email);
