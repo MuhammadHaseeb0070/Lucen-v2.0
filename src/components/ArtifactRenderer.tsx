@@ -286,7 +286,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content }) => {
   const [error, setError] = useState<string | null>(null);
   const [svg, setSvg] = useState<string>('');
   const renderIdRef = useRef(0);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanedContent = useMemo(() => sanitizeMermaidSyntax(content), [content]);
 
