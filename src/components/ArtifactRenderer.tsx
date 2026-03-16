@@ -163,14 +163,7 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode; vectorMode?: boole
         <div
           ref={innerRef}
           className={`artifact-panzoom-inner ${vectorMode ? 'artifact-panzoom-inner--vector' : ''}`}
-          style={
-            vectorMode
-              ? {
-                  transform: `translate(${translate.x}px, ${translate.y}px)`,
-                  width: `${Math.max(25, scale * 100)}%`,
-                }
-              : { transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})` }
-          }
+          style={{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})` }}
         >
           {children}
         </div>

@@ -3134,8 +3134,8 @@ body {
 }
 
 .artifact-panzoom-inner--vector {
-    width: 100%;
-    max-width: none;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
 }
 
 /* ─── Renderers ─── */
@@ -3162,6 +3162,7 @@ body {
     max-width: none;
     shape-rendering: geometricPrecision;
     text-rendering: geometricPrecision;
+    image-rendering: auto;
 }
 
 .artifact-mermaid-container {
@@ -3177,6 +3178,7 @@ body {
     height: auto;
     shape-rendering: geometricPrecision;
     text-rendering: geometricPrecision;
+    image-rendering: auto;
 }
 
 .artifact-react-shell {
