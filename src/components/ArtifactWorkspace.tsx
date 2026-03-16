@@ -85,56 +85,6 @@ async function getSvgMarkupForExport(content: string, type: ArtifactType): Promi
   return null;
 }
 
-function svgToPngBlob(svgMarkup: string, scale = 2): Promise<Blob | null> {
-  return new Promise((resolve) => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgMarkup, 'image/svg+xml');
-    const svgEl = doc.querySelector('svg');
-    if (!svgEl) { resolve(null); return; }
-
-    if (!svgEl.getAttribute('xmlns')) svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-
-    let w = parseFloat(svgEl.getAttribute('width') || '0');
-    let h = parseFloat(svgEl.getAttribute('height') || '0');
-    const vb = svgEl.getAttribute('viewBox');
-    if ((!w || !h) && vb) {
-      const parts = vb.split(/[\s,]+/).map(Number);
-      w = parts[2] || 800;
-      h = parts[3] || 600;
-    }
-    if (!w) w = 800;
-    if (!h) h = 600;
-    svgEl.setAttribute('width', String(w));
-    svgEl.setAttribute('height', String(h));
-
-    // Inline all <style> content as attributes so the rasterized image
-    // doesn't depend on external CSS or foreignObject.
-    // Remove any remaining foreignObject just in case.
-    svgEl.querySelectorAll('foreignObject').forEach((fo) => fo.remove());
-
-    const data = new XMLSerializer().serializeToString(svgEl);
-    const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = w * scale;
-    canvas.height = h * scale;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) { URL.revokeObjectURL(url); resolve(null); return; }
-
-    const img = new window.Image();
-    img.onload = () => {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((b) => resolve(b), 'image/png');
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-    img.src = url;
-  });
-}
-
 async function downloadArtifactSvg(content: string, type: ArtifactType, title: string) {
   const safeName = makeSafeName(title);
 

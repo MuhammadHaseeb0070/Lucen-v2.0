@@ -117,12 +117,12 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode }> = ({ children })
     setScale((s) => Math.max(0.25, Math.min(5, s + delta)));
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     isDragging.current = true;
     dragStart.current = { x: e.clientX, y: e.clientY };
     translateStart.current = { ...translate };
-    e.currentTarget.style.cursor = 'grabbing';
+    (e.currentTarget as HTMLDivElement).style.cursor = 'grabbing';
   }, [translate]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -132,9 +132,9 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode }> = ({ children })
     setTranslate({ x: translateStart.current.x + dx, y: translateStart.current.y + dy });
   }, []);
 
-  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     isDragging.current = false;
-    e.currentTarget.style.cursor = 'grab';
+    (e.currentTarget as HTMLDivElement).style.cursor = 'grab';
   }, []);
 
   const handleReset = useCallback(() => {
