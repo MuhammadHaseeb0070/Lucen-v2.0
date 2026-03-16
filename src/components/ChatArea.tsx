@@ -6,9 +6,9 @@ import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useCreditsStore } from '../store/creditsStore';
+import { useArtifactStore } from '../store/artifactStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
-import { TEMPLATES } from '../config/prompts';
 import { processFiles } from '../services/fileProcessor';
 import type { FileAttachment } from '../types';
 
@@ -37,6 +37,7 @@ const ChatArea: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeMatchIndex, setActiveMatchIndex] = useState(0);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
+    const [isAutoScroll, setIsAutoScroll] = useState(true);
     const [prefillValue, setPrefillValue] = useState('');
     const [prefillCounter, setPrefillCounter] = useState(0);
     const [isDragOver, setIsDragOver] = useState(false);
@@ -44,18 +45,31 @@ const ChatArea: React.FC = () => {
     const dragCounterRef = useRef(0);
 
     const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        // Jump directly to bottom (no smooth) to keep up with streaming.
+        const container = messagesContainerRef.current;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        } else {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        }
+        setIsAutoScroll(true);
     }, []);
 
-    useEffect(() => { scrollToBottom(); }, [activeConv?.messages, scrollToBottom]);
+    // Auto-scroll only when user is near the bottom (isAutoScroll = true).
+    useEffect(() => {
+        if (!isAutoScroll) return;
+        scrollToBottom();
+    }, [activeConv?.messages, isAutoScroll, scrollToBottom]);
 
     // Scroll-to-bottom FAB visibility
     useEffect(() => {
         const container = messagesContainerRef.current;
         if (!container) return;
         const handleScroll = () => {
-            const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200;
+            const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+            const isNearBottom = distanceFromBottom < 200;
             setShowScrollBtn(!isNearBottom && container.scrollHeight > container.clientHeight + 100);
+            setIsAutoScroll(isNearBottom);
         };
         container.addEventListener('scroll', handleScroll);
         return () => container.removeEventListener('scroll', handleScroll);
@@ -76,6 +90,12 @@ const ChatArea: React.FC = () => {
         });
     }, [updateMessage]);
 
+    // Clear workspace artifact when switching conversations
+    const clearArtifact = useArtifactStore((s) => s.clearArtifact);
+    useEffect(() => {
+        clearArtifact();
+    }, [activeConversationId, clearArtifact]);
+
     const isStreaming = activeConv?.messages.some((m) => m.isStreaming) || false;
 
     // ─── Stream helpers ───
@@ -84,11 +104,30 @@ const ChatArea: React.FC = () => {
         abortRef.current = controller;
         const contextMessages = getContextMessages(convId);
 
+        // Local buffering to reduce render thrash during streaming.
+        let chunkBuffer = '';
+        let lastFlushTs = 0;
+
+        const flushBuffer = () => {
+            if (!chunkBuffer) return;
+            const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+            const msg = conv?.messages.find((m) => m.id === assistantMsgId);
+            updateMessage(convId, assistantMsgId, {
+                content: (msg?.content || '') + chunkBuffer,
+                isReasoningStreaming: false,
+            });
+            chunkBuffer = '';
+            lastFlushTs = Date.now();
+        };
+
         await streamChat(contextMessages, {
             onChunk: (chunk) => {
-                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
-                updateMessage(convId, assistantMsgId, { content: (msg?.content || '') + chunk, isReasoningStreaming: false });
+                chunkBuffer += chunk;
+                const now = Date.now();
+                // Flush at most every ~60ms to keep UI smooth but responsive.
+                if (!lastFlushTs || now - lastFlushTs > 60) {
+                    flushBuffer();
+                }
             },
             onReasoning: (reasoning) => {
                 const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
@@ -96,6 +135,8 @@ const ChatArea: React.FC = () => {
                 updateMessage(convId, assistantMsgId, { reasoning: (msg?.reasoning || '') + reasoning });
             },
             onDone: (truncated) => {
+                // Flush any remaining buffered chunks.
+                flushBuffer();
                 updateMessage(convId, assistantMsgId, {
                     isStreaming: false,
                     isReasoningStreaming: false,
@@ -104,7 +145,7 @@ const ChatArea: React.FC = () => {
                 abortRef.current = null;
             },
             onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; },
-        }, { systemPromptOverride: TEMPLATES['General'], signal: controller.signal });
+        }, { signal: controller.signal });
     };
 
     // ─── Continue truncated response ───
@@ -146,7 +187,7 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
             },
-        }, { systemPromptOverride: TEMPLATES['General'], signal: controller.signal });
+        }, { signal: controller.signal });
     };
 
     const handleSend = async (content: string, attachments?: FileAttachment[]) => {

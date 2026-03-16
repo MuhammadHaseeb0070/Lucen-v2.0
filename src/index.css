@@ -2759,6 +2759,559 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   ARTIFACT WORKSPACE — Split-screen panel
+   ═══════════════════════════════════════════ */
+
+.chat-workspace-container {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.chat-workspace-container > .chat-area {
+    flex: 1 1 100%;
+    min-width: 280px;
+    transition: flex-basis var(--dur-slow) var(--ease);
+}
+
+.app-body--workspace-open .chat-workspace-container > .chat-area {
+    flex: 1 1 auto;
+}
+
+/* ─── Workspace Panel ─── */
+
+.artifact-workspace {
+    flex: 0 0 0%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-base);
+    border-left: none;
+    opacity: 0;
+    transition:
+        flex-basis var(--dur-slow) var(--ease),
+        opacity var(--dur) var(--ease);
+    pointer-events: none;
+    position: relative;
+}
+
+.app-body--workspace-open .artifact-workspace {
+    flex: 0 0 var(--artifact-panel-width, 50%);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.artifact-workspace--resizing,
+.artifact-workspace--resizing * {
+    transition: none !important;
+    user-select: none !important;
+}
+
+/* ─── Resize Handle ─── */
+
+.artifact-resize-handle {
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 7px;
+    cursor: col-resize;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+    transition: color var(--dur-fast) var(--ease);
+}
+
+.artifact-resize-handle::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--divider);
+    transition: background var(--dur-fast) var(--ease), width var(--dur-fast) var(--ease);
+}
+
+.artifact-resize-handle:hover::before,
+.artifact-workspace--resizing .artifact-resize-handle::before {
+    width: 3px;
+    left: 2px;
+    background: var(--accent);
+    border-radius: 2px;
+}
+
+.artifact-resize-handle:hover {
+    color: var(--accent);
+}
+
+/* ─── Workspace Header ─── */
+
+.artifact-workspace-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--divider);
+    background: var(--bg-surface);
+    flex-shrink: 0;
+    min-height: 48px;
+}
+
+.artifact-workspace-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.artifact-workspace-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.artifact-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-text, var(--accent));
+    background: var(--accent-soft, rgba(11, 186, 168, 0.1));
+    border-radius: var(--r-full);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.artifact-workspace-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* ─── Preview / Code toggle ─── */
+
+.artifact-view-toggle {
+    display: flex;
+    background: var(--bg-muted);
+    border-radius: var(--r-sm);
+    padding: 2px;
+    gap: 2px;
+}
+
+.artifact-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+    white-space: nowrap;
+}
+
+.artifact-toggle-btn:hover {
+    color: var(--text-secondary);
+}
+
+.artifact-toggle-btn--active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px var(--shadow-color, rgba(0,0,0,0.08));
+}
+
+/* ─── Action buttons ─── */
+
+.artifact-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+}
+
+.artifact-action-btn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.artifact-close-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger, #ef4444);
+}
+
+/* ─── Workspace Body ─── */
+
+.artifact-workspace-body {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    position: relative;
+}
+
+/* ─── Streaming badge in header ─── */
+
+.artifact-streaming-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    background: var(--accent-soft, rgba(11, 186, 168, 0.08));
+    border-radius: var(--r-full);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.artifact-streaming-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: dot-pulse 1.4s infinite ease-in-out both;
+}
+
+/* ─── Viewport Switcher ─── */
+
+.artifact-viewport-switcher {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background: var(--bg-inset, rgba(0,0,0,0.04));
+    border-radius: var(--r-sm);
+    margin-right: 4px;
+}
+
+.artifact-viewport-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.artifact-viewport-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover, rgba(0,0,0,0.06));
+}
+
+.artifact-viewport-btn--active {
+    color: var(--accent);
+    background: var(--bg-surface, #fff);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* ─── Viewport Frame (responsive preview) ─── */
+
+.artifact-viewport-frame {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.artifact-viewport-frame--active {
+    padding: 16px;
+    background: repeating-conic-gradient(rgba(0,0,0,0.04) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+    border-radius: var(--r-sm);
+    overflow: auto;
+}
+
+.artifact-viewport-frame--active .artifact-iframe {
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    transition: width 0.3s ease;
+}
+
+/* ─── Pan/Zoom Container ─── */
+
+.artifact-panzoom-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.artifact-panzoom-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--divider);
+    background: var(--bg-surface, #fff);
+    flex-shrink: 0;
+}
+
+.artifact-panzoom-toolbar button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--divider);
+    border-radius: 5px;
+    background: var(--bg-main, #fff);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.artifact-panzoom-toolbar button:hover {
+    background: var(--bg-hover, rgba(0,0,0,0.04));
+    color: var(--text-primary);
+    border-color: var(--text-tertiary);
+}
+
+.artifact-panzoom-level {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    min-width: 36px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.artifact-panzoom-area {
+    flex: 1;
+    overflow: hidden;
+    cursor: grab;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: repeating-conic-gradient(rgba(0,0,0,0.02) 0% 25%, transparent 0% 50%) 50% / 20px 20px;
+}
+
+.artifact-panzoom-area:active {
+    cursor: grabbing;
+}
+
+.artifact-panzoom-inner {
+    transform-origin: center center;
+    will-change: transform;
+    transition: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ─── Renderers ─── */
+
+.artifact-iframe {
+    width: 100%;
+    min-height: 300px;
+    height: 100%;
+    border: none;
+    border-radius: var(--r-sm);
+    background: #ffffff;
+}
+
+.artifact-svg-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.artifact-svg-container svg {
+    width: 100%;
+    height: auto;
+}
+
+.artifact-mermaid-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.artifact-mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.artifact-code-fallback {
+    border-radius: var(--r-sm);
+    overflow: hidden;
+}
+
+.artifact-render-error {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.artifact-render-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--r-sm);
+    font-size: 0.8rem;
+    color: var(--warning, #f59e0b);
+    flex-wrap: wrap;
+}
+
+.artifact-render-error-detail {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    width: 100%;
+    margin-top: 2px;
+    word-break: break-word;
+}
+
+.artifact-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 16px;
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+}
+
+.artifact-loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--divider);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ─── Artifact Card (inline in chat) ─── */
+
+.artifact-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+    background: var(--bg-surface);
+    cursor: pointer;
+    transition: all var(--dur) var(--ease);
+    text-align: left;
+    font-family: inherit;
+    animation: fadeIn var(--dur) var(--ease);
+}
+
+.artifact-card:hover {
+    border-color: var(--accent);
+    background: var(--bg-surface-hover);
+    box-shadow: 0 2px 12px var(--shadow-color, rgba(0,0,0,0.06));
+}
+
+.artifact-card--active {
+    border-color: var(--accent);
+    background: var(--accent-soft, rgba(11, 186, 168, 0.06));
+}
+
+.artifact-card--streaming {
+    border-style: dashed;
+}
+
+.artifact-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-sm);
+    background: var(--accent-soft, rgba(11, 186, 168, 0.1));
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.artifact-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.artifact-card-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.artifact-card-type {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.artifact-card-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.artifact-card-action {
+    display: flex;
+    align-items: center;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    transition: color var(--dur-fast) var(--ease);
+}
+
+.artifact-card:hover .artifact-card-action {
+    color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════
    RESPONSIVE — Tablet (≤768px)
    ═══════════════════════════════════════════ */
 @media (max-width: 768px) {
@@ -3151,6 +3704,42 @@ body {
     .selection-action-btn {
         padding: 6px 8px;
         font-size: 0.7rem;
+    }
+
+    /* ─── Artifact Workspace (mobile overlay) ─── */
+    .artifact-workspace {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        flex: none !important;
+        border-left: none;
+        opacity: 0;
+        transform: translateY(100%);
+        transition:
+            transform var(--dur-slow) var(--ease),
+            opacity var(--dur) var(--ease);
+    }
+
+    .app-body--workspace-open .artifact-workspace {
+        flex: none !important;
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .app-body--workspace-open .chat-workspace-container > .chat-area {
+        flex-basis: 100%;
+    }
+
+    .artifact-resize-handle {
+        display: none;
+    }
+
+    .artifact-workspace-body {
+        padding: 12px;
+    }
+
+    .artifact-toggle-btn span {
+        display: none;
     }
 }
 

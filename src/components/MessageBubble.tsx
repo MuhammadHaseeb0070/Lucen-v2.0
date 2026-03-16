@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
+import ArtifactCard from './ArtifactCard';
+import { parseArtifacts } from '../lib/artifactParser';
+import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -11,7 +14,6 @@ interface MessageBubbleProps {
     onDeleteHover?: (hovering: boolean) => void;
     showDelete?: boolean;
     showRetry?: boolean;
-    /** When true, only render the action buttons — the message text is rendered by the parent */
     actionsOnly?: boolean;
 }
 
@@ -28,13 +30,50 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    const handleCopy = async () => {
+    const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
+    const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
+
+    const { cleanContent, artifacts } = useMemo(
+        () => parseArtifacts(message.content, message.id),
+        [message.content, message.id]
+    );
+
+    const handleCopy = useCallback(async () => {
         await navigator.clipboard.writeText(message.content);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-    };
+    }, [message.content]);
 
-    // For user messages inside the card header — only show action icons inline
+    // Throttled artifact update during streaming to reduce store churn
+    const lastUpdateRef = useRef(0);
+    const openedRef = useRef(false);
+
+    useEffect(() => {
+        if (artifacts.length === 0) {
+            openedRef.current = false;
+            return;
+        }
+        const first = artifacts[0];
+
+        if (first.isStreaming) {
+            const now = Date.now();
+            if (!openedRef.current) {
+                // First time seeing this artifact — open workspace
+                openedRef.current = true;
+                setActiveArtifact(first);
+                lastUpdateRef.current = now;
+            } else if (now - lastUpdateRef.current > 300) {
+                // Throttle: update content at most every 300ms during streaming
+                updateArtifactContent(first);
+                lastUpdateRef.current = now;
+            }
+        } else if (openedRef.current) {
+            // Streaming just finished — send final update (preserves viewMode)
+            updateArtifactContent(first);
+            openedRef.current = false;
+        }
+    }, [artifacts, setActiveArtifact, updateArtifactContent]);
+
     if (actionsOnly) {
         if (!message.content) return null;
         return (
@@ -57,10 +96,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         );
     }
 
-    // Full assistant message rendering
     return (
         <div className="msg-response">
-            {/* Reasoning */}
             {message.reasoning && (
                 <div className="reasoning-block">
                     <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
@@ -78,16 +115,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 </div>
             )}
 
-            {/* Content */}
             {message.isStreaming && !message.content && !message.reasoning ? (
                 <div className="streaming-indicator">
                     <span className="dot" /><span className="dot" /><span className="dot" />
                 </div>
             ) : (
-                <MarkdownRenderer content={message.content} />
+                <>
+                    {cleanContent && <MarkdownRenderer content={cleanContent} />}
+                    {artifacts.map((artifact) => (
+                        <ArtifactCard key={artifact.id} artifact={artifact} />
+                    ))}
+                </>
             )}
 
-            {/* Truncation notice + Continue button */}
             {message.isTruncated && !message.isStreaming && (
                 <div className="msg-truncated">
                     <button
@@ -101,7 +141,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 </div>
             )}
 
-            {/* Action buttons */}
             {!message.isStreaming && message.content && (
                 <div className="msg-response-actions">
                     <button className="msg-action-btn" onClick={handleCopy} title="Copy response">

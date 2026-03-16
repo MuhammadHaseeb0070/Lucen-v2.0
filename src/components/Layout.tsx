@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
+import ArtifactWorkspace from './ArtifactWorkspace';
 import SideChatPanel from './SideChatPanel';
 import SettingsScreen from './SettingsScreen';
 import CommandPalette from './CommandPalette';
@@ -11,6 +12,7 @@ import OwnerDashboard from './OwnerDashboard';
 import { useThemeStore, applyTheme } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
+import { useArtifactStore } from '../store/artifactStore';
 import { isSupabaseEnabled } from '../lib/supabase';
 import { isAdminUser } from '../config/admin';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -19,6 +21,7 @@ const Layout: React.FC = () => {
     const { getActiveTheme } = useThemeStore();
     const { user, isLoading, isInitialized, isPasswordRecovery, sessionExpired, initialize } = useAuthStore();
     const { setIsAdminView, isAdminView, sidebarCollapsed, toggleSidebar } = useUIStore();
+    const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
     // Initialize auth on mount
@@ -110,12 +113,15 @@ const Layout: React.FC = () => {
     return (
         <div className="app-layout">
             <Navbar />
-            <div className="app-body">
+            <div className={`app-body ${activeArtifact ? 'app-body--workspace-open' : ''}`}>
                 <Sidebar />
                 {!sidebarCollapsed && (
                     <div className="sidebar-overlay" onClick={toggleSidebar} />
                 )}
-                {isAdminView ? <OwnerDashboard /> : <ChatArea />}
+                <div className="chat-workspace-container">
+                    {isAdminView ? <OwnerDashboard /> : <ChatArea />}
+                    <ArtifactWorkspace />
+                </div>
             </div>
             <SideChatPanel />
             <SettingsScreen />

@@ -45,6 +45,17 @@ export interface CreditPackage {
   popular?: boolean;
 }
 
+export type ArtifactType = 'html' | 'svg' | 'mermaid';
+
+export interface Artifact {
+  id: string;
+  type: ArtifactType;
+  title: string;
+  content: string;
+  messageId: string;
+  isStreaming?: boolean;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
