@@ -1,4 +1,5 @@
-import React, { ReactNode } from 'react';
+import React from 'react';
+import type { ReactNode } from 'react';
 
 function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -36,11 +37,13 @@ export function highlightChildren(children: ReactNode, query: string): ReactNode
             ));
         }
 
-        if (React.isValidElement(node) && node.props.children != null) {
-            return React.cloneElement(node, {
-                ...node.props,
-                children: visit(node.props.children),
-            } as Record<string, unknown>);
+        if (React.isValidElement<{ children?: ReactNode }>(node)) {
+            const props = node.props as { children?: ReactNode };
+            if (props.children != null) {
+                return React.cloneElement(node as React.ReactElement<{ children?: ReactNode }>, {
+                    children: visit(props.children),
+                });
+            }
         }
 
         return node;

@@ -53,13 +53,28 @@ const CodeBlock: React.FC<{
 };
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuery }) => {
-    const withHighlight = (Tag: 'p' | 'li' | 'td' | 'th' | 'strong' | 'em' | 'span') => {
-        return (props: Record<string, unknown>) => {
+    const createHighlightComponent = (Tag: 'p' | 'li' | 'td' | 'th' | 'strong' | 'em' | 'span') => {
+        const Component = Tag;
+        return function HighlightWrapper(
+            props: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }
+        ) {
             const { children, ...rest } = props;
-            const highlighted = searchQuery ? highlightChildren(children as React.ReactNode, searchQuery) : children;
-            return React.createElement(Tag, rest, highlighted);
+            const highlighted = searchQuery ? highlightChildren(children, searchQuery) : children;
+            return <Component {...rest}>{highlighted}</Component>;
         };
     };
+
+    const highlightComponents = searchQuery
+        ? {
+              p: createHighlightComponent('p'),
+              li: createHighlightComponent('li'),
+              td: createHighlightComponent('td'),
+              th: createHighlightComponent('th'),
+              strong: createHighlightComponent('strong'),
+              em: createHighlightComponent('em'),
+              span: createHighlightComponent('span'),
+          }
+        : undefined;
 
     return (
         <div className="markdown-body">
@@ -67,13 +82,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuer
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex, rehypeRaw]}
                 components={{
-                    p: withHighlight('p'),
-                    li: withHighlight('li'),
-                    td: withHighlight('td'),
-                    th: withHighlight('th'),
-                    strong: withHighlight('strong'),
-                    em: withHighlight('em'),
-                    span: withHighlight('span'),
+                    ...highlightComponents,
                     code({ className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '');
                         const codeString = String(children).replace(/\n$/, '');
