@@ -4,15 +4,12 @@ import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
-import { getActiveModel } from '../config/models';
-
 
 const Navbar: React.FC = () => {
     const { sideChatOpen, toggleSideChat, sidebarCollapsed, toggleSidebar } = useUIStore();
     const { getFormattedCredits } = useCreditsStore();
     const { toggleSettings } = useThemeStore();
     const { user, signOut } = useAuthStore();
-    const model = getActiveModel();
     const [profileOpen, setProfileOpen] = useState(false);
     const profileRef = useRef<HTMLDivElement>(null);
 
@@ -48,13 +45,6 @@ const Navbar: React.FC = () => {
                 </h1>
             </div>
 
-            <div className="navbar-center">
-                <div className="model-indicator" title={`Model: ${model.id}`}>
-                    <span className="model-provider">{model.provider}</span>
-                    <span className="model-name">{model.name}</span>
-                    {model.supportsReasoning && <span className="model-badge">Reasoning</span>}
-                </div>
-            </div>
 
             <div className="navbar-right">
                 <div className="credits-display" title="Remaining credits">

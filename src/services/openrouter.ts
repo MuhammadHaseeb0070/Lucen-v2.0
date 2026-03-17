@@ -24,17 +24,25 @@ interface StreamOptions {
  * Build the `content` field for the API.
  * - No attachments → simple string (most efficient)
  * - With attachments → array of content parts (multimodal)
+ * Puts text first (as recommended by OpenRouter), then images.
  */
 function buildMessageContent(msg: Message): string | Array<Record<string, unknown>> {
     if (!msg.attachments || msg.attachments.length === 0) {
         return msg.content;
     }
 
-    // Build multimodal content array
     const parts: Array<Record<string, unknown>> = [];
-
-    // Add text file context blocks first
     const textAttachments = msg.attachments.filter((a) => a.textContent);
+    const imageAttachments = msg.attachments.filter((a) => a.type === 'image' && a.dataUrl);
+
+    // 1. Attachment summary — so the model knows exactly what files are present
+    const summary = msg.attachments
+        .map((a) => (a.type === 'image' ? `image: ${a.name}` : `file: ${a.name}`))
+        .join(', ');
+    const summaryBlock = `[Attachments: ${summary}]\n`;
+    parts.push({ type: 'text', text: summaryBlock });
+
+    // 2. Text file contents
     if (textAttachments.length > 0) {
         const contextBlock = textAttachments
             .map((a) => `── File: ${a.name} (${formatFileSize(a.size)}) ──\n${a.textContent}`)
@@ -42,13 +50,15 @@ function buildMessageContent(msg: Message): string | Array<Record<string, unknow
         parts.push({ type: 'text', text: contextBlock + '\n\n' });
     }
 
-    // Add the user's message text
-    if (msg.content) {
-        parts.push({ type: 'text', text: msg.content });
+    // 3. User's message text (or fallback for image-only messages)
+    const userText = msg.content.trim() || (imageAttachments.length > 0
+        ? 'The user shared the image(s) above. Please look at them and respond accordingly.'
+        : '');
+    if (userText) {
+        parts.push({ type: 'text', text: userText });
     }
 
-    // Add image attachments
-    const imageAttachments = msg.attachments.filter((a) => a.type === 'image' && a.dataUrl);
+    // 4. Image attachments (OpenRouter expects images after text)
     for (const img of imageAttachments) {
         parts.push({
             type: 'image_url',

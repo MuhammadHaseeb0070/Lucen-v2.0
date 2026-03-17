@@ -7,9 +7,11 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check } from 'lucide-react';
+import { highlightChildren } from '../lib/searchHighlight';
 
 interface MarkdownRendererProps {
     content: string;
+    searchQuery?: string;
 }
 
 const CodeBlock: React.FC<{
@@ -50,13 +52,28 @@ const CodeBlock: React.FC<{
     );
 };
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuery }) => {
+    const withHighlight = (Tag: 'p' | 'li' | 'td' | 'th' | 'strong' | 'em' | 'span') => {
+        return (props: Record<string, unknown>) => {
+            const { children, ...rest } = props;
+            const highlighted = searchQuery ? highlightChildren(children as React.ReactNode, searchQuery) : children;
+            return React.createElement(Tag, rest, highlighted);
+        };
+    };
+
     return (
         <div className="markdown-body">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex, rehypeRaw]}
                 components={{
+                    p: withHighlight('p'),
+                    li: withHighlight('li'),
+                    td: withHighlight('td'),
+                    th: withHighlight('th'),
+                    strong: withHighlight('strong'),
+                    em: withHighlight('em'),
+                    span: withHighlight('span'),
                     code({ className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '');
                         const codeString = String(children).replace(/\n$/, '');

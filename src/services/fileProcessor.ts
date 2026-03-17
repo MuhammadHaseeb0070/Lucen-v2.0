@@ -55,16 +55,23 @@ type InternalFileType = 'image' | 'pdf' | 'csv' | 'text' | 'docx' | 'xlsx' | 'pp
 
 function getFileType(file: File): InternalFileType {
     const ext = getExt(file.name);
-    const mime = file.type;
+    const mime = (file.type || '').toLowerCase();
 
     if (IMAGE_TYPES.includes(mime)) return 'image';
     if (mime === 'application/pdf' || ext === '.pdf') return 'pdf';
-    if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === '.docx') return 'docx';
+    if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === '.docx' || ext === '.doc') return 'docx';
     if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || ext === '.xlsx' || ext === '.xls'
         || mime === 'application/vnd.ms-excel') return 'xlsx';
-    if (mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || ext === '.pptx'
-        || ext === '.ppt') return 'pptx';
+    if (mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || ext === '.pptx' || ext === '.ppt') return 'pptx';
     if (mime === 'text/csv' || ext === '.csv') return 'csv';
+    // Extension fallback for generic/empty MIME (e.g. application/octet-stream)
+    if (mime === 'application/octet-stream' || mime === '') {
+        if (ext === '.pdf') return 'pdf';
+        if (['.docx', '.doc'].includes(ext)) return 'docx';
+        if (['.xlsx', '.xls'].includes(ext)) return 'xlsx';
+        if (['.pptx', '.ppt'].includes(ext)) return 'pptx';
+        if (/\.(jpe?g|png|gif|webp|bmp|tiff?|svg)$/i.test(file.name)) return 'image';
+    }
     return 'text';
 }
 
@@ -75,7 +82,7 @@ function getExt(name: string): string {
 
 function isAcceptedFile(file: File): boolean {
     const ext = getExt(file.name);
-    const mime = file.type;
+    const mime = (file.type || '').toLowerCase();
 
     if (IMAGE_TYPES.includes(mime)) return true;
     if (TEXT_MIME_TYPES.includes(mime)) return true;
@@ -84,10 +91,16 @@ function isAcceptedFile(file: File): boolean {
     if (mime.includes('openxmlformats') || mime.includes('ms-excel') || mime.includes('ms-powerpoint')
         || mime.includes('msword')) return true;
     if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf'].includes(ext)) return true;
-    // Code by extension
+    // Code/text by extension — many OSes use application/octet-stream for unknown types
     if (CODE_EXTENSIONS.includes(ext)) return true;
+    if (ext === '.svg') return true; // SVG can be image or text
     // Fallback: accept anything text-like
     if (mime.startsWith('text/')) return true;
+    // Generic binary / unknown MIME — accept by extension only
+    if (mime === 'application/octet-stream' || mime === '') {
+        const knownExts = [...CODE_EXTENSIONS, '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.svg'];
+        return knownExts.includes(ext) || /\.(jpe?g|png|gif|webp|bmp|tiff?)$/i.test(file.name);
+    }
     return false;
 }
 

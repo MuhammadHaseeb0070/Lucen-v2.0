@@ -717,41 +717,50 @@ body {
 }
 
 /* ═══════════════════════════════════════════
-   SEARCH BAR
+   SEARCH BAR — top right, compact when closed
    ═══════════════════════════════════════════ */
+.chat-search-wrapper {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10;
+}
+
 .chat-search-bar {
     display: flex;
     align-items: center;
-    flex-shrink: 0;
-    padding: 0 24px;
-    transition: all var(--dur) var(--ease);
-}
-
-.chat-search-bar--open {
-    padding: 10px 24px;
+    border-radius: var(--r-md);
     background: var(--bg-surface);
-    border-bottom: 1px solid var(--divider);
-    gap: 8px;
+    border: 1px solid var(--divider);
+    box-shadow: 0 2px 8px var(--shadow-color);
+    transition: width var(--dur) var(--ease), max-width var(--dur) var(--ease);
+    overflow: hidden;
 }
 
 .chat-search-bar:not(.chat-search-bar--open) {
-    justify-content: flex-end;
-    padding-top: 6px;
-    padding-bottom: 0;
+    width: auto;
+    max-width: 40px;
+}
+
+.chat-search-bar--open {
+    padding: 6px 10px;
+    gap: 8px;
+    max-width: min(400px, calc(100vw - 32px));
 }
 
 .chat-search-trigger {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     background: transparent;
-    border: 1px solid var(--divider);
-    border-radius: var(--r-sm);
+    border: none;
+    border-radius: 6px;
     color: var(--text-tertiary);
     cursor: pointer;
     transition: all var(--dur-fast) var(--ease);
+    flex-shrink: 0;
 }
 
 .chat-search-trigger:hover {
@@ -766,12 +775,21 @@ body {
 
 .chat-search-input {
     flex: 1;
+    min-width: 120px;
     background: transparent;
     border: none;
     outline: none;
     color: var(--text-primary);
     font-family: var(--font);
     font-size: 0.88rem;
+}
+
+/* Search match highlight */
+.search-highlight {
+    background: rgba(11, 186, 168, 0.22);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 3px;
 }
 
 .chat-search-input::placeholder {
@@ -4310,12 +4328,14 @@ body {
     }
 
     /* ─── Search bar ─── */
-    .chat-search-bar {
-        padding: 0 10px;
+    .chat-search-wrapper {
+        top: 8px;
+        right: 8px;
     }
 
     .chat-search-bar--open {
-        padding: 8px 10px;
+        max-width: calc(100vw - 24px);
+        padding: 6px 8px;
     }
 
     /* ─── Welcome ─── */

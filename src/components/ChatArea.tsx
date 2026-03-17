@@ -11,6 +11,7 @@ import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
+import { highlightText } from '../lib/searchHighlight';
 import type { FileAttachment } from '../types';
 
 const ChatArea: React.FC = () => {
@@ -105,6 +106,12 @@ const ChatArea: React.FC = () => {
         setPrefillCounter((c) => c + 1);
         consumePendingMainComposerPrefill();
     }, [pendingMainComposerPrefill, consumePendingMainComposerPrefill]);
+
+    // Clear prefill when switching conversations so it doesn't reappear in new chat
+    useEffect(() => {
+        setPrefillValue('');
+        setPrefillCounter(0);
+    }, [activeConversationId]);
 
     const isStreaming = activeConv?.messages.some((m) => m.isStreaming) || false;
 
@@ -377,7 +384,9 @@ const ChatArea: React.FC = () => {
                         </div>
                         <div className="msg-user-row" data-msg-id={msg.id}>
                             <div className="msg-user-bubble">
-                                {msg.content}
+                                {searchQuery.trim()
+                                    ? highlightText(msg.content, searchQuery.trim())
+                                    : msg.content}
                                 {msg.attachments && msg.attachments.length > 0 && (
                                     <div className="msg-attachments">
                                         {msg.attachments.map((att) => (
@@ -413,6 +422,7 @@ const ChatArea: React.FC = () => {
                                         onRetry={handleRetry}
                                         onContinue={handleContinue}
                                         showRetry
+                                        searchQuery={searchQuery.trim() || undefined}
                                     />
                                 </div>
                             </div>
@@ -431,7 +441,13 @@ const ChatArea: React.FC = () => {
                                 <div className="msg-ai-header">
                                     <span className="msg-ai-name">Lucen AI</span>
                                 </div>
-                                <MessageBubble message={msg} onRetry={handleRetry} onContinue={handleContinue} showRetry={msg.role === 'assistant'} />
+                                <MessageBubble
+                                    message={msg}
+                                    onRetry={handleRetry}
+                                    onContinue={handleContinue}
+                                    showRetry={msg.role === 'assistant'}
+                                    searchQuery={searchQuery.trim() || undefined}
+                                />
                             </div>
                         </div>
                     </div>
@@ -459,29 +475,31 @@ const ChatArea: React.FC = () => {
                 </div>
             )}
             {hasMessages && (
-                <div className={`chat-search-bar ${searchOpen ? 'chat-search-bar--open' : ''}`}>
-                    {searchOpen ? (
-                        <>
-                            <Search size={16} className="chat-search-icon" />
-                            <input
-                                type="text" className="chat-search-input" placeholder="Search messages..."
-                                value={searchQuery} autoFocus
-                                onChange={(e) => { setSearchQuery(e.target.value); setActiveMatchIndex(0); }}
-                                onKeyDown={handleSearchKeyDown}
-                            />
-                            {searchQuery && matchArray.length > 0 && <span className="chat-search-count">{activeMatchIndex + 1}/{matchArray.length}</span>}
-                            {searchQuery && matchArray.length === 0 && <span className="chat-search-count chat-search-no-match">No results</span>}
-                            {matchArray.length > 1 && (
-                                <>
-                                    <button className="chat-search-nav" onClick={goPrevMatch}><ChevronUp size={15} /></button>
-                                    <button className="chat-search-nav" onClick={goNextMatch}><ChevronDown size={15} /></button>
-                                </>
-                            )}
-                            <button className="chat-search-close" onClick={() => { setSearchOpen(false); setSearchQuery(''); }}><X size={15} /></button>
-                        </>
-                    ) : (
-                        <button className="chat-search-trigger" onClick={() => setSearchOpen(true)} title="Search messages"><Search size={15} /></button>
-                    )}
+                <div className="chat-search-wrapper">
+                    <div className={`chat-search-bar ${searchOpen ? 'chat-search-bar--open' : ''}`}>
+                        {searchOpen ? (
+                            <>
+                                <Search size={16} className="chat-search-icon" />
+                                <input
+                                    type="text" className="chat-search-input" placeholder="Search messages..."
+                                    value={searchQuery} autoFocus
+                                    onChange={(e) => { setSearchQuery(e.target.value); setActiveMatchIndex(0); }}
+                                    onKeyDown={handleSearchKeyDown}
+                                />
+                                {searchQuery && matchArray.length > 0 && <span className="chat-search-count">{activeMatchIndex + 1}/{matchArray.length}</span>}
+                                {searchQuery && matchArray.length === 0 && <span className="chat-search-count chat-search-no-match">No results</span>}
+                                {matchArray.length > 1 && (
+                                    <>
+                                        <button className="chat-search-nav" onClick={goPrevMatch} title="Previous"><ChevronUp size={15} /></button>
+                                        <button className="chat-search-nav" onClick={goNextMatch} title="Next"><ChevronDown size={15} /></button>
+                                    </>
+                                )}
+                                <button className="chat-search-close" onClick={() => { setSearchOpen(false); setSearchQuery(''); }}><X size={15} /></button>
+                            </>
+                        ) : (
+                            <button className="chat-search-trigger" onClick={() => setSearchOpen(true)} title="Search messages"><Search size={15} /></button>
+                        )}
+                    </div>
                 </div>
             )}
             <div className="messages-container" ref={messagesContainerRef}>
@@ -517,6 +535,9 @@ const ChatArea: React.FC = () => {
                 onSend={handleSend} onStop={handleStop} onHaltAndEdit={handleHaltAndEdit}
                 isStreaming={isStreaming} disabled={!hasEnoughCredits(model.supportsReasoning)}
                 prefillValue={prefillCounter > 0 ? prefillValue : undefined}
+                onPrefillConsumed={() => {
+                    setPrefillValue(''); // Don't reset prefillCounter — that would remount input and clear user's text
+                }}
                 droppedFiles={droppedFiles.length > 0 ? droppedFiles : undefined}
                 onDroppedFilesConsumed={handleDroppedFilesConsumed}
                 key={`input-${activeConversationId}-${prefillCounter}`}

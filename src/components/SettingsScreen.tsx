@@ -111,13 +111,8 @@ const AboutTab: React.FC = () => (
             <h3 className="about-title">Lucen</h3>
             <p className="about-version">Version 1.0.0</p>
             <p className="about-text">
-                An intelligent AI assistant built with care. Designed to be comfortable for
-                long sessions — easy on the eyes, easy on the mind.
+                An AI assistant designed for comfortable, extended use.
             </p>
-            <div className="about-credits">
-                <span>Built with React + TypeScript + Vite</span>
-                <span>Powered by OpenRouter</span>
-            </div>
         </div>
     </div>
 );

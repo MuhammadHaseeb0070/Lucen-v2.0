@@ -15,6 +15,7 @@ interface MessageBubbleProps {
     showDelete?: boolean;
     showRetry?: boolean;
     actionsOnly?: boolean;
+    searchQuery?: string;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
@@ -26,6 +27,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     showDelete = false,
     showRetry = false,
     actionsOnly = false,
+    searchQuery,
 }) => {
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -98,22 +100,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     return (
         <div className="msg-response">
-            {message.reasoning && (
-                <div className="reasoning-block">
-                    <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
-                        {reasoningOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        <span className="reasoning-label">
-                            {message.isReasoningStreaming ? 'Thinking...' : 'Thought process'}
-                        </span>
-                        {message.isReasoningStreaming && <span className="reasoning-pulse" />}
-                    </button>
-                    {reasoningOpen && (
-                        <div className="reasoning-content">
-                            <MarkdownRenderer content={message.reasoning} />
+                    {message.reasoning && (
+                        <div className="reasoning-block">
+                            <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
+                                {reasoningOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <span className="reasoning-label">
+                                    {message.isReasoningStreaming ? 'Thinking...' : 'Thought process'}
+                                </span>
+                                {message.isReasoningStreaming && <span className="reasoning-pulse" />}
+                            </button>
+                            {reasoningOpen && (
+                                <div className="reasoning-content">
+                                    <MarkdownRenderer content={message.reasoning} searchQuery={searchQuery} />
+                                </div>
+                            )}
                         </div>
                     )}
-                </div>
-            )}
 
             {message.isStreaming && !message.content && !message.reasoning ? (
                 <div className="streaming-indicator">
@@ -121,7 +123,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 </div>
             ) : (
                 <>
-                    {cleanContent && <MarkdownRenderer content={cleanContent} />}
+                    {cleanContent && <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />}
                     {artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}
