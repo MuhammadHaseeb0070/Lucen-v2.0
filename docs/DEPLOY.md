@@ -140,9 +140,10 @@ The access token lets the Supabase CLI (and GitHub Actions) manage your project.
 Authentication needs to know which URLs are allowed to redirect users after login/signup.
 
 1. In the Supabase dashboard, go to **Authentication** -> **URL Configuration**
-2. Set **Site URL** to your Vercel URL (you'll get this in Step 5 -- come back and set it after)
+2. Set **Site URL** to your public production domain, for example `https://lucen.space`
 3. Under **Redirect URLs**, add:
-   - `https://your-app.vercel.app/**` (your production URL -- fill in after Step 5)
+   - `https://lucen.space/**` (public landing page and general auth callbacks)
+   - `https://lucen.space/chat/**` (chat entry, sign-up confirmation, password reset)
    - `http://localhost:5173/**` (for local development)
 
 **Why:** When a user clicks "confirm email" or "reset password", Supabase needs to know
@@ -189,7 +190,7 @@ Vercel auto-deploys your frontend every time you push to GitHub.
 
 6. Click **Deploy**
 
-After deployment finishes, you'll get a URL like `https://lucen.vercel.app`. This is your live app.
+After deployment finishes, you'll get a URL like `https://lucen.vercel.app` or your custom domain `https://lucen.space`. This is your live app.
 
 **Now go back to Step 3** and add this URL to Supabase Auth redirect URLs.
 
@@ -253,6 +254,8 @@ handles reading and updating the user's credit balance.
 Open your Vercel URL in a browser and run through this checklist:
 
 - [ ] The app loads without errors
+- [ ] The public landing page loads at `/`
+- [ ] The protected chat shell loads at `/chat`
 - [ ] You can create an account (check your email for confirmation)
 - [ ] After confirming, you can sign in
 - [ ] You can send a chat message and get a streamed AI response

@@ -134,7 +134,13 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             return 'Supabase not configured';
         }
 
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                emailRedirectTo: `${window.location.origin}/chat`,
+            },
+        });
 
         if (error) {
             set({ isLoading: false, error: error.message });
@@ -178,7 +184,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         // Supabase will automatically send an email with the redirect link
         // which will trigger the PASSWORD_RECOVERY event when clicked
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin,
+            redirectTo: `${window.location.origin}/chat`,
         });
 
         if (error) {

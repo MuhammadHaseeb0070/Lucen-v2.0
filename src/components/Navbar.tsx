@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquarePlus, Coins, Zap, Settings, LogOut, User, ChevronDown, Menu } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MessageSquarePlus, Coins, Settings, LogOut, User, ChevronDown, Menu } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
+import Logo from './Logo';
 
 const Navbar: React.FC = () => {
     const { sideChatOpen, toggleSideChat, sidebarCollapsed, toggleSidebar } = useUIStore();
@@ -39,10 +41,10 @@ const Navbar: React.FC = () => {
                 >
                     <Menu size={20} />
                 </button>
-                <h1 className="navbar-brand">
-                    <Zap size={20} className="brand-icon" />
+                <Link className="navbar-brand" to="/">
+                    <Logo size={20} className="brand-icon" />
                     Lucen
-                </h1>
+                </Link>
             </div>
 
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Zap, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
+import { Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import Logo from './Logo';
 
 const ResetPasswordScreen: React.FC = () => {
     const { updatePassword, error, isLoading, clearError } = useAuthStore();
@@ -38,7 +39,7 @@ const ResetPasswordScreen: React.FC = () => {
                 {/* Branding */}
                 <div className="auth-brand">
                     <div className="auth-logo">
-                        <Zap size={32} />
+                        <Logo size={28} />
                     </div>
                     <h1 className="auth-title">Reset Password</h1>
                     <p className="auth-subtitle">

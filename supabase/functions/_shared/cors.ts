@@ -1,7 +1,7 @@
 // Shared CORS headers for Edge Functions.
 // Restricts Access-Control-Allow-Origin when VITE_APP_URL is set in Supabase secrets.
 // VITE_APP_URL can be comma-separated: https://www.lucen.space,https://lucen.space
-// When not set, allows all origins (falls back to '*').
+// Local dev origins on localhost/127.0.0.1 are always allowed for any port.
 
 // Normalize: strip trailing slashes (browser Origin never has trailing slash)
 const norm = (s: string) => s.replace(/\/+$/, '');
@@ -9,11 +9,8 @@ const APP_URLS = (Deno.env.get('VITE_APP_URL') || '')
     .split(',')
     .map((u) => norm(u.trim()))
     .filter(Boolean);
-const ALLOWED_ORIGINS = [
-    ...APP_URLS,
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-].filter(Boolean) as string[];
+const isLocalDevOrigin = (origin: string) => /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+const ALLOWED_ORIGINS = [...APP_URLS].filter(Boolean) as string[];
 
 /** Returns CORS headers. When VITE_APP_URL is set, restricts to allowed list + *.vercel.app; otherwise uses '*'. */
 export function getCorsHeaders(req: Request): Record<string, string> {
@@ -25,7 +22,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
             (allowed) => originNorm === allowed || (allowed && originNorm.startsWith(allowed))
         );
         const isVercelPreview = origin.startsWith('https://') && origin.endsWith('.vercel.app');
-        const isAllowed = isInAllowedList || isVercelPreview;
+        const isAllowed = isInAllowedList || isVercelPreview || isLocalDevOrigin(originNorm);
         // Echo the actual Origin header — CORS requires exact match
         allowOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] ?? '*');
     }

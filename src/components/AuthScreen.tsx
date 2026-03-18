@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
-import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, Info } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, Info } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import Logo from './Logo';
 
 type AuthMode = 'signin' | 'signup' | 'forgot_password';
 
-const AuthScreen: React.FC = () => {
+function AuthScreen() {
     const { signIn, signUp, resetPasswordForEmail, error, isLoading, clearError } = useAuthStore();
-    const [mode, setMode] = useState<AuthMode>('signin');
+    const [searchParams] = useSearchParams();
+    const initialMode = (() : AuthMode => {
+        const mode = searchParams.get('mode');
+        if (mode === 'signup' || mode === 'forgot_password') return mode;
+        if (mode === 'login') return 'signin';
+        return 'signin';
+    })();
+    const [mode, setMode] = useState<AuthMode>(initialMode);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -21,6 +30,10 @@ const AuthScreen: React.FC = () => {
         clearError();
         setConfirmPassword('');
     };
+
+    useEffect(() => {
+        setMode(initialMode);
+    }, [initialMode]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -75,7 +88,7 @@ const AuthScreen: React.FC = () => {
                 {/* Branding */}
                 <div className="auth-brand">
                     <div className="auth-logo">
-                        <Zap size={32} />
+                        <Logo size={28} />
                     </div>
                     <h1 className="auth-title">Lucen</h1>
                     <p className="auth-subtitle">
@@ -209,9 +222,13 @@ const AuthScreen: React.FC = () => {
                         </button>
                     </div>
                 )}
+
+                <Link className="auth-home-link" to="/">
+                    Back to the public landing page
+                </Link>
             </div>
         </div>
     );
-};
+}
 
 export default AuthScreen;

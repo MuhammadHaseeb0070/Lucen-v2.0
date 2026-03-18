@@ -7,7 +7,6 @@ import {
     Unlink,
     Trash2,
     Minimize2,
-    Zap,
     Upload,
     CheckSquare,
     Square,
@@ -23,6 +22,7 @@ import { MAX_SIDE_CHAT_MESSAGE_LENGTH } from '../config/credits';
 import { processFiles } from '../services/fileProcessor';
 import { SIDE_CHAT_SYSTEM_PROMPT } from '../config/prompts';
 import type { Message, FileAttachment } from '../types';
+import Logo from './Logo';
 
 const SideChatPanel: React.FC = () => {
     const {
@@ -420,7 +420,7 @@ const SideChatPanel: React.FC = () => {
                                                     <>
                                                         {nextMsg.isStreaming && !nextMsg.content && !nextMsg.reasoning ? (
                                                             <div className="sc-ai-row">
-                                                                <div className="sc-ai-icon"><Zap size={12} /></div>
+                                                                <div className="sc-ai-icon"><Logo size={12} /></div>
                                                                 <div className="sc-ai-content">
                                                                     <div className="sc-ai-drafting">Drafting...</div>
                                                                     <div className="msg-drafting-shimmer" style={{ width: '80%', marginBottom: 6 }} />
@@ -429,7 +429,7 @@ const SideChatPanel: React.FC = () => {
                                                             </div>
                                                         ) : (
                                                             <div className="sc-ai-row">
-                                                                <div className="sc-ai-icon"><Zap size={12} /></div>
+                                                                <div className="sc-ai-icon"><Logo size={12} /></div>
                                                                 <div className="sc-ai-content">
                                                                     <div className="sc-ai-header">
                                                                         <span className="sc-ai-name">Lucen AI</span>
@@ -449,7 +449,7 @@ const SideChatPanel: React.FC = () => {
                                         elements.push(
                                             <div key={msg.id} className="sc-exchange">
                                                 <div className="sc-ai-row">
-                                                    <div className="sc-ai-icon"><Zap size={12} /></div>
+                                                    <div className="sc-ai-icon"><Logo size={12} /></div>
                                                     <div className="sc-ai-content">
                                                         <div className="sc-ai-header">
                                                             <span className="sc-ai-name">Lucen AI</span>

@@ -1,11 +1,12 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Sparkles, Search, X, ChevronUp, ChevronDown, ArrowDown, Zap, Upload } from 'lucide-react';
+import { Sparkles, Search, X, ChevronUp, ChevronDown, ArrowDown, Upload } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useCreditsStore } from '../store/creditsStore';
+import Logo from './Logo';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
@@ -212,6 +213,30 @@ const ChatArea: React.FC = () => {
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 
+        // #region agent log
+        fetch('http://127.0.0.1:7700/ingest/70a02fe0-74a1-4e2c-b7c2-933415d39cd7', {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'd88871' },
+            body: JSON.stringify({
+                sessionId: 'd88871',
+                runId: 'baseline',
+                hypothesisId: 'H2',
+                location: 'src/components/ChatArea.tsx:handleSend',
+                message: 'User sent message (redacted)',
+                data: {
+                    hasEnoughCredits: hasEnoughCredits(model.supportsReasoning),
+                    modelId: model.id,
+                    supportsReasoning: model.supportsReasoning,
+                    contentLength: content.length,
+                    attachmentCount: attachments?.length ?? 0,
+                    hadActiveConversation: !!activeConversationId,
+                },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => { });
+        // #endregion
+
         addMessage(convId, {
             id: uuidv4(), role: 'user', content, timestamp: Date.now(),
             attachments: attachments || undefined,
@@ -340,6 +365,33 @@ const ChatArea: React.FC = () => {
         return activeConv.messages.filter((m) => matchingIds.has(m.id));
     }, [activeConv, matchingIds]);
 
+    // #region agent log
+    useEffect(() => {
+        if (!activeConv) return;
+        if (!searchOpen && !searchQuery) return;
+        fetch('http://127.0.0.1:7700/ingest/70a02fe0-74a1-4e2c-b7c2-933415d39cd7', {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'd88871' },
+            body: JSON.stringify({
+                sessionId: 'd88871',
+                runId: 'baseline',
+                hypothesisId: 'H3',
+                location: 'src/components/ChatArea.tsx:search',
+                message: 'Chat search state',
+                data: {
+                    searchOpen,
+                    queryLength: searchQuery.length,
+                    messageCount: activeConv.messages.length,
+                    matchCount: matchArray.length,
+                    activeMatchIndex,
+                },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => { });
+    }, [searchOpen, searchQuery, activeConv?.messages.length, matchArray.length, activeMatchIndex]);
+    // #endregion
+
     useEffect(() => {
         if (matchArray.length === 0 || !messagesContainerRef.current) return;
         const match = matchArray[activeMatchIndex];
@@ -411,7 +463,7 @@ const ChatArea: React.FC = () => {
                         </div>
                         {nextMsg && (
                             <div className="msg-ai-row" data-msg-id={nextMsg.id}>
-                                <div className="msg-ai-icon"><Zap size={16} /></div>
+                                <div className="msg-ai-icon"><Logo size={16} /></div>
                                 <div className="msg-ai-content">
                                     <div className="msg-ai-header">
                                         <span className="msg-ai-name">Lucen AI</span>
@@ -436,7 +488,7 @@ const ChatArea: React.FC = () => {
                 elements.push(
                     <div key={msg.id} className={`msg-exchange ${isActiveMatch ? 'msg-exchange--active-match' : ''} ${isDimmed ? 'msg-exchange--dimmed' : ''}`}>
                         <div className="msg-ai-row" data-msg-id={msg.id}>
-                            <div className="msg-ai-icon"><Zap size={16} /></div>
+                            <div className="msg-ai-icon"><Logo size={16} /></div>
                             <div className="msg-ai-content">
                                 <div className="msg-ai-header">
                                     <span className="msg-ai-name">Lucen AI</span>

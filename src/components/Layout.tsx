@@ -29,6 +29,33 @@ const Layout: React.FC = () => {
         initialize();
     }, [initialize]);
 
+    // #region agent log
+    useEffect(() => {
+        fetch('http://127.0.0.1:7700/ingest/70a02fe0-74a1-4e2c-b7c2-933415d39cd7', {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'd88871' },
+            body: JSON.stringify({
+                sessionId: 'd88871',
+                runId: 'baseline',
+                hypothesisId: 'H1',
+                location: 'src/components/Layout.tsx:auth-gating',
+                message: 'Layout auth gating snapshot',
+                data: {
+                    supabaseEnabled: isSupabaseEnabled(),
+                    isLoading,
+                    isInitialized,
+                    hasUser: !!user,
+                    isPasswordRecovery,
+                    sessionExpired,
+                    isAdminView,
+                },
+                timestamp: Date.now(),
+            }),
+        }).catch(() => { });
+    }, [user, isLoading, isInitialized, isPasswordRecovery, sessionExpired, isAdminView]);
+    // #endregion
+
     // Collapse sidebar on mobile on first load
     useEffect(() => {
         if (window.innerWidth <= 768 && !sidebarCollapsed) {
