@@ -1,235 +1,230 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
     ArrowRight,
-    BadgeCheck,
-    Blocks,
-    Bot,
-    Brain,
-    CheckCircle2,
-    LayoutDashboard,
-    LockKeyhole,
     Sparkles,
-    ShieldCheck,
+    Zap,
+    Shield,
+    Palette
 } from 'lucide-react';
 import Logo from './Logo';
+import { useAuthStore } from '../store/authStore';
+import { useThemeStore, THEME_PRESETS, applyTheme } from '../store/themeStore';
+import type { ThemePreset } from '../store/themeStore';
+import { Check } from 'lucide-react';
 
-const featureCards = [
-    {
-        icon: Bot,
-        title: 'Chat-first experience',
-        description: 'A focused AI workspace built around fast prompts, clean responses, and fewer distractions.',
-    },
-    {
-        icon: ShieldCheck,
-        title: 'Secure by design',
-        description: 'Supabase auth, session handling, and server-side guards keep access tight and predictable.',
-    },
-    {
-        icon: LayoutDashboard,
-        title: 'Workspace tools',
-        description: 'Artifacts, side panels, and settings help you go from idea to useful output without switching apps.',
-    },
-    {
-        icon: Blocks,
-        title: 'Built to scale',
-        description: 'One origin, one session, and one app structure that stays easy to deploy on Vercel.',
-    },
-];
-
-const proofPoints = [
-    'Public landing page on `/`',
-    'Protected chat at `/chat`',
-    'Login, signup, and password reset flow back into chat',
-];
-
-const stats = [
-    { label: 'Route split', value: 'Public + protected' },
-    { label: 'Auth', value: 'Supabase sessions' },
-    { label: 'Deployment', value: 'Vercel ready' },
-];
-
-const steps = [
-    {
-        title: 'Explore the landing page',
-        text: 'Visitors learn what Lucen does before they ever hit auth.',
-    },
-    {
-        title: 'Choose login or signup',
-        text: 'Buttons take users into `/chat` with the right auth mode preselected.',
-    },
-    {
-        title: 'Enter the workspace',
-        text: 'Once authenticated, they land directly inside the chatbot shell.',
-    },
-];
+// Isolated inline ThemeCard for the Landing Page to avoid cyclic dependencies or SettingsScreen imports
+const LandingThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () => void }> = ({
+    preset,
+    isActive,
+    onClick,
+}) => {
+    const c = preset.colors;
+    return (
+        <button
+            className={`theme-card ${isActive ? 'theme-card--active' : ''}`}
+            onClick={onClick}
+            style={{ 
+                all: 'unset', 
+                boxSizing: 'border-box',
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '8px',
+                padding: '12px',
+                background: 'var(--bg-surface)',
+                border: isActive ? `2px solid var(--accent)` : `1px solid var(--divider)`,
+                borderRadius: '16px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                position: 'relative',
+                width: '100%'
+            }}
+        >
+            <div style={{ background: c.bgBase, borderRadius: '8px', overflow: 'hidden', border: `1px solid var(--divider)` }}>
+                <div style={{ background: c.bgSurface, borderBottom: `1px solid ${c.divider}`, padding: '6px', display: 'flex', gap: '4px' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.accent }} />
+                    <span style={{ flex: 1, height: 6, borderRadius: 2, background: c.textTertiary }} />
+                </div>
+                <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ width: '65%', height: 8, borderRadius: 4, alignSelf: 'flex-end', background: c.userBubbleBg }} />
+                    <div style={{ width: '75%', height: 12, borderRadius: 4, background: c.aiBubbleBg, border: `1px solid ${c.aiBubbleBorder}` }} />
+                </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '0.9rem', fontWeight: 600 }}>
+                <span>{preset.emoji} {preset.name}</span>
+                {isActive && <Check size={14} color="var(--accent)" />}
+            </div>
+        </button>
+    );
+};
 
 const LandingPage: React.FC = () => {
+    const { user, signOut } = useAuthStore();
+    const { activeThemeId, setTheme } = useThemeStore();
+    const navigate = useNavigate();
+
+    const handleThemeSelect = (id: string) => {
+        setTheme(id);
+        const preset = THEME_PRESETS.find((t) => t.id === id);
+        if (preset) applyTheme(preset);
+    };
+
+    const showcaseThemes = THEME_PRESETS.slice(0, 4); // Show top 4 themes
+
+    const handleLogout = async () => {
+        await signOut();
+    };
+
     return (
         <div className="landing-page">
-            <header className="landing-header">
-                <Link className="landing-brand" to="/">
-                    <span className="landing-brand-mark">
-                        <Logo size={18} />
-                    </span>
-                    <span className="landing-brand-text">Lucen</span>
-                </Link>
+            <div className="landing-container">
+                
+                {/* ─── Header ─── */}
+                <header className="landing-header">
+                    <Link className="landing-brand" to="/">
+                        <div className="landing-brand-mark"><Logo size={20} /></div>
+                        <span>Lucen</span>
+                    </Link>
 
-                <nav className="landing-nav">
-                    <Link className="landing-nav-link" to="/chat?mode=signin">
-                        Login
-                    </Link>
-                    <Link className="landing-nav-link" to="/chat?mode=signup">
-                        Sign up
-                    </Link>
-                    <Link className="landing-nav-cta" to="/chat">
-                        Try Lucen
-                    </Link>
-                </nav>
-            </header>
+                    <nav className="landing-nav">
+                        {user ? (
+                            <>
+                                <button className="landing-nav-link" onClick={handleLogout} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                    Log out
+                                </button>
+                                <Link className="landing-btn landing-btn--primary" to="/chat">
+                                    Go to Chat <ArrowRight size={16} />
+                                </Link>
+                            </>
+                        ) : (
+                            <>
+                                <Link className="landing-nav-link" to="/chat?mode=signin">Log in</Link>
+                                <Link className="landing-btn landing-btn--primary" to="/chat?mode=signup">
+                                    Sign Up
+                                </Link>
+                            </>
+                        )}
+                    </nav>
+                </header>
 
-            <main className="landing-shell">
+                {/* ─── Hero Section ─── */}
                 <section className="landing-hero">
-                    <div className="landing-hero-copy">
-                        <div className="landing-eyebrow">
-                            <Sparkles size={14} />
-                            <span>ChatGPT-style simplicity, Lucen-style focus</span>
-                        </div>
+                    <div className="landing-badge">
+                        <Sparkles size={14} /> The Next Generation AI Workspace
+                    </div>
+                    
+                    <h1>
+                        Clean, Focused, and <span>Intelligent</span>
+                    </h1>
+                    
+                    <p className="landing-lead">
+                        Lucen is a premium chatbot workspace designed for deep focus. 
+                        Experience lightning-fast responses, personalized themes, and a distraction-free interface.
+                    </p>
 
-                        <h1>
-                            A polished landing page for Lucen, then a protected chat app underneath.
-                        </h1>
-
-                        <p className="landing-lead">
-                            Lucen gives visitors a clean public entry point and sends them into a secure
-                            chatbot workspace only when they are ready to log in or sign up.
-                        </p>
-
-                        <div className="landing-cta-row">
-                            <Link className="landing-button landing-button--primary" to="/chat?mode=signup">
-                                Get started
-                                <ArrowRight size={16} />
+                    <div className="landing-hero-actions">
+                        {user ? (
+                            <Link className="landing-btn landing-btn--primary" to="/chat">
+                                Resume Chatting <ArrowRight size={18} />
                             </Link>
-                            <Link className="landing-button landing-button--secondary" to="/chat?mode=signin">
-                                Login
-                            </Link>
-                        </div>
-
-                        <div className="landing-proof">
-                            {proofPoints.map((point) => (
-                                <div className="landing-proof-item" key={point}>
-                                    <CheckCircle2 size={16} />
-                                    <span>{point}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="landing-stats">
-                            {stats.map((stat) => (
-                                <div className="landing-stat" key={stat.label}>
-                                    <span className="landing-stat-label">{stat.label}</span>
-                                    <span className="landing-stat-value">{stat.value}</span>
-                                </div>
-                            ))}
-                        </div>
+                        ) : (
+                            <>
+                                <Link className="landing-btn landing-btn--primary" to="/chat?mode=signup">
+                                    Start for free <ArrowRight size={18} />
+                                </Link>
+                                <Link className="landing-btn landing-btn--secondary" to="/chat?mode=signin">
+                                    View Demo
+                                </Link>
+                            </>
+                        )}
                     </div>
 
-                    <div className="landing-hero-visual">
-                        <div className="landing-preview-card landing-preview-card--main">
-                            <div className="landing-preview-top">
-                                <span className="landing-preview-pill">
-                                    <LockKeyhole size={14} />
-                                    Protected chat
-                                </span>
-                                <span className="landing-preview-meta">
-                                    <BadgeCheck size={14} />
-                                    Session aware
-                                </span>
-                            </div>
-
-                            <div className="landing-chat-stream">
-                                <div className="landing-chat-bubble landing-chat-bubble--ai">
-                                    Build me a landing page that feels premium and converts visitors into users.
-                                </div>
-                                <div className="landing-chat-bubble landing-chat-bubble--user">
-                                    Keep it clean, secure, and easy to deploy on Vercel.
-                                </div>
-                                <div className="landing-chat-bubble landing-chat-bubble--ai">
-                                    Lucen can handle that. Public entry on the front, gated chat behind `/chat`.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="landing-preview-grid">
-                            <div className="landing-preview-card">
-                                <Brain size={18} />
-                                <strong>Focused AI workflows</strong>
-                                <span>Built for quick prompts, deeper work, and fewer distractions.</span>
-                            </div>
-                            <div className="landing-preview-card">
-                                <ShieldCheck size={18} />
-                                <strong>Safer session flow</strong>
-                                <span>Same-origin routing keeps auth predictable and easy to maintain.</span>
-                            </div>
+                    {/* HERO MOCKUP PLACEHOLDER */}
+                    <div className="landing-hero-mockup">
+                        <div className="landing-image-placeholder">
+                            {/* USER SHOULD ADD MAIN CHAT SCREENSHOT HERE */}
+                            {/* <img src="/images/hero-screenshot.png" alt="Lucen App Interface" /> */}
                         </div>
                     </div>
                 </section>
 
+                {/* ─── Features Showcase ─── */}
                 <section className="landing-section">
-                    <div className="landing-section-heading">
-                        <p>What Lucen does</p>
-                        <h2>A real product page for a real AI workspace</h2>
+                    <div className="landing-section-header">
+                        <h2>Built for velocity</h2>
+                        <p>Everything you need to work faster and smarter, wrapped in a beautiful interface.</p>
                     </div>
 
                     <div className="landing-feature-grid">
-                        {featureCards.map((feature) => {
-                            const Icon = feature.icon;
-                            return (
-                                <article className="landing-feature-card" key={feature.title}>
-                                    <div className="landing-feature-icon">
-                                        <Icon size={18} />
-                                    </div>
-                                    <h3>{feature.title}</h3>
-                                    <p>{feature.description}</p>
-                                </article>
-                            );
-                        })}
+                        <div className="landing-feature-card">
+                            <div className="landing-feature-icon"><Zap size={24} /></div>
+                            <h3>Lightning Fast</h3>
+                            <p>Powered by edge functions and optimized rendering. Real-time streaming so you never wait.</p>
+                            <div className="landing-feature-image landing-image-placeholder">
+                                {/* USER SHOULD ADD FEATURE SCREENSHOT HERE */}
+                                {/* <img src="/images/feature-fast.png" alt="Fast Streaming" /> */}
+                            </div>
+                        </div>
+
+                        <div className="landing-feature-card">
+                            <div className="landing-feature-icon"><Shield size={24} /></div>
+                            <h3>Secure by Design</h3>
+                            <p>Military-grade authentication, OTP verification, and strict session management.</p>
+                            <div className="landing-feature-image landing-image-placeholder">
+                                {/* USER SHOULD ADD FEATURE SCREENSHOT HERE */}
+                                {/* <img src="/images/feature-security.png" alt="Security" /> */}
+                            </div>
+                        </div>
+
+                        <div className="landing-feature-card">
+                            <div className="landing-feature-icon"><Palette size={24} /></div>
+                            <h3>Beautifully Crafted</h3>
+                            <p>Meticulously designed typography, layouts, and micro-interactions that feel premium.</p>
+                            <div className="landing-feature-image landing-image-placeholder">
+                                {/* USER SHOULD ADD FEATURE SCREENSHOT HERE */}
+                                {/* <img src="/images/feature-design.png" alt="Design" /> */}
+                            </div>
+                        </div>
                     </div>
                 </section>
 
-                <section className="landing-section landing-section--soft">
-                    <div className="landing-section-heading">
-                        <p>How it works</p>
-                        <h2>Simple public entry, clean protected app</h2>
-                    </div>
-
-                    <div className="landing-steps">
-                        {steps.map((step, index) => (
-                            <article className="landing-step" key={step.title}>
-                                <div className="landing-step-index">{index + 1}</div>
-                                <h3>{step.title}</h3>
-                                <p>{step.text}</p>
-                            </article>
-                        ))}
+                {/* ─── Live Theme Showcase ─── */}
+                <section className="landing-section">
+                    <div className="landing-themes-showcase">
+                        <h2>Make it yours.</h2>
+                        <p style={{ color: 'var(--text-secondary)', marginTop: '12px', fontSize: '1.1rem' }}>
+                            Click below to experience live theme switching directly on the landing page.
+                        </p>
+                        
+                        <div className="landing-themes-grid">
+                            {showcaseThemes.map(preset => (
+                                <LandingThemeCard 
+                                    key={preset.id} 
+                                    preset={preset} 
+                                    isActive={activeThemeId === preset.id} 
+                                    onClick={() => handleThemeSelect(preset.id)} 
+                                />
+                            ))}
+                        </div>
                     </div>
                 </section>
 
-                <section className="landing-final-cta">
-                    <div>
-                        <p className="landing-final-kicker">Ready to launch</p>
-                        <h2>Send users to a beautiful home page first, then open chat when they are ready.</h2>
-                    </div>
-                    <div className="landing-cta-row">
-                        <Link className="landing-button landing-button--primary" to="/chat?mode=signup">
-                            Create account
-                            <ArrowRight size={16} />
+                {/* ─── Final CTA ─── */}
+                <section className="landing-footer-cta">
+                    <h2>Ready to elevate your workflow?</h2>
+                    <p>Join Lucen today and experience the difference of a truly premium AI workspace.</p>
+                    {user ? (
+                        <Link className="landing-btn landing-btn--primary" to="/chat" style={{ padding: '16px 32px', fontSize: '1.1rem' }}>
+                            Go to your Workspace <ArrowRight size={20} />
                         </Link>
-                        <Link className="landing-button landing-button--secondary" to="/chat?mode=signin">
-                            Log in
+                    ) : (
+                        <Link className="landing-btn landing-btn--primary" to="/chat?mode=signup" style={{ padding: '16px 32px', fontSize: '1.1rem' }}>
+                            Try Lucen free <ArrowRight size={20} />
                         </Link>
-                    </div>
+                    )}
                 </section>
-            </main>
+                
+            </div>
         </div>
     );
 };
