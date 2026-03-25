@@ -22,6 +22,8 @@ interface AuthStore {
     signOut: () => Promise<void>;
     /** Verify a 6-digit OTP code. type='signup' logs the user in. type='recovery' sets otpVerified=true. */
     verifyOtp: (email: string, token: string, type: 'signup' | 'recovery') => Promise<string | null>;
+    /** Resend a 6-digit OTP code for either signup or password recovery */
+    resendOtp: (email: string, type: 'signup' | 'recovery') => Promise<string | null>;
     resetPasswordForEmail: (email: string) => Promise<string | null>;
     updatePassword: (password: string) => Promise<string | null>;
     /** Sign out all other devices/sessions, keeping the current one active. */
@@ -204,6 +206,37 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             }
         }
 
+        return null;
+    },
+
+    resendOtp: async (email, type) => {
+        set({ error: null, isLoading: true });
+
+        if (!isSupabaseEnabled() || !supabase) {
+            set({ isLoading: false, error: 'Supabase not configured' });
+            return 'Supabase not configured';
+        }
+
+        if (type === 'recovery') {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}/auth/reset-password`,
+            });
+            if (error) {
+                set({ isLoading: false, error: error.message });
+                return error.message;
+            }
+        } else {
+            const { error } = await supabase.auth.resend({
+                type: 'signup',
+                email,
+            });
+            if (error) {
+                set({ isLoading: false, error: error.message });
+                return error.message;
+            }
+        }
+
+        set({ isLoading: false });
         return null;
     },
 

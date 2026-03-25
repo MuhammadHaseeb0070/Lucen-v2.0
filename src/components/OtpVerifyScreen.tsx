@@ -13,7 +13,7 @@ function OtpVerifyScreen() {
     const email = searchParams.get('email') || '';
     const type = (searchParams.get('type') || 'signup') as 'signup' | 'recovery';
 
-    const { verifyOtp, resetPasswordForEmail, error, isLoading, clearError } = useAuthStore();
+    const { verifyOtp, resendOtp, error, isLoading, clearError } = useAuthStore();
 
     const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(''));
     const [localError, setLocalError] = useState('');
@@ -99,20 +99,15 @@ function OtpVerifyScreen() {
         setResendMessage('');
         clearError();
 
-        let err: string | null = null;
-        if (type === 'signup') {
-            // We can't call signUp again without a password — instruct user to go back
-            setResendMessage("To resend, go back and click 'Create Account' again.");
-            return;
-        } else {
-            err = await resetPasswordForEmail(email);
-        }
+        const err = await resendOtp(email, type);
 
         if (!err) {
             setResendMessage('A new code has been sent to your email.');
             setResendCooldown(RESEND_COOLDOWN);
             setDigits(Array(OTP_LENGTH).fill(''));
             inputRefs.current[0]?.focus();
+        } else {
+            setLocalError(err);
         }
     };
 

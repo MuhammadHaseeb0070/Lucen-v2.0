@@ -68,8 +68,11 @@ function AuthScreen() {
         }
 
         if (mode === 'signin') {
-            await signIn(email.trim(), password);
-            // authStore will set user → Layout will unmount AuthScreen automatically
+            const err = await signIn(email.trim(), password);
+            if (err && err.includes('Email not confirmed')) {
+                // If they never finished signing up, push them to the OTP screen
+                navigate(`/auth/verify-otp?type=signup&email=${encodeURIComponent(email.trim())}`);
+            }
         } else if (mode === 'signup') {
             const err = await signUp(email.trim(), password);
             if (!err && !useAuthStore.getState().user) {
