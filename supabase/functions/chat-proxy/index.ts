@@ -113,7 +113,16 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // ─── Forward to OpenRouter (streaming) ───
+        // ─── Server-side token cap ───
+        // Never trust the client value blindly. Cap at a safe server maximum.
+        // The client computes a dynamic budget based on actual input size;
+        // here we simply enforce an upper bound to prevent abuse.
+        const SERVER_MAX_TOKENS_CAP = 32768;
+        const resolvedMaxTokens = Math.min(
+            Math.max(512, Number(max_tokens) || 16384),
+            SERVER_MAX_TOKENS_CAP
+        );
+
         const openrouterResponse = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: {
@@ -126,7 +135,7 @@ Deno.serve(async (req: Request) => {
                 model,
                 messages,
                 stream: true,
-                max_tokens: max_tokens || 16384,
+                max_tokens: resolvedMaxTokens,
                 include_usage: true,
             }),
         });

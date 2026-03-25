@@ -61,7 +61,12 @@ export interface ModelInfo {
   name: string;
   provider: string;
   supportsReasoning: boolean;
+  /** Hard cap on output tokens sent to the API (computed dynamically) */
   maxTokens: number;
+  /** Maximum output tokens the model supports (model capability, e.g. 32768) */
+  maxOutputTokens: number;
+  /** Total context window size — input + output combined (e.g. 131072 for Grok) */
+  contextWindow: number;
   inputCostPer1k: number;
   outputCostPer1k: number;
 }

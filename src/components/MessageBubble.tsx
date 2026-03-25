@@ -70,8 +70,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 lastUpdateRef.current = now;
             }
         } else if (openedRef.current) {
-            // Streaming just finished — send final update (preserves viewMode)
-            updateArtifactContent(first);
+            // Streaming just finished — send final update and reset.
+            // Force isStreaming:false regardless of what the parser reports.
+            // This handles the truncation case where the closing </lucen_artifact>
+            // tag was never received, leaving the artifact in a partial state.
+            updateArtifactContent({ ...first, isStreaming: false });
             openedRef.current = false;
         }
     }, [artifacts, setActiveArtifact, updateArtifactContent]);

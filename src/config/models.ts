@@ -9,6 +9,20 @@ const SIDE_MODEL_ID = import.meta.env.VITE_SIDE_CHAT_MODEL || DEFAULT_MODEL_ID;
 const MAIN_MODEL_NAME = import.meta.env.VITE_MAIN_CHAT_MODEL_NAME || MAIN_MODEL_ID.split('/').pop() || DEFAULT_MODEL_NAME;
 const SIDE_MODEL_NAME = import.meta.env.VITE_SIDE_CHAT_MODEL_NAME || SIDE_MODEL_ID.split('/').pop() || DEFAULT_MODEL_NAME;
 
+// ─── Model Capacity ───────────────────────────────────────────────────────────
+// These can be overridden in .env to support any model without code changes.
+// Defaults are conservative values that work safely across most modern LLMs.
+//
+//   VITE_MODEL_CONTEXT_WINDOW  — total context (input + output). e.g. 131072 for Grok
+//   VITE_MODEL_MAX_OUTPUT      — max output the model supports. e.g. 32768 for Grok
+//
+const MODEL_CONTEXT_WINDOW = parseInt(import.meta.env.VITE_MODEL_CONTEXT_WINDOW || '131072', 10);
+const MODEL_MAX_OUTPUT = parseInt(import.meta.env.VITE_MODEL_MAX_OUTPUT || '32768', 10);
+
+// The SENT max_tokens starts at the model output ceiling but gets reduced
+// dynamically based on actual input size (see openrouter.ts computeOutputBudget).
+const STATIC_MAX_TOKENS = MODEL_MAX_OUTPUT;
+
 export function getActiveModel(isSideChat = false): ModelInfo {
     const id = isSideChat ? SIDE_MODEL_ID : MAIN_MODEL_ID;
     const name = isSideChat ? SIDE_MODEL_NAME : MAIN_MODEL_NAME;
@@ -19,7 +33,9 @@ export function getActiveModel(isSideChat = false): ModelInfo {
         name,
         provider,
         supportsReasoning,
-        maxTokens: 16384,
+        maxTokens: STATIC_MAX_TOKENS,
+        maxOutputTokens: MODEL_MAX_OUTPUT,
+        contextWindow: MODEL_CONTEXT_WINDOW,
         inputCostPer1k: 0.001,
         outputCostPer1k: 0.002,
     };

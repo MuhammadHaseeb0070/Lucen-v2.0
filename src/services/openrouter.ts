@@ -4,6 +4,7 @@ import { formatFileSize } from './fileProcessor';
 import { TEMPLATES, BASE_SYSTEM_PROMPT } from '../config/prompts';
 import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
+import { useTokenStore } from '../store/tokenStore';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
 
@@ -71,6 +72,7 @@ function buildMessageContent(msg: Message): string | Array<Record<string, unknow
 
 /**
  * Build the full API message array with system prompts and conversation history.
+ * Does NOT inject the token budget — that's done after counting in streamChat().
  */
 function buildApiMessages(messages: Message[], systemPromptOverride?: string): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
@@ -109,9 +111,65 @@ function buildApiMessages(messages: Message[], systemPromptOverride?: string): A
     ];
 }
 
+// ─── Token Budget Constants ─────────────────────────────────────────────────
+// MIN_OUTPUT_BUDGET: Never go below this — ensures even very long conversations
+// can still receive a complete, useful reply.
+const MIN_OUTPUT_BUDGET = 2048;
+
+// SAFETY_HEADROOM: Reserved gap accounting for tokenizer approximation error
+// and per-request model overhead (e.g. BOS/EOS, role tags).
+const SAFETY_HEADROOM = 512;
+
+/**
+ * Compute how many output tokens are safely available for this request.
+ *
+ * Formula:
+ *   remaining = contextWindow - inputTokens - SAFETY_HEADROOM
+ *   budget    = clamp(remaining, MIN_OUTPUT_BUDGET, maxOutputTokens)
+ *
+ * For reasoning models (Grok, DeepSeek R1), reasoning tokens eat into the same
+ * output budget. We do NOT apply a separate reasoning reserve here — OpenRouter
+ * handles it internally, but a larger SAFETY_HEADROOM offsets this.
+ */
+async function computeOutputBudget(
+    apiMessages: Array<Record<string, unknown>>,
+    contextWindow: number,
+    maxOutputTokens: number
+): Promise<number> {
+    try {
+        // Serialize all messages to a single string for token counting.
+        // We only count text parts — image parts are approximated by the safety headroom.
+        const serialized = apiMessages
+            .map((m) => {
+                const content = m.content;
+                if (typeof content === 'string') return content;
+                if (Array.isArray(content)) {
+                    return (content as Array<Record<string, unknown>>)
+                        .filter((p) => p.type === 'text')
+                        .map((p) => p.text as string)
+                        .join(' ');
+                }
+                return '';
+            })
+            .join('\n');
+
+        const { countAsync } = useTokenStore.getState();
+        const inputTokens = await countAsync(serialized);
+
+        const remaining = contextWindow - inputTokens - SAFETY_HEADROOM;
+        const budget = Math.max(MIN_OUTPUT_BUDGET, Math.min(maxOutputTokens, remaining));
+
+        console.debug(`[TokenBudget] input=${inputTokens} ctx=${contextWindow} maxOut=${maxOutputTokens} → budget=${budget}`);
+        return budget;
+    } catch (err) {
+        // If token counting fails for any reason, fall back to a conservative default
+        console.warn('[TokenBudget] Counting failed, using fallback:', err);
+        return Math.min(maxOutputTokens, 16384);
+    }
+}
+
 /**
  * Stream chat via Edge Function proxy (secure — API key stays server-side).
- * When Supabase is configured, only the Edge Function is used; no direct API fallback.
  */
 export async function streamChat(
     messages: Message[],
@@ -137,12 +195,31 @@ export async function streamChat(
         return;
     }
 
-    await streamViaEdgeFunction(
+    // ─── Compute exact output budget based on actual input size ───────────────
+    const outputBudget = await computeOutputBudget(
         apiMessages,
+        model.contextWindow,
+        model.maxOutputTokens
+    );
+
+    // ─── Inject token budget as the final system message ─────────────────────
+    // Placed LAST so it's the freshest instruction right before the AI responds.
+    // Using an explicit count gives the model the information it needs to plan
+    // a complete, self-contained response within the available window.
+    const messagesWithBudget: Array<Record<string, unknown>> = [
+        ...apiMessages,
+        {
+            role: 'system',
+            content: `[RESPONSE BUDGET] You have approximately ${outputBudget} tokens for your response. Plan your output so it is always 100% complete and self-contained within this budget. If the task is large, prioritize the most essential parts to ensure the response is always finished and valid — never end mid-sentence or mid-code block.`,
+        },
+    ];
+
+    await streamViaEdgeFunction(
+        messagesWithBudget,
         model,
         session.access_token,
         callbacks,
-        options.systemPromptOverride,
+        outputBudget,
         options.signal
     );
 }
@@ -155,7 +232,7 @@ async function streamViaEdgeFunction(
     model: ReturnType<typeof getActiveModel>,
     accessToken: string,
     callbacks: StreamCallbacks,
-    systemPromptOverride?: string,
+    outputBudget: number,
     signal?: AbortSignal
 ): Promise<void> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -177,9 +254,9 @@ async function streamViaEdgeFunction(
         body: JSON.stringify({
             messages: apiMessages,
             model: model.id,
-            max_tokens: model.maxTokens,
+            max_tokens: outputBudget,
             is_reasoning: isReasoning,
-            template_mode: systemPromptOverride ? 'None' : templateMode,
+            template_mode: templateMode,
         }),
         signal,
     });
@@ -210,7 +287,7 @@ async function streamViaEdgeFunction(
 }
 
 /**
- * Process an SSE stream from either the Edge Function or direct OpenRouter call.
+ * Process an SSE stream from the Edge Function.
  */
 async function processStream(
     response: Response,
@@ -251,7 +328,7 @@ async function processStream(
                     const choice = parsed.choices?.[0];
                     if (!choice) continue;
 
-                    // Detect truncation: finish_reason === 'length' means max_tokens hit
+                    // Detect truncation: finish_reason === 'length' means max_tokens was hit
                     if (choice.finish_reason === 'length') {
                         wasTruncated = true;
                     }
@@ -259,7 +336,7 @@ async function processStream(
                     const delta = choice.delta;
                     if (!delta) continue;
 
-                    // Handle reasoning content (DeepSeek R1, etc.)
+                    // Handle reasoning content (DeepSeek R1, Grok reasoning, etc.)
                     if (delta.reasoning || delta.reasoning_content) {
                         callbacks.onReasoning(delta.reasoning || delta.reasoning_content);
                     }

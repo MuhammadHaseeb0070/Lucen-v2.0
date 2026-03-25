@@ -11,6 +11,8 @@ interface TokenStore {
     isCalculating: boolean;
     initializeWorker: () => void;
     calculateTokens: (text: string) => void;
+    /** One-shot async count — resolves with exact token count. Does NOT update store state. */
+    countAsync: (text: string) => Promise<number>;
 }
 
 export const useTokenStore = create<TokenStore>((set, get) => ({
@@ -33,10 +35,11 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
                 return;
             }
 
-            // We only care about the latest requested calculation (id 'current')
+            // UI token count (id === 'current')
             if (e.data.id === 'current') {
                 set({ estimatedTokens: e.data.tokens, isCalculating: false });
             }
+            // Async one-shot counts are resolved via their own listener — no state update needed.
         };
 
         set({ worker });
@@ -50,5 +53,27 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
 
         // Send to background thread
         worker.postMessage({ id: 'current', type: 'count', text });
+    },
+
+    countAsync: (text: string): Promise<number> => {
+        const { worker } = get();
+        if (!worker) {
+            // Worker not ready — return a rough character-based approximation (4 chars ≈ 1 token)
+            return Promise.resolve(Math.ceil(text.length / 4));
+        }
+
+        return new Promise((resolve) => {
+            // Unique ID per request so multiple concurrent counts don't collide
+            const requestId = `async-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+            const handler = (e: MessageEvent) => {
+                if (e.data.id !== requestId) return;
+                worker.removeEventListener('message', handler);
+                resolve(e.data.tokens ?? Math.ceil(text.length / 4));
+            };
+
+            worker.addEventListener('message', handler);
+            worker.postMessage({ id: requestId, type: 'count', text });
+        });
     },
 }));
