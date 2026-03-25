@@ -8,6 +8,7 @@ import {
     MessageSquare,
     ChevronLeft,
     ChevronRight,
+    Loader2,
     Terminal
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
@@ -24,6 +25,7 @@ const Sidebar: React.FC = () => {
         deleteConversation,
         renameConversation,
         setActiveConversation,
+        isLoading: chatsLoading,
     } = useChatStore();
 
     const {
@@ -139,7 +141,13 @@ const Sidebar: React.FC = () => {
             </div>
 
             <div className="sidebar-chat-list">
-                {conversations.length === 0 ? (
+                {chatsLoading ? (
+                    <div className="sidebar-chat-skeleton-container" style={{ padding: '0 12px' }}>
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="chat-item-skeleton" style={{ height: '38px', borderRadius: 'var(--r-md)', background: 'var(--bg-muted)', opacity: 0.6, marginBottom: '8px', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                        ))}
+                    </div>
+                ) : conversations.length === 0 ? (
                     <div className="sidebar-empty">
                         <MessageSquare size={24} />
                         <p>No conversations yet</p>
@@ -247,7 +255,7 @@ const Sidebar: React.FC = () => {
                     <div className="sidebar-credits-info">
                         <span className="sidebar-credits-label">Your Balance</span>
                         <div className="sidebar-credits-amount">
-                            {creditsLoading ? '...' : (
+                            {creditsLoading ? <Loader2 size={14} className="auth-spinner" style={{ opacity: 0.5 }} /> : (
                                 <>
                                     <span>{remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                     <span className="sidebar-credits-unit">CR</span>

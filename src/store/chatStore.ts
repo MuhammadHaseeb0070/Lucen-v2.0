@@ -9,6 +9,7 @@ interface ChatStore {
     conversations: Conversation[];
     activeConversationId: string | null;
     isLoading: boolean;
+    isMessageLoading: boolean;
     isSynced: boolean;
     drafts: Record<string, string>;
 
@@ -40,6 +41,7 @@ export const useChatStore = create<ChatStore>()(
             conversations: [],
             activeConversationId: null,
             isLoading: false,
+            isMessageLoading: false,
             isSynced: false,
             drafts: {},
 
@@ -290,6 +292,7 @@ export const useChatStore = create<ChatStore>()(
             loadMessages: async (convId) => {
                 if (!hasActiveSessionSync()) return;
 
+                set({ isMessageLoading: true });
                 const messages = await db.fetchMessages(convId);
                 if (messages && messages.length > 0) {
                     set((state) => ({
@@ -298,6 +301,7 @@ export const useChatStore = create<ChatStore>()(
                         ),
                     }));
                 }
+                set({ isMessageLoading: false });
             },
         }),
         {
@@ -308,6 +312,7 @@ export const useChatStore = create<ChatStore>()(
                 ...state,
                 // Don't persist loading/sync flags
                 isLoading: false,
+                isMessageLoading: false,
                 isSynced: false,
                 // Do not cache conversations locally to force full-stack sync 
                 // from Supabase

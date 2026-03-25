@@ -37,15 +37,16 @@ function OtpVerifyScreen() {
         // Allow paste of full code
         if (value.length > 1) {
             const cleaned = value.replace(/\D/g, '').slice(0, OTP_LENGTH);
-            const newDigits = Array(OTP_LENGTH).fill('');
-            cleaned.split('').forEach((ch, i) => { newDigits[i] = ch; });
+            const newDigits = [...digits];
+            cleaned.split('').forEach((ch, i) => { if (index + i < OTP_LENGTH) newDigits[index + i] = ch; });
             setDigits(newDigits);
-            const focusIdx = Math.min(cleaned.length, OTP_LENGTH - 1);
+            const focusIdx = Math.min(index + cleaned.length, OTP_LENGTH - 1);
             inputRefs.current[focusIdx]?.focus();
             return;
         }
 
-        const digit = value.replace(/\D/g, '');
+        // Take only the last typed numeric character
+        const digit = value.replace(/\D/g, '').slice(-1);
         const newDigits = [...digits];
         newDigits[index] = digit;
         setDigits(newDigits);
@@ -146,7 +147,6 @@ function OtpVerifyScreen() {
                             type="text"
                             inputMode="numeric"
                             pattern="[0-9]*"
-                            maxLength={6} /* allow paste */
                             className={`otp-digit-input ${digit ? 'otp-digit-input--filled' : ''}`}
                             value={digit}
                             onChange={(e) => handleDigitInput(i, e.target.value)}

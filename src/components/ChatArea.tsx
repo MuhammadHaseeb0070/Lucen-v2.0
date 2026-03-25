@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Sparkles, Search, X, ChevronUp, ChevronDown, ArrowDown, Upload } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
@@ -26,6 +26,7 @@ const ChatArea: React.FC = () => {
         getContextMessages,
         getDraft,
         setDraft,
+        isMessageLoading,
     } = useChatStore();
 
     const { deductCredits, hasEnoughCredits } = useCreditsStore();
@@ -555,9 +556,25 @@ const ChatArea: React.FC = () => {
                 </div>
             )}
             <div className="messages-container" ref={messagesContainerRef}>
-                {!hasMessages ? (
+                {isMessageLoading ? (
+                    <div className="messages-list">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="msg-exchange" style={{ opacity: 0.6, animation: 'pulse 1.5s infinite ease-in-out' }}>
+                                <div className="msg-user-row">
+                                    <div className="msg-user-bubble" style={{ width: '40%', height: '40px', background: 'var(--bg-surface)', color: 'transparent', borderRadius: 'var(--r-md)' }}>...</div>
+                                </div>
+                                <div className="msg-ai-row">
+                                    <div className="msg-ai-icon" style={{ background: 'var(--bg-surface)' }}><Logo size={16} /></div>
+                                    <div className="msg-ai-content">
+                                        <div className="msg-user-bubble" style={{ width: '80%', height: '80px', background: 'var(--bg-surface)', borderRadius: 'var(--r-md)', marginTop: '8px' }} />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : !hasMessages ? (
                     <div className="welcome-screen">
-                        <div className="welcome-icon"><Sparkles size={48} /></div>
+                        <div className="welcome-icon"><Logo size={48} /></div>
                         <h1 className="welcome-title">Welcome to Lucen</h1>
                         <p className="welcome-subtitle">Your intelligent AI assistant. Start a conversation below.</p>
                         <div className="welcome-suggestions">
