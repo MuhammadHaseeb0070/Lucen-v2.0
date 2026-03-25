@@ -202,15 +202,13 @@ export async function streamChat(
         model.maxOutputTokens
     );
 
-    // ─── Inject token budget as the final system message ─────────────────────
-    // Placed LAST so it's the freshest instruction right before the AI responds.
-    // Using an explicit count gives the model the information it needs to plan
-    // a complete, self-contained response within the available window.
+    // ─── Inject token budget as a background instruction ─────────────────────
+    // Keep this instruction quiet so the model doesn't mention tokens in its response.
     const messagesWithBudget: Array<Record<string, unknown>> = [
         ...apiMessages,
         {
             role: 'system',
-            content: `[RESPONSE BUDGET] You have approximately ${outputBudget} tokens for your response. Plan your output so it is always 100% complete and self-contained within this budget. If the task is large, prioritize the most essential parts to ensure the response is always finished and valid — never end mid-sentence or mid-code block.`,
+            content: `[System Note: Your output limit is roughly ${outputBudget} tokens. Ensure your code/explanation completes within this boundary. Do not mention tokens, budgets, or length limits in your response; just answer naturally and completely.]`,
         },
     ];
 
