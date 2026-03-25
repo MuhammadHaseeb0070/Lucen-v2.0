@@ -159,7 +159,23 @@ const AboutTab: React.FC = () => (
             <h3 className="about-title">Lucen</h3>
             <p className="about-version">Version 1.0.0</p>
             <p className="about-text">
-                An AI assistant designed for comfortable, extended use.
+                A premium AI chat workspace designed to give you complete control
+                over your conversations. Lucen combines the intelligence of
+                leading large language models with an interface built for deep
+                focus and effortless productivity.
+            </p>
+            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <p className="about-text" style={{ fontWeight: 600, marginBottom: '4px' }}>What sets Lucen apart:</p>
+                <p className="about-text">✦ <strong>Side Chat</strong> — A floating companion panel for quick questions without losing your main conversation</p>
+                <p className="about-text">✦ <strong>Message Deletion</strong> — Remove any exchange to keep context clean and conversations focused</p>
+                <p className="about-text">✦ <strong>Context Import</strong> — Selectively link main chat messages into your Side Chat for seamless cross-referencing</p>
+                <p className="about-text">✦ <strong>8 Hand-Crafted Themes</strong> — From warm Latte mornings to deep Observatory nights</p>
+                <p className="about-text">✦ <strong>Command Palette</strong> — Hit Ctrl+K to navigate, switch themes, and manage chats like a developer</p>
+                <p className="about-text">✦ <strong>Artifacts</strong> — Live-rendered HTML, SVG, and diagram previews directly alongside your conversation</p>
+                <p className="about-text">✦ <strong>Smart Shortcuts</strong> — Keyboard-first workflow with Halt & Edit, quick search, and more</p>
+            </div>
+            <p className="about-text" style={{ marginTop: '20px', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                Built with React, TypeScript, and powered by edge functions.
             </p>
         </div>
     </div>

@@ -192,10 +192,10 @@ const SelectionMenu: React.FC<SelectionMenuProps> = ({ containerRef, onPrefill }
                 color: 'var(--text-tertiary)',
                 textAlign: 'center',
                 marginTop: '6px',
-                backgroundColor: 'var(--surface-color)',
+                backgroundColor: 'var(--bg-surface)',
                 padding: '4px 8px',
                 borderRadius: '4px',
-                border: '1px solid var(--border-color)',
+                border: '1px solid var(--divider)',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
             }}>
                 <span style={{ opacity: 0.8 }}>💡 <b>Shift + Click</b> to paste into Side Chat</span>

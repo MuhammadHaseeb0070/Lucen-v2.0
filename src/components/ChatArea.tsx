@@ -214,29 +214,7 @@ const ChatArea: React.FC = () => {
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 
-        // #region agent log
-        fetch('http://127.0.0.1:7700/ingest/70a02fe0-74a1-4e2c-b7c2-933415d39cd7', {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'd88871' },
-            body: JSON.stringify({
-                sessionId: 'd88871',
-                runId: 'baseline',
-                hypothesisId: 'H2',
-                location: 'src/components/ChatArea.tsx:handleSend',
-                message: 'User sent message (redacted)',
-                data: {
-                    hasEnoughCredits: hasEnoughCredits(model.supportsReasoning),
-                    modelId: model.id,
-                    supportsReasoning: model.supportsReasoning,
-                    contentLength: content.length,
-                    attachmentCount: attachments?.length ?? 0,
-                    hadActiveConversation: !!activeConversationId,
-                },
-                timestamp: Date.now(),
-            }),
-        }).catch(() => { });
-        // #endregion
+
 
         addMessage(convId, {
             id: uuidv4(), role: 'user', content, timestamp: Date.now(),
@@ -366,32 +344,7 @@ const ChatArea: React.FC = () => {
         return activeConv.messages.filter((m) => matchingIds.has(m.id));
     }, [activeConv, matchingIds]);
 
-    // #region agent log
-    useEffect(() => {
-        if (!activeConv) return;
-        if (!searchOpen && !searchQuery) return;
-        fetch('http://127.0.0.1:7700/ingest/70a02fe0-74a1-4e2c-b7c2-933415d39cd7', {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'd88871' },
-            body: JSON.stringify({
-                sessionId: 'd88871',
-                runId: 'baseline',
-                hypothesisId: 'H3',
-                location: 'src/components/ChatArea.tsx:search',
-                message: 'Chat search state',
-                data: {
-                    searchOpen,
-                    queryLength: searchQuery.length,
-                    messageCount: activeConv.messages.length,
-                    matchCount: matchArray.length,
-                    activeMatchIndex,
-                },
-                timestamp: Date.now(),
-            }),
-        }).catch(() => { });
-    }, [searchOpen, searchQuery, activeConv?.messages.length, matchArray.length, activeMatchIndex]);
-    // #endregion
+
 
     useEffect(() => {
         if (matchArray.length === 0 || !messagesContainerRef.current) return;
