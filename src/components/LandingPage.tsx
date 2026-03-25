@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
     ArrowRight,
     Sparkles,
@@ -61,7 +61,6 @@ const LandingThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onCli
 const LandingPage: React.FC = () => {
     const { user, signOut } = useAuthStore();
     const { activeThemeId, setTheme } = useThemeStore();
-    const navigate = useNavigate();
 
     const handleThemeSelect = (id: string) => {
         setTheme(id);
