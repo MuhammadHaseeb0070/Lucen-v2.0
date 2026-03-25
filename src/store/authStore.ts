@@ -11,7 +11,8 @@ interface AuthStore {
     user: AppUser | null;
     isLoading: boolean;
     isInitialized: boolean;
-    isPasswordRecovery: boolean;
+    /** Set to true after a successful OTP verify for type='recovery' — allows access to NewPasswordScreen */
+    otpVerified: boolean;
     sessionExpired: boolean;
     error: string | null;
 
@@ -19,16 +20,21 @@ interface AuthStore {
     signIn: (email: string, password: string) => Promise<string | null>;
     signUp: (email: string, password: string) => Promise<string | null>;
     signOut: () => Promise<void>;
+    /** Verify a 6-digit OTP code. type='signup' logs the user in. type='recovery' sets otpVerified=true. */
+    verifyOtp: (email: string, token: string, type: 'signup' | 'recovery') => Promise<string | null>;
     resetPasswordForEmail: (email: string) => Promise<string | null>;
     updatePassword: (password: string) => Promise<string | null>;
+    /** Sign out all other devices/sessions, keeping the current one active. */
+    signOutOthers: () => Promise<string | null>;
     clearError: () => void;
+    clearOtpVerified: () => void;
 }
 
 export const useAuthStore = create<AuthStore>()((set, get) => ({
     user: null,
     isLoading: true,
     isInitialized: false,
-    isPasswordRecovery: false,
+    otpVerified: false,
     sessionExpired: false,
     error: null,
 
@@ -56,10 +62,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             if (supabase) {
                 supabase.auth.onAuthStateChange((event, session) => {
                     const prevUser = get().user;
-
-                    if (event === 'PASSWORD_RECOVERY') {
-                        set({ isPasswordRecovery: true });
-                    }
 
                     if (event === 'SIGNED_OUT') {
                         if (prevUser) {
@@ -118,8 +120,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             set({ user: appUser, isLoading: false });
             syncDataOnLogin();
         } else {
-            // If email confirmation is enabled, signUp returns a user but NO session.
-            // We must NOT log them in yet.
             set({ isLoading: false });
         }
 
@@ -134,12 +134,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             return 'Supabase not configured';
         }
 
+        // Note: No emailRedirectTo — we use OTP code, not magic links.
+        // Supabase will email a 6-digit code automatically when email confirmations are enabled.
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
-            options: {
-                emailRedirectTo: `${window.location.origin}/chat`,
-            },
         });
 
         if (error) {
@@ -148,6 +147,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         }
 
         if (data.session && data.user) {
+            // Email confirmation is disabled — user is immediately logged in (shouldn't happen with OTP ON)
             const appUser: AppUser = {
                 id: data.user.id,
                 email: data.user.email || '',
@@ -156,9 +156,52 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             set({ user: appUser, isLoading: false });
             syncDataOnLogin();
         } else {
-            // If email confirmation is enabled, signUp returns a user but NO session.
-            // We must NOT log them in yet.
+            // OTP email sent — caller should navigate to OTP verify screen
             set({ isLoading: false });
+        }
+
+        return null;
+    },
+
+    verifyOtp: async (email, token, type) => {
+        set({ error: null, isLoading: true });
+
+        if (!isSupabaseEnabled() || !supabase) {
+            set({ isLoading: false, error: 'Supabase not configured' });
+            return 'Supabase not configured';
+        }
+
+        const { data, error } = await supabase.auth.verifyOtp({ email, token, type });
+
+        if (error) {
+            set({ isLoading: false, error: error.message });
+            return error.message;
+        }
+
+        if (type === 'recovery') {
+            // For password recovery: session is established, set flag so NewPasswordScreen unlocks
+            set({ isLoading: false, otpVerified: true });
+            if (data.user) {
+                const appUser: AppUser = {
+                    id: data.user.id,
+                    email: data.user.email || '',
+                    name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
+                };
+                set({ user: appUser });
+            }
+        } else {
+            // type === 'signup': account confirmed, user is now logged in
+            if (data.session && data.user) {
+                const appUser: AppUser = {
+                    id: data.user.id,
+                    email: data.user.email || '',
+                    name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
+                };
+                set({ user: appUser, isLoading: false });
+                syncDataOnLogin();
+            } else {
+                set({ isLoading: false });
+            }
         }
 
         return null;
@@ -168,7 +211,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         if (!isSupabaseEnabled() || !supabase) return;
 
         // Clear user preemptively so SIGNED_OUT event doesn't trigger sessionExpired flag
-        set({ user: null, sessionExpired: false });
+        set({ user: null, sessionExpired: false, otpVerified: false });
         await supabase.auth.signOut();
         useChatStore.getState().clearChats();
     },
@@ -181,10 +224,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             return 'Supabase not configured';
         }
 
-        // Supabase will automatically send an email with the redirect link
-        // which will trigger the PASSWORD_RECOVERY event when clicked
+        // redirectTo only used as a fallback for magic-link flow — OTP is the primary path now.
+        // We still include it so if the user somehow gets a link, they land on the right page.
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/chat`,
+            redirectTo: `${window.location.origin}/auth/reset-password`,
         });
 
         if (error) {
@@ -211,11 +254,34 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             return error.message;
         }
 
-        set({ isLoading: false, isPasswordRecovery: false });
+        // After password change, invalidate all other sessions for security
+        await supabase.auth.signOut({ scope: 'others' });
+
+        set({ isLoading: false, otpVerified: false });
+        return null;
+    },
+
+    signOutOthers: async () => {
+        set({ error: null, isLoading: true });
+
+        if (!isSupabaseEnabled() || !supabase) {
+            set({ isLoading: false, error: 'Supabase not configured' });
+            return 'Supabase not configured';
+        }
+
+        const { error } = await supabase.auth.signOut({ scope: 'others' });
+
+        if (error) {
+            set({ isLoading: false, error: error.message });
+            return error.message;
+        }
+
+        set({ isLoading: false });
         return null;
     },
 
     clearError: () => set({ error: null }),
+    clearOtpVerified: () => set({ otpVerified: false }),
 }));
 
 /**

@@ -5635,6 +5635,169 @@ body {
     animation: spin 1s linear infinite;
 }
 
+.auth-home-link {
+    display: block;
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    transition: color var(--dur-fast) var(--ease);
+}
+
+.auth-home-link:hover {
+    color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════
+   OTP VERIFY SCREEN
+   ═══════════════════════════════════════════ */
+.otp-email-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 14px;
+    background: var(--bg-muted);
+    border: 1px solid var(--divider);
+    border-radius: var(--r-full);
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 500;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.otp-input-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.otp-digit-input {
+    width: 48px;
+    height: 58px;
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-family: var(--font);
+    background: var(--bg-muted);
+    border: 1.5px solid var(--divider);
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    outline: none;
+    caret-color: var(--accent);
+    transition: all var(--dur-fast) var(--ease);
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.otp-digit-input::-webkit-outer-spin-button,
+.otp-digit-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.otp-digit-input:focus {
+    border-color: var(--accent);
+    background: var(--bg-surface);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.otp-digit-input--filled {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.otp-resend-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 14px;
+    font-size: 0.82rem;
+    color: var(--text-tertiary);
+}
+
+.otp-resend-label {
+    color: var(--text-tertiary);
+}
+
+/* ═══════════════════════════════════════════
+   SECURITY TAB (Settings)
+   ═══════════════════════════════════════════ */
+.security-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+    background: var(--bg-muted);
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+}
+
+.security-section__title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.security-section__desc {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.security-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-radius: var(--r-md);
+    font-size: 0.84rem;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all var(--dur-fast) var(--ease);
+    align-self: flex-start;
+}
+
+.security-btn--danger {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: var(--danger, #ef4444);
+}
+
+.security-btn--danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.security-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.security-success {
+    font-size: 0.82rem;
+    color: var(--success, #22c55e);
+    margin: 0;
+    font-weight: 500;
+}
+
+.security-error {
+    font-size: 0.82rem;
+    color: var(--danger, #ef4444);
+    margin: 0;
+    font-weight: 500;
+}
+
+
 /* ═══════════════════════════════════════════
    NAVBAR — Profile Dropdown
    ═══════════════════════════════════════════ */

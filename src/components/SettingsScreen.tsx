@@ -1,7 +1,8 @@
-import React from 'react';
-import { X, Palette, Info, Keyboard, Check, Activity } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Palette, Info, Keyboard, Check, Activity, Shield, LogOut, Loader2 } from 'lucide-react';
 import { useThemeStore, THEME_PRESETS, applyTheme } from '../store/themeStore';
 import type { ThemePreset } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
 import UserUsageTab from './UserUsageTab';
 
 const CATEGORIES = [
@@ -15,6 +16,7 @@ const TABS = [
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
     { id: 'usage', label: 'Usage', icon: Activity },
+    { id: 'security', label: 'Security', icon: Shield },
     { id: 'about', label: 'About', icon: Info },
 ] as const;
 
@@ -104,6 +106,52 @@ const ShortcutsTab: React.FC = () => (
     </div>
 );
 
+// ─── Security Tab ───
+const SecurityTab: React.FC = () => {
+    const { signOutOthers, error } = useAuthStore();
+    const [loading, setLoading] = useState(false);
+    const [done, setDone] = useState(false);
+
+    const handleSignOutOthers = async () => {
+        setLoading(true);
+        setDone(false);
+        await signOutOthers();
+        setLoading(false);
+        setDone(true);
+    };
+
+    return (
+        <div className="settings-tab-body">
+            <p className="settings-desc">Manage active sessions and account security.</p>
+
+            <div className="security-section">
+                <h4 className="security-section__title">Active Sessions</h4>
+                <p className="security-section__desc">
+                    Signing out all other devices will immediately invalidate every session except the one you are currently using.
+                </p>
+                <button
+                    className="security-btn security-btn--danger"
+                    onClick={handleSignOutOthers}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <Loader2 size={15} className="auth-spinner" />
+                    ) : (
+                        <LogOut size={15} />
+                    )}
+                    Sign out all other devices
+                </button>
+                {done && !error && (
+                    <p className="security-success">All other sessions have been signed out.</p>
+                )}
+                {error && (
+                    <p className="security-error">{error}</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // ─── About Tab ───
 const AboutTab: React.FC = () => (
     <div className="settings-tab-body">
@@ -128,6 +176,7 @@ const SettingsScreen: React.FC = () => {
             case 'appearance': return <AppearanceTab />;
             case 'shortcuts': return <ShortcutsTab />;
             case 'usage': return <UserUsageTab />;
+            case 'security': return <SecurityTab />;
             case 'about': return <AboutTab />;
             default: return <AppearanceTab />;
         }

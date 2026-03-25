@@ -7,7 +7,7 @@ import SideChatPanel from './SideChatPanel';
 import SettingsScreen from './SettingsScreen';
 import CommandPalette from './CommandPalette';
 import AuthScreen from './AuthScreen';
-import ResetPasswordScreen from './ResetPasswordScreen';
+
 import OwnerDashboard from './OwnerDashboard';
 import { useThemeStore, applyTheme } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
@@ -19,7 +19,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 
 const Layout: React.FC = () => {
     const { getActiveTheme } = useThemeStore();
-    const { user, isLoading, isInitialized, isPasswordRecovery, sessionExpired, initialize } = useAuthStore();
+    const { user, isLoading, isInitialized, sessionExpired, initialize } = useAuthStore();
     const { setIsAdminView, isAdminView, sidebarCollapsed, toggleSidebar } = useUIStore();
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -46,14 +46,13 @@ const Layout: React.FC = () => {
                     isLoading,
                     isInitialized,
                     hasUser: !!user,
-                    isPasswordRecovery,
                     sessionExpired,
                     isAdminView,
                 },
                 timestamp: Date.now(),
             }),
         }).catch(() => { });
-    }, [user, isLoading, isInitialized, isPasswordRecovery, sessionExpired, isAdminView]);
+    }, [user, isLoading, isInitialized, sessionExpired, isAdminView]);
     // #endregion
 
     // Collapse sidebar on mobile on first load
@@ -126,10 +125,6 @@ const Layout: React.FC = () => {
         );
     }
 
-    // Intercept layout if we are in password recovery mode
-    if (isPasswordRecovery) {
-        return <ResetPasswordScreen />;
-    }
 
     // If Supabase is configured but no user → show auth screen
     if (isSupabaseEnabled() && !user) {

@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, Info } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import Logo from './Logo';
 
 type AuthMode = 'signin' | 'signup' | 'forgot_password';
 
 function AuthScreen() {
+    const navigate = useNavigate();
     const { signIn, signUp, resetPasswordForEmail, error, isLoading, clearError } = useAuthStore();
     const [searchParams] = useSearchParams();
-    const initialMode = (() : AuthMode => {
+    const initialMode = ((): AuthMode => {
         const mode = searchParams.get('mode');
         if (mode === 'signup' || mode === 'forgot_password') return mode;
         if (mode === 'login') return 'signin';
@@ -21,12 +22,10 @@ function AuthScreen() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState('');
-    const [successMessage, setSuccessMessage] = useState('');
 
     const toggleMode = (newMode: AuthMode) => {
         setMode(newMode);
         setLocalError('');
-        setSuccessMessage('');
         clearError();
         setConfirmPassword('');
     };
@@ -49,7 +48,8 @@ function AuthScreen() {
         if (mode === 'forgot_password') {
             const err = await resetPasswordForEmail(email.trim());
             if (!err) {
-                setSuccessMessage('Password reset link sent! Please check your email.');
+                // Navigate to OTP verify screen for password recovery
+                navigate(`/auth/verify-otp?type=recovery&email=${encodeURIComponent(email.trim())}`);
             }
             return;
         }
@@ -69,13 +69,12 @@ function AuthScreen() {
 
         if (mode === 'signin') {
             await signIn(email.trim(), password);
+            // authStore will set user → Layout will unmount AuthScreen automatically
         } else if (mode === 'signup') {
             const err = await signUp(email.trim(), password);
-            // If sign up succeeds but we are still here, it probably means email confirmation is required
             if (!err && !useAuthStore.getState().user) {
-                setSuccessMessage('Account created! Please check your email for a verification link to log in.');
-                setMode('signin');
-                setPassword('');
+                // OTP email was sent — navigate to verify screen
+                navigate(`/auth/verify-otp?type=signup&email=${encodeURIComponent(email.trim())}`);
             }
         }
     };
@@ -175,14 +174,6 @@ function AuthScreen() {
                         </div>
                     )}
 
-                    {/* Success Message */}
-                    {successMessage && !displayError && (
-                        <div className="auth-success">
-                            <Info size={16} />
-                            {successMessage}
-                        </div>
-                    )}
-
                     {/* Error */}
                     {displayError && (
                         <div className="auth-error">
@@ -198,7 +189,7 @@ function AuthScreen() {
                             <>
                                 {mode === 'signin' && 'Sign In'}
                                 {mode === 'signup' && 'Create Account'}
-                                {mode === 'forgot_password' && 'Send Reset Link'}
+                                {mode === 'forgot_password' && 'Send Reset Code'}
                                 <ArrowRight size={16} />
                             </>
                         )}
