@@ -315,6 +315,12 @@ async function streamViaEdgeFunction(
 
     if (!response.ok) {
         const errBody = await response.text();
+        // eslint-disable-next-line no-console
+        console.log('[OpenRouterDebug] edgeError', {
+            status: response.status,
+            statusText: response.statusText,
+            bodyHead: errBody.slice(0, 500),
+        });
         let errorMsg: string;
         try {
             const parsed = JSON.parse(errBody);
@@ -365,6 +371,20 @@ async function processStream(
     let lastReasoningTail: string | null = null;
     let lastContentTail: string | null = null;
 
+    const logStreamSummary = (why: 'done' | 'eof' | 'abort' | 'error') => {
+        // eslint-disable-next-line no-console
+        console.log('[OpenRouterDebug] streamSummary', {
+            why,
+            truncated: wasTruncated,
+            chunkCount,
+            reasoningChunkCount,
+            contentChunkCount,
+            lastDeltaSummary,
+            lastReasoningTail,
+            lastContentTail,
+        });
+    };
+
     function sanitizeAssistantOutput(text: string): string {
         if (!text) return text;
 
@@ -399,6 +419,7 @@ async function processStream(
                 const data = trimmed.slice(6);
                 if (data === '[DONE]') {
                     callbacks.onDone(wasTruncated);
+                    logStreamSummary('done');
                     return;
                 }
 
@@ -450,22 +471,14 @@ async function processStream(
         }
 
         callbacks.onDone(wasTruncated);
-
-        // eslint-disable-next-line no-console
-        console.log('[OpenRouterDebug] streamSummary', {
-            truncated: wasTruncated,
-            chunkCount,
-            reasoningChunkCount,
-            contentChunkCount,
-            lastDeltaSummary,
-            lastReasoningTail,
-            lastContentTail,
-        });
+        logStreamSummary('eof');
     } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
             callbacks.onDone(false);
+            logStreamSummary('abort');
         } else {
             callbacks.onError(err instanceof Error ? err.message : 'Unknown error');
+            logStreamSummary('error');
         }
     }
 }
