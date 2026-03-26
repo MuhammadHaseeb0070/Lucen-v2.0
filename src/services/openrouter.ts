@@ -242,6 +242,14 @@ async function streamViaEdgeFunction(
         console.error('[OpenRouter] VITE_SUPABASE_ANON_KEY is missing. Edge Function call will likely fail.');
     }
 
+    // Debug: confirm this code path executed before we hit the Edge function.
+    // eslint-disable-next-line no-console
+    console.log('[OpenRouterDebug] sendingRequest', {
+        model: model.id,
+        is_reasoning: isReasoning,
+        template_mode: templateMode,
+    });
+
     const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
         method: 'POST',
         headers: {
@@ -295,7 +303,7 @@ async function streamViaEdgeFunction(
                         })),
                 };
                 // eslint-disable-next-line no-console
-                console.debug('[OpenRouterDebug] requestPayloadPreview', debugPayload);
+                console.log('[OpenRouterDebug] requestPayloadPreview', debugPayload);
             } catch {
                 // ignore logging issues
             }
@@ -444,7 +452,7 @@ async function processStream(
         callbacks.onDone(wasTruncated);
 
         // eslint-disable-next-line no-console
-        console.debug('[OpenRouterDebug] streamSummary', {
+        console.log('[OpenRouterDebug] streamSummary', {
             truncated: wasTruncated,
             chunkCount,
             reasoningChunkCount,
