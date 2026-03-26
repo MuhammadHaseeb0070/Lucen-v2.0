@@ -49,6 +49,45 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         return parseArtifacts(message.content, message.id);
     }, [disableArtifacts, message.content, message.id]);
 
+    const normalizedReasoning = useMemo(() => {
+        const raw = (message.reasoning || '').trim();
+        if (!raw) return '';
+
+        // Some providers return reasoning as a JSON array that contains:
+        // - a plaintext summary item: { type: "reasoning.summary", summary: "..." }
+        // - an encrypted blob item:   { type: "reasoning.encrypted", data: "..." }
+        // We only show the summary to avoid rendering huge encrypted payloads.
+        if (raw.startsWith('[') && raw.includes('"type"')) {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    const summaryItem = parsed.find((it) => {
+                        if (!it || typeof it !== 'object') return false;
+                        const type = (it as any).type;
+                        return type === 'reasoning.summary' || String(type).includes('reasoning.summary');
+                    }) as any;
+
+                    if (summaryItem && typeof summaryItem.summary === 'string') {
+                        return summaryItem.summary.trim();
+                    }
+                }
+            } catch {
+                // If streaming gave us only a partial JSON fragment, we fall back to raw.
+            }
+        }
+
+        // Regex fallback (partial JSON / non-ideal formatting):
+        // Try to capture "... reasoning.summary ... summary: '...'"
+        if (raw.includes('reasoning.summary') && raw.includes('"summary"')) {
+            const m = raw.match(/"type"\s*:\s*"reasoning\.summary"[\s\S]*?"summary"\s*:\s*"([^"]*)"/);
+            if (m?.[1]) return m[1];
+        }
+
+        // Fallback: avoid dumping extremely large reasoning blobs into the UI.
+        if (raw.length > 8000) return raw.slice(0, 8000) + '…';
+        return raw;
+    }, [message.reasoning]);
+
     const handleCopy = useCallback(async () => {
         await navigator.clipboard.writeText(message.content);
         setCopied(true);
@@ -116,7 +155,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     return (
         <div className="msg-response">
-                    {!disableReasoning && message.reasoning && (
+                    {!disableReasoning && normalizedReasoning && (
                         <div className="reasoning-block">
                             <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
                                 {reasoningOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -127,7 +166,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             </button>
                             {reasoningOpen && (
                                 <div className="reasoning-content">
-                                    <MarkdownRenderer content={message.reasoning} searchQuery={searchQuery} />
+                                    <MarkdownRenderer content={normalizedReasoning} searchQuery={searchQuery} />
                                 </div>
                             )}
                         </div>
