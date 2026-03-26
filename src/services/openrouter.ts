@@ -8,6 +8,9 @@ import { useTokenStore } from '../store/tokenStore';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
 
+const OPENROUTER_RAW_DEBUG = true;
+const OPENROUTER_RAW_DEBUG_MAX_CHARS = 250_000; // cap to avoid freezing the browser console
+
 interface StreamCallbacks {
     onChunk: (content: string) => void;
     onReasoning: (reasoning: string) => void;
@@ -242,6 +245,14 @@ async function streamViaEdgeFunction(
         console.error('[OpenRouter] VITE_SUPABASE_ANON_KEY is missing. Edge Function call will likely fail.');
     }
 
+    const requestPayload = {
+        messages: apiMessages,
+        model: model.id,
+        max_tokens: outputBudget,
+        is_reasoning: isReasoning,
+        template_mode: templateMode,
+    };
+
     // Debug: confirm this code path executed before we hit the Edge function.
     // eslint-disable-next-line no-console
     console.log('[OpenRouterDebug] sendingRequest', {
@@ -250,6 +261,35 @@ async function streamViaEdgeFunction(
         template_mode: templateMode,
     });
 
+    if (OPENROUTER_RAW_DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log('[OpenRouterDebug] requestHeadersRedacted', {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer [redacted]',
+            apikey: anonKey ? '[present]' : '[missing]',
+        });
+
+        // Redact multimodal payload (image data URLs) so logs stay usable.
+        const safePayload = JSON.parse(JSON.stringify(requestPayload)) as typeof requestPayload;
+        try {
+            for (const m of safePayload.messages as any[]) {
+                if (Array.isArray(m?.content)) {
+                    for (const part of m.content) {
+                        if (part?.type === 'image_url' && part?.image_url?.url && typeof part.image_url.url === 'string') {
+                            const url = part.image_url.url as string;
+                            part.image_url.url = `[redacted-dataurl len=${url.length}]`;
+                        }
+                    }
+                }
+            }
+        } catch {
+            // ignore redaction issues
+        }
+
+        // eslint-disable-next-line no-console
+        console.log('[OpenRouterDebug] requestPayloadFullRedacted', safePayload);
+    }
+
     const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
         method: 'POST',
         headers: {
@@ -257,59 +297,7 @@ async function streamViaEdgeFunction(
             'Authorization': `Bearer ${accessToken}`,
             'apikey': anonKey || '',
         },
-        body: (() => {
-            const requestPayload = {
-            messages: apiMessages,
-            model: model.id,
-            max_tokens: outputBudget,
-            is_reasoning: isReasoning,
-            template_mode: templateMode,
-            };
-
-            // Debug only: log redacted request preview to confirm what the model sees.
-            // This avoids leaking tokens and avoids dumping huge attachment payloads.
-            try {
-                const previewContent = (c: unknown) => {
-                    if (typeof c === 'string') {
-                        const s = c;
-                        return { kind: 'string', len: s.length, head: s.slice(0, 160) };
-                    }
-                    if (Array.isArray(c)) {
-                        // OpenRouter multimodal "content parts"
-                        const parts = c as Array<Record<string, unknown>>;
-                        const textParts = parts.filter((p) => p && typeof p.text === 'string');
-                        const textLen = textParts.reduce((acc, p) => acc + String(p.text || '').length, 0);
-                        const imgParts = parts.filter((p) => p && p.type === 'image_url');
-                        return {
-                            kind: 'parts',
-                            lenParts: parts.length,
-                            textLen,
-                            images: imgParts.length,
-                        };
-                    }
-                    return { kind: typeof c };
-                };
-
-                const debugPayload = {
-                    model: requestPayload.model,
-                    max_tokens: requestPayload.max_tokens,
-                    is_reasoning: requestPayload.is_reasoning,
-                    template_mode: requestPayload.template_mode,
-                    messages_tail: requestPayload.messages
-                        .slice(-6)
-                        .map((m: any) => ({
-                            role: m?.role,
-                            contentPreview: previewContent(m?.content),
-                        })),
-                };
-                // eslint-disable-next-line no-console
-                console.log('[OpenRouterDebug] requestPayloadPreview', debugPayload);
-            } catch {
-                // ignore logging issues
-            }
-
-            return JSON.stringify(requestPayload);
-        })(),
+        body: JSON.stringify(requestPayload),
         signal,
     });
 
@@ -370,6 +358,9 @@ async function processStream(
     let lastDeltaSummary: Record<string, unknown> | null = null;
     let lastReasoningTail: string | null = null;
     let lastContentTail: string | null = null;
+    let rawSse = '';
+    const reasoningSamples: string[] = [];
+    const contentSamples: string[] = [];
 
     const logStreamSummary = (why: 'done' | 'eof' | 'abort' | 'error') => {
         // eslint-disable-next-line no-console
@@ -382,7 +373,14 @@ async function processStream(
             lastDeltaSummary,
             lastReasoningTail,
             lastContentTail,
+            reasoningSamples,
+            contentSamples,
         });
+
+        if (OPENROUTER_RAW_DEBUG) {
+            // eslint-disable-next-line no-console
+            console.log('[OpenRouterDebug] rawSseTail', rawSse);
+        }
     };
 
     function sanitizeAssistantOutput(text: string): string {
@@ -424,6 +422,14 @@ async function processStream(
                 }
 
                 try {
+                    if (OPENROUTER_RAW_DEBUG) {
+                        // Keep raw stream tail bounded.
+                        rawSse += `${trimmed}\n`;
+                        if (rawSse.length > OPENROUTER_RAW_DEBUG_MAX_CHARS) {
+                            rawSse = rawSse.slice(-OPENROUTER_RAW_DEBUG_MAX_CHARS);
+                        }
+                    }
+
                     const parsed = JSON.parse(data);
                     const choice = parsed.choices?.[0];
                     if (!choice) continue;
@@ -456,6 +462,9 @@ async function processStream(
                         }
                         reasoningChunkCount++;
                         lastReasoningTail = reasoningChunk.slice(-220);
+                        if (OPENROUTER_RAW_DEBUG && reasoningSamples.length < 6 && reasoningChunk.trim()) {
+                            reasoningSamples.push(reasoningChunk.slice(0, 400));
+                        }
                     }
 
                     // Handle regular content
@@ -463,6 +472,9 @@ async function processStream(
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                         contentChunkCount++;
                         lastContentTail = String(delta.content).slice(-220);
+                        if (OPENROUTER_RAW_DEBUG && contentSamples.length < 6 && String(delta.content).trim()) {
+                            contentSamples.push(String(delta.content).slice(0, 400));
+                        }
                     }
                 } catch {
                     // Skip malformed JSON chunks
