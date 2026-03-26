@@ -249,13 +249,59 @@ async function streamViaEdgeFunction(
             'Authorization': `Bearer ${accessToken}`,
             'apikey': anonKey || '',
         },
-        body: JSON.stringify({
+        body: (() => {
+            const requestPayload = {
             messages: apiMessages,
             model: model.id,
             max_tokens: outputBudget,
             is_reasoning: isReasoning,
             template_mode: templateMode,
-        }),
+            };
+
+            // Debug only: log redacted request preview to confirm what the model sees.
+            // This avoids leaking tokens and avoids dumping huge attachment payloads.
+            try {
+                const previewContent = (c: unknown) => {
+                    if (typeof c === 'string') {
+                        const s = c;
+                        return { kind: 'string', len: s.length, head: s.slice(0, 160) };
+                    }
+                    if (Array.isArray(c)) {
+                        // OpenRouter multimodal "content parts"
+                        const parts = c as Array<Record<string, unknown>>;
+                        const textParts = parts.filter((p) => p && typeof p.text === 'string');
+                        const textLen = textParts.reduce((acc, p) => acc + String(p.text || '').length, 0);
+                        const imgParts = parts.filter((p) => p && p.type === 'image_url');
+                        return {
+                            kind: 'parts',
+                            lenParts: parts.length,
+                            textLen,
+                            images: imgParts.length,
+                        };
+                    }
+                    return { kind: typeof c };
+                };
+
+                const debugPayload = {
+                    model: requestPayload.model,
+                    max_tokens: requestPayload.max_tokens,
+                    is_reasoning: requestPayload.is_reasoning,
+                    template_mode: requestPayload.template_mode,
+                    messages_tail: requestPayload.messages
+                        .slice(-6)
+                        .map((m: any) => ({
+                            role: m?.role,
+                            contentPreview: previewContent(m?.content),
+                        })),
+                };
+                // eslint-disable-next-line no-console
+                console.debug('[OpenRouterDebug] requestPayloadPreview', debugPayload);
+            } catch {
+                // ignore logging issues
+            }
+
+            return JSON.stringify(requestPayload);
+        })(),
         signal,
     });
 
@@ -301,6 +347,15 @@ async function processStream(
     const decoder = new TextDecoder();
     let buffer = '';
     let wasTruncated = false;
+
+    // Debug tracking: capture last delta route so we can see whether text is
+    // arriving via `delta.content` or `delta.reasoning*`.
+    let chunkCount = 0;
+    let reasoningChunkCount = 0;
+    let contentChunkCount = 0;
+    let lastDeltaSummary: Record<string, unknown> | null = null;
+    let lastReasoningTail: string | null = null;
+    let lastContentTail: string | null = null;
 
     function sanitizeAssistantOutput(text: string): string {
         if (!text) return text;
@@ -352,6 +407,14 @@ async function processStream(
                     const delta = choice.delta;
                     if (!delta) continue;
 
+                    chunkCount++;
+                    const deltaKind = {
+                        hasContent: typeof delta.content === 'string' && delta.content.length > 0,
+                        hasReasoning: Boolean(delta.reasoning || delta.reasoning_content),
+                        finish_reason: choice.finish_reason || null,
+                    };
+                    lastDeltaSummary = deltaKind;
+
                     // Handle reasoning content (DeepSeek R1, Grok reasoning, etc.)
                     if (delta.reasoning || delta.reasoning_content) {
                         const reasoningChunk = String(delta.reasoning || delta.reasoning_content || '');
@@ -362,11 +425,15 @@ async function processStream(
                         } else {
                             callbacks.onReasoning(sanitizeAssistantOutput(reasoningChunk));
                         }
+                        reasoningChunkCount++;
+                        lastReasoningTail = reasoningChunk.slice(-220);
                     }
 
                     // Handle regular content
                     if (delta.content) {
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
+                        contentChunkCount++;
+                        lastContentTail = String(delta.content).slice(-220);
                     }
                 } catch {
                     // Skip malformed JSON chunks
@@ -375,6 +442,17 @@ async function processStream(
         }
 
         callbacks.onDone(wasTruncated);
+
+        // eslint-disable-next-line no-console
+        console.debug('[OpenRouterDebug] streamSummary', {
+            truncated: wasTruncated,
+            chunkCount,
+            reasoningChunkCount,
+            contentChunkCount,
+            lastDeltaSummary,
+            lastReasoningTail,
+            lastContentTail,
+        });
     } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
             callbacks.onDone(false);
