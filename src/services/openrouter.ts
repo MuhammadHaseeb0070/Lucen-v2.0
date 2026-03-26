@@ -277,7 +277,7 @@ async function streamViaEdgeFunction(
                 ? 'Session expired. Please sign out and sign in again.'
                 : `API Error ${response.status}`;
         }
-        callbacks.onError(errorMsg);
+        callbacks.onError(errorMsg); 
         return;
     }
 
