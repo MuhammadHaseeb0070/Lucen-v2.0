@@ -8,7 +8,7 @@ import { useTokenStore } from '../store/tokenStore';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
 
-const OPENROUTER_RAW_DEBUG = true;
+const OPENROUTER_RAW_DEBUG = false;
 const OPENROUTER_RAW_DEBUG_MAX_CHARS = 250_000; // cap to avoid freezing the browser console
 
 interface StreamCallbacks {
@@ -215,14 +215,32 @@ export async function streamChat(
         },
     ];
 
-    await streamViaEdgeFunction(
-        messagesWithBudget,
-        model,
-        session.access_token,
-        callbacks,
-        outputBudget,
-        options.signal
-    );
+    const isReasoningEnabled = options.isSideChat ? false : model.supportsReasoning;
+    // Robust reasoning: OpenAI-style reasoning is often not streamed via SSE.
+    // For main chat, request non-stream JSON so we can read reasoning_details.
+    const shouldStream = options.isSideChat || !model.supportsReasoning;
+
+    if (shouldStream) {
+        await streamViaEdgeFunction(
+            messagesWithBudget,
+            model,
+            session.access_token,
+            callbacks,
+            outputBudget,
+            isReasoningEnabled,
+            options.signal
+        );
+    } else {
+        await completeViaEdgeFunction(
+            messagesWithBudget,
+            model,
+            session.access_token,
+            callbacks,
+            outputBudget,
+            isReasoningEnabled,
+            options.signal
+        );
+    }
 }
 
 /**
@@ -234,12 +252,13 @@ async function streamViaEdgeFunction(
     accessToken: string,
     callbacks: StreamCallbacks,
     outputBudget: number,
+    isReasoningEnabled: boolean,
     signal?: AbortSignal
 ): Promise<void> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const templateMode = useUIStore.getState().templateMode;
-    const isReasoning = model.supportsReasoning;
+    const isReasoning = isReasoningEnabled;
 
     if (!anonKey) {
         console.error('[OpenRouter] VITE_SUPABASE_ANON_KEY is missing. Edge Function call will likely fail.');
@@ -297,7 +316,10 @@ async function streamViaEdgeFunction(
             'Authorization': `Bearer ${accessToken}`,
             'apikey': anonKey || '',
         },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({
+            ...requestPayload,
+            stream: true,
+        }),
         signal,
     });
 
@@ -330,6 +352,103 @@ async function streamViaEdgeFunction(
     }
 
     await processStream(response, callbacks, signal);
+}
+
+/**
+ * Non-stream completion via Supabase Edge Function (chat-proxy).
+ * Used for reliable reasoning extraction (`reasoning_details`) on providers
+ * that do not stream it in SSE deltas.
+ */
+async function completeViaEdgeFunction(
+    apiMessages: Array<Record<string, unknown>>,
+    model: ReturnType<typeof getActiveModel>,
+    accessToken: string,
+    callbacks: StreamCallbacks,
+    outputBudget: number,
+    isReasoningEnabled: boolean,
+    signal?: AbortSignal
+): Promise<void> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    const templateMode = useUIStore.getState().templateMode;
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': anonKey || '',
+        },
+        body: JSON.stringify({
+            messages: apiMessages,
+            model: model.id,
+            max_tokens: outputBudget,
+            is_reasoning: isReasoningEnabled,
+            template_mode: templateMode,
+            stream: false,
+        }),
+        signal,
+    });
+
+    if (!response.ok) {
+        const errBody = await response.text();
+        callbacks.onError(`API Error ${response.status}: ${errBody.slice(0, 300)}`);
+        return;
+    }
+
+    let json: any;
+    try {
+        json = await response.json();
+    } catch {
+        callbacks.onError('Invalid JSON response from chat-proxy');
+        return;
+    }
+
+    const choice = json?.choices?.[0];
+    const msg = choice?.message || {};
+    const content = typeof msg?.content === 'string' ? msg.content : '';
+
+    // OpenRouter typically returns reasoning in one of these fields for non-stream:
+    // - message.reasoning_details (per your quickstart)
+    // - message.reasoning / message.reasoning_content (fallbacks)
+    const reasoningDetails = msg?.reasoning_details;
+    const reasoningContent = msg?.reasoning_content;
+    const reasoningField = msg?.reasoning;
+
+    const reasoning =
+        (typeof reasoningDetails === 'string'
+            ? reasoningDetails
+            : reasoningDetails
+                ? JSON.stringify(reasoningDetails)
+                : undefined) ||
+        (typeof reasoningField === 'string'
+            ? reasoningField
+            : reasoningField
+                ? JSON.stringify(reasoningField)
+                : undefined) ||
+        (typeof reasoningContent === 'string'
+            ? reasoningContent
+            : reasoningContent
+                ? JSON.stringify(reasoningContent)
+                : undefined) ||
+        '';
+
+    const truncated = choice?.finish_reason === 'length';
+
+    const sanitizeAssistantOutput = (text: string) => {
+        let t = text;
+        t = t.replace(/^(?:\s*(?:assistant|system|user)\s*:\s*)+/i, '');
+        t = t.replace(/<lucen_system>[\s\S]*?<\/lucen_system>/gi, '');
+        t = t.replace(/<active_template>[\s\S]*?<\/active_template>/gi, '');
+        t = t.replace(/<template[\s\S]*?<\/template>/gi, '');
+        // If artifacts accidentally arrive in reasoning, they will be handled by content parsing later.
+        return t;
+    };
+
+    if (content) callbacks.onChunk(sanitizeAssistantOutput(content));
+    if (reasoning) callbacks.onReasoning(sanitizeAssistantOutput(reasoning));
+    callbacks.onDone(truncated);
 }
 
 /**

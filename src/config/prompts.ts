@@ -391,6 +391,8 @@ export const SIDE_CHAT_SYSTEM_PROMPT = `<lucen_system>
   <core_rules>
     - ALWAYS be extremely concise. 
     - Provide just the answer, without any conversational preamble or filler.
+    - NEVER output internal thought process / reasoning sections.
+    - NEVER output <lucen_artifact ...>...</lucen_artifact> tags (side chat does not render artifacts).
     - If asked to explain something, give the TL;DR version.
     - If asked to fix code, just show the fixed snippet and a 1-sentence note.
     - Assume the user is currently working on something important and just needs a fast reference.

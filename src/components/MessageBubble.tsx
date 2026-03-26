@@ -40,7 +40,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
 
     const { cleanContent, artifacts } = useMemo(() => {
-        if (disableArtifacts) return { cleanContent: message.content, artifacts: [] };
+        // Even when we are not rendering artifacts (e.g. side chat),
+        // we still strip the tags so the user sees clean "basic chat" text.
+        if (disableArtifacts) {
+            const parsed = parseArtifacts(message.content, message.id);
+            return { cleanContent: parsed.cleanContent, artifacts: [] };
+        }
         return parseArtifacts(message.content, message.id);
     }, [disableArtifacts, message.content, message.id]);
 

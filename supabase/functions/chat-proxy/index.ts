@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // ─── Parse request body ───
-        const { messages, model, max_tokens, is_reasoning } = await req.json();
+        const { messages, model, max_tokens, is_reasoning, stream } = await req.json();
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -123,6 +123,8 @@ Deno.serve(async (req: Request) => {
             SERVER_MAX_TOKENS_CAP
         );
 
+        const shouldStream = stream !== false;
+
         const openrouterResponse = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: {
@@ -134,9 +136,10 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({
                 model,
                 messages,
-                stream: true,
+                stream: shouldStream,
                 max_tokens: resolvedMaxTokens,
                 include_usage: true,
+                ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
             }),
         });
 
@@ -147,6 +150,40 @@ Deno.serve(async (req: Request) => {
                 JSON.stringify({ error: `OpenRouter API Error ${openrouterResponse.status}`, details: errBody }),
                 { status: openrouterResponse.status, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
+        }
+
+        // ─── Non-stream mode: return JSON (for reliable reasoning_details) ───
+        if (!shouldStream) {
+            const json = await openrouterResponse.json();
+            const usage = json?.usage || {};
+            const promptTokens = usage?.prompt_tokens || 0;
+            const completionTokens = usage?.completion_tokens || 0;
+
+            const COST_PER_MILLION = 500;
+            const totalTokens = promptTokens + completionTokens;
+            const exactCost = (totalTokens / 1_000_000) * COST_PER_MILLION;
+            const creditCost = Math.max(0.0001, exactCost);
+
+            try {
+                await supabaseAdmin.rpc('deduct_user_credits', {
+                    p_user_id: user.id,
+                    p_amount: creditCost,
+                });
+
+                await supabaseAdmin.from('usage_logs').insert({
+                    user_id: user.id,
+                    prompt_tokens: promptTokens,
+                    completion_tokens: completionTokens,
+                    reasoning_tokens: is_reasoning ? completionTokens : 0,
+                    total_credits_deducted: creditCost,
+                });
+            } catch (dbErr) {
+                console.error('Failed to deduct credits or log usage:', dbErr);
+            }
+
+            return new Response(JSON.stringify(json), {
+                headers: { ...cors, 'Content-Type': 'application/json' },
+            });
         }
 
         // ─── Stream response back to client ───
