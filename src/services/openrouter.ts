@@ -302,6 +302,24 @@ async function processStream(
     let buffer = '';
     let wasTruncated = false;
 
+    function sanitizeAssistantOutput(text: string): string {
+        if (!text) return text;
+
+        let t = text;
+
+        // Strip role-label leakage that some models emit (especially after prompt changes).
+        // Keep this intentionally conservative: only remove at the start of a chunk/line.
+        t = t.replace(/^(?:\s*(?:assistant|system|user)\s*:\s*)+/i, '');
+
+        // If system/template tags leak into output, strip them.
+        // (If a user intentionally requests these tags, they can still paste them manually.)
+        t = t.replace(/<lucen_system>[\s\S]*?<\/lucen_system>/gi, '');
+        t = t.replace(/<active_template>[\s\S]*?<\/active_template>/gi, '');
+        t = t.replace(/<template[\s\S]*?<\/template>/gi, '');
+
+        return t;
+    }
+
     try {
         while (true) {
             const { done, value } = await reader.read();
@@ -336,12 +354,19 @@ async function processStream(
 
                     // Handle reasoning content (DeepSeek R1, Grok reasoning, etc.)
                     if (delta.reasoning || delta.reasoning_content) {
-                        callbacks.onReasoning(delta.reasoning || delta.reasoning_content);
+                        const reasoningChunk = String(delta.reasoning || delta.reasoning_content || '');
+                        // Some providers may mistakenly emit artifact blocks in the reasoning channel.
+                        // Route those back to normal content so the artifact pipeline can handle them.
+                        if (reasoningChunk.includes('<lucen_artifact')) {
+                            callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
+                        } else {
+                            callbacks.onReasoning(sanitizeAssistantOutput(reasoningChunk));
+                        }
                     }
 
                     // Handle regular content
                     if (delta.content) {
-                        callbacks.onChunk(delta.content);
+                        callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                     }
                 } catch {
                     // Skip malformed JSON chunks

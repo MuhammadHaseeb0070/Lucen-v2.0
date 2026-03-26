@@ -201,10 +201,9 @@ const SideChatPanel: React.FC = () => {
                     });
                 },
                 onReasoning: (reasoning) => {
-                    const msg = useSideChatStore.getState().messages.find((m) => m.id === assistantMsgId);
-                    updateMessage(assistantMsgId, {
-                        reasoning: (msg?.reasoning || '') + reasoning,
-                    });
+                    // Side chat intentionally does not display/store reasoning.
+                    // Ignore streamed reasoning to keep UI consistent.
+                    void reasoning;
                 },
                 onDone: () => {
                     updateMessage(assistantMsgId, { isStreaming: false });
@@ -435,7 +434,12 @@ const SideChatPanel: React.FC = () => {
                                                                         <span className="sc-ai-name">Lucen AI</span>
                                                                     </div>
                                                                     <div className="sc-response">
-                                                                        <MessageBubble message={nextMsg} showDelete={false} />
+                                                                        <MessageBubble
+                                                                            message={nextMsg}
+                                                                            showDelete={false}
+                                                                            disableReasoning
+                                                                            disableArtifacts
+                                                                        />
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -455,7 +459,12 @@ const SideChatPanel: React.FC = () => {
                                                             <span className="sc-ai-name">Lucen AI</span>
                                                         </div>
                                                         <div className="sc-response">
-                                                            <MessageBubble message={msg} showDelete={false} />
+                                                            <MessageBubble
+                                                                message={msg}
+                                                                showDelete={false}
+                                                                disableReasoning
+                                                                disableArtifacts
+                                                            />
                                                         </div>
                                                     </div>
                                                 </div>

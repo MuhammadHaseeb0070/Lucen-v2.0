@@ -16,6 +16,8 @@ interface MessageBubbleProps {
     showRetry?: boolean;
     actionsOnly?: boolean;
     searchQuery?: string;
+    disableReasoning?: boolean;
+    disableArtifacts?: boolean;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
@@ -28,6 +30,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     showRetry = false,
     actionsOnly = false,
     searchQuery,
+    disableReasoning = false,
+    disableArtifacts = false,
 }) => {
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -35,10 +39,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
     const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
 
-    const { cleanContent, artifacts } = useMemo(
-        () => parseArtifacts(message.content, message.id),
-        [message.content, message.id]
-    );
+    const { cleanContent, artifacts } = useMemo(() => {
+        if (disableArtifacts) return { cleanContent: message.content, artifacts: [] };
+        return parseArtifacts(message.content, message.id);
+    }, [disableArtifacts, message.content, message.id]);
 
     const handleCopy = useCallback(async () => {
         await navigator.clipboard.writeText(message.content);
@@ -51,6 +55,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const openedRef = useRef(false);
 
     useEffect(() => {
+        if (disableArtifacts) {
+            openedRef.current = false;
+            return;
+        }
         if (artifacts.length === 0) {
             openedRef.current = false;
             return;
@@ -77,7 +85,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             updateArtifactContent({ ...first, isStreaming: false });
             openedRef.current = false;
         }
-    }, [artifacts, setActiveArtifact, updateArtifactContent]);
+    }, [disableArtifacts, artifacts, setActiveArtifact, updateArtifactContent]);
 
     if (actionsOnly) {
         if (!message.content) return null;
@@ -103,7 +111,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     return (
         <div className="msg-response">
-                    {message.reasoning && (
+                    {!disableReasoning && message.reasoning && (
                         <div className="reasoning-block">
                             <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
                                 {reasoningOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -127,7 +135,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             ) : (
                 <>
                     {cleanContent && <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />}
-                    {artifacts.map((artifact) => (
+                    {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}
                 </>
