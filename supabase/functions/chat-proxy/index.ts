@@ -9,6 +9,13 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
     return JSON.parse(json);
 }
 
+function getReasoningTokens(usage: Record<string, unknown> | undefined): number {
+    if (!usage || typeof usage !== 'object') return 0;
+    const details = usage.completion_tokens_details as Record<string, unknown> | undefined;
+    const value = details?.reasoning_tokens;
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') {
@@ -158,6 +165,7 @@ Deno.serve(async (req: Request) => {
             const usage = json?.usage || {};
             const promptTokens = usage?.prompt_tokens || 0;
             const completionTokens = usage?.completion_tokens || 0;
+            const reasoningTokens = getReasoningTokens(usage);
 
             const COST_PER_MILLION = 500;
             const totalTokens = promptTokens + completionTokens;
@@ -174,7 +182,7 @@ Deno.serve(async (req: Request) => {
                     user_id: user.id,
                     prompt_tokens: promptTokens,
                     completion_tokens: completionTokens,
-                    reasoning_tokens: is_reasoning ? completionTokens : 0,
+                    reasoning_tokens: reasoningTokens,
                     total_credits_deducted: creditCost,
                 });
             } catch (dbErr) {
@@ -194,6 +202,7 @@ Deno.serve(async (req: Request) => {
 
         let promptTokens = 0;
         let completionTokens = 0;
+        let reasoningTokens = 0;
 
         (async () => {
             try {
@@ -217,6 +226,7 @@ Deno.serve(async (req: Request) => {
                             if (parsed.usage) {
                                 promptTokens = parsed.usage.prompt_tokens || 0;
                                 completionTokens = parsed.usage.completion_tokens || 0;
+                                reasoningTokens = getReasoningTokens(parsed.usage as Record<string, unknown>);
                             }
                         } catch { /* ignore partial JSON */ }
                     }
@@ -241,7 +251,7 @@ Deno.serve(async (req: Request) => {
                         user_id: user.id,
                         prompt_tokens: promptTokens,
                         completion_tokens: completionTokens,
-                        reasoning_tokens: is_reasoning ? completionTokens : 0,
+                        reasoning_tokens: reasoningTokens,
                         total_credits_deducted: creditCost,
                     });
 

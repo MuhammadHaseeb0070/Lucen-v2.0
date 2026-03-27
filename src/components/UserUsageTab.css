@@ -1,0 +1,148 @@
+.usage-tab {
+    padding: 0 16px 16px;
+}
+
+.usage-tab__desc {
+    margin-bottom: 14px;
+}
+
+.usage-credit-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--divider);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    margin-bottom: 18px;
+}
+
+.usage-credit-card__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.14);
+    flex-shrink: 0;
+}
+
+.usage-credit-card__content {
+    min-width: 0;
+}
+
+.usage-credit-card__label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.usage-credit-card__value {
+    margin: 4px 0 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.usage-logs-section {
+    border: 1px solid var(--divider);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    overflow: hidden;
+}
+
+.usage-logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--divider);
+}
+
+.usage-logs-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.usage-logs-header span {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.usage-logs-state {
+    padding: 20px 14px;
+    color: var(--text-secondary);
+}
+
+.usage-logs-state--error {
+    color: var(--danger);
+}
+
+.usage-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.usage-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 760px;
+}
+
+.usage-table th,
+.usage-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--divider);
+    text-align: left;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.usage-table th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-tertiary);
+}
+
+.usage-table tr:last-child td {
+    border-bottom: none;
+}
+
+.usage-table__id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color: var(--accent);
+}
+
+.usage-table__credits {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.usage-table__reasoning {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .usage-tab {
+        padding: 0 10px 12px;
+    }
+
+    .usage-credit-card {
+        padding: 12px;
+    }
+
+    .usage-credit-card__value {
+        font-size: 19px;
+    }
+
+    .usage-logs-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
