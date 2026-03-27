@@ -3,7 +3,7 @@
    Spacious · Soft · Calm · Readable
    ============================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
 
 /* ─── Design Tokens ─── */
@@ -56,7 +56,8 @@
     --dur: 200ms;
     --dur-slow: 320ms;
 
-    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-ui: 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 /* ─── Reset ─── */
@@ -69,20 +70,31 @@
 }
 
 html {
-    font-size: 15px;
+    font-size: clamp(14px, 0.78vw + 10.8px, 16px);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 body {
     font-family: var(--font);
     background: var(--bg-base);
     color: var(--text-primary);
-    line-height: 1.65;
+    line-height: 1.62;
+    letter-spacing: 0.01em;
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
     transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+h1,
+h2,
+h3,
+h4 {
+    font-family: var(--font);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
 }
 
 #root {
@@ -140,12 +152,12 @@ body {
     align-items: center;
     justify-content: space-between;
     height: var(--nav-h);
-    padding: 0 20px;
+    padding: 0 22px;
     background: var(--bg-surface);
     border-bottom: 1px solid var(--divider);
     flex-shrink: 0;
     z-index: 100;
-    transition: background var(--dur) var(--ease);
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .navbar-left {
@@ -156,11 +168,29 @@ body {
 .navbar-brand {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 1.1rem;
+    gap: 10px;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: -0.4px;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+}
+
+.navbar-brand-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.navbar-brand-wordmark {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 1rem;
 }
 
 .brand-icon {
@@ -254,7 +284,7 @@ body {
     padding: 5px 12px;
     background: var(--bg-muted);
     border-radius: var(--r-full);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     color: var(--success);
     font-weight: 600;
 }
@@ -269,8 +299,8 @@ body {
     border: 1px solid var(--divider);
     border-radius: var(--r-md);
     color: var(--text-secondary);
-    font-size: 0.78rem;
-    font-weight: 500;
+    font-size: 0.8rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all var(--dur-fast) var(--ease);
     font-family: var(--font);
@@ -310,6 +340,7 @@ body {
 
 .toggle-label {
     display: inline;
+    letter-spacing: 0.01em;
 }
 
 /* ═══════════════════════════════════════════
@@ -4201,6 +4232,7 @@ body {
 
     .credits-display {
         padding: 4px 8px;
+        font-size: 0.75rem;
     }
 
     .profile-btn {
@@ -4612,8 +4644,14 @@ body {
     }
 
     .navbar-brand {
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         gap: 6px;
+    }
+
+    .navbar-brand-mark {
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
     }
 
     .brand-icon {

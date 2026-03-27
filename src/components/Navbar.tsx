@@ -42,8 +42,10 @@ const Navbar: React.FC = () => {
                     <Menu size={20} />
                 </button>
                 <Link className="navbar-brand" to="/">
-                    <Logo size={20} className="brand-icon" />
-                    Lucen
+                    <span className="navbar-brand-mark">
+                        <Logo size={20} className="brand-icon" />
+                    </span>
+                    <span className="navbar-brand-wordmark">Lucen</span>
                 </Link>
             </div>
 

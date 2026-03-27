@@ -404,7 +404,7 @@ const LandingPage: React.FC = () => {
                         <FeatureCard
                             icon={<Keyboard size={24} />}
                             title="Developer Shortcuts"
-                            description="Ctrl+N for new chat. Ctrl+B tp toggle sidebar. Escape to halt-and-edit. Every keystroke is intentional to keep your hands on the keyboard."
+                            description="Ctrl+N for new chat. Ctrl+B to toggle sidebar. Escape to halt-and-edit. Every keystroke is intentional to keep your hands on the keyboard."
                             mockup={<ShortcutsMockup />}
                         />
                     </div>
