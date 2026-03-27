@@ -331,7 +331,7 @@ const LandingPage: React.FC = () => {
                     </h1>
 
                     <p className="landing-lead">
-                        Lucen isn't just another chatbot — it's a complete AI workspace with
+                        Lucen isn't just another chatbot, it's a complete AI workspace with
                         Side Chat, message control, hand-crafted themes, keyboard shortcuts,
                         and artifacts. Built for people who think AI conversations should be
                         as powerful as their ideas.
@@ -398,7 +398,7 @@ const LandingPage: React.FC = () => {
                         <FeatureCard
                             icon={<Palette size={24} />}
                             title="8 Premium Themes"
-                            description="From warm Latte mornings to deep Observatory nights — every theme is hand-crafted for readability and aesthetics. Not just light vs dark."
+                            description="From warm Latte mornings to deep Observatory nights, every theme is hand-crafted for readability and aesthetics. Not just light vs dark."
                             mockup={null}
                         />
                         <FeatureCard
@@ -506,7 +506,7 @@ const LandingPage: React.FC = () => {
                         <span>Lucen</span>
                     </div>
                     <p className="landing-footer-tagline">
-                        Premium AI workspace — built for focus, designed for you.
+                        Premium AI workspace, built for focus, designed for you.
                     </p>
                     <p className="landing-footer-copy">
                         © {new Date().getFullYear()} Lucen. All rights reserved.

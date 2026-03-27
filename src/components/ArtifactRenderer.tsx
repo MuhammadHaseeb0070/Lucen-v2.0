@@ -33,7 +33,7 @@ class RendererErrorBoundary extends Component<
       return (
         <div className="artifact-render-error">
           <div className="artifact-render-error-banner">
-            <AlertTriangle size={16} /><span>Preview failed — showing source code</span>
+            <AlertTriangle size={16} /><span>Preview failed, showing source code</span>
             <span className="artifact-render-error-detail">{this.state.error}</span>
           </div>
           <CodeFallback content={this.props.content} language={this.props.language} />
@@ -214,7 +214,7 @@ const SvgRenderer: React.FC<RendererProps> = ({ content }) => {
     return (
       <div className="artifact-render-error">
         <div className="artifact-render-error-banner">
-          <AlertTriangle size={16} /><span>SVG preview failed — showing source code</span>
+          <AlertTriangle size={16} /><span>SVG preview failed, showing source code</span>
           <span className="artifact-render-error-detail">{renderError}</span>
         </div>
         <CodeFallback content={content} language="xml" />
@@ -332,7 +332,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content }) => {
     return (
       <div className="artifact-render-error">
         <div className="artifact-render-error-banner">
-          <AlertTriangle size={16} /><span>Diagram syntax not fully supported — showing source</span>
+          <AlertTriangle size={16} /><span>Diagram syntax not fully supported, showing source</span>
         </div>
         <CodeFallback content={content} language="mermaid" />
       </div>
