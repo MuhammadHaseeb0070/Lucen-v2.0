@@ -6,7 +6,10 @@
 // Make sure NOT to put secret keys here.
 
 export interface PricingPackage {
-    id: string; // The stripe price ID (e.g. price_1Nxy...)
+    /** Internal stable ID for UI + analytics. */
+    id: 'free' | 'regular' | 'pro';
+    /** Lemon Squeezy Variant ID (required for paid tiers). */
+    variantId?: string;
     name: string;
     priceUsd: number;
     creditsProvided: number;
@@ -15,24 +18,34 @@ export interface PricingPackage {
 
 export const PACKAGES: Record<string, PricingPackage> = {
     FREE: {
-        id: 'free_tier',
-        name: 'Starter',
+        id: 'free',
+        name: 'Free',
         priceUsd: 0,
-        creditsProvided: 500, // $0.50 worth
-        description: 'Perfect for testing the waters.',
+        creditsProvided: 100,
+        description: '100k tokens, 3 Web Searches, standard image processing',
+    },
+    REGULAR: {
+        id: 'regular',
+        variantId: import.meta.env.VITE_LS_VARIANT_REGULAR,
+        name: 'Regular',
+        priceUsd: 10.00,
+        creditsProvided: 4000,
+        description: '4 Million Tokens, unlimited high-res vision, unlimited search',
     },
     PRO: {
-        id: import.meta.env.VITE_STRIPE_PRO_PRICE_ID || 'pro_tier',
-        name: 'Pro Access',
-        priceUsd: 15.00,
-        creditsProvided: 10000, // Massive psychological value
-        description: '10,000 High-Speed Compute Credits',
-    }
+        id: 'pro',
+        variantId: import.meta.env.VITE_LS_VARIANT_PRO,
+        name: 'Pro',
+        priceUsd: 20.00,
+        creditsProvided: 10000,
+        description: '10 Million Tokens, volume discount, pure freedom',
+    },
 };
 
-// Internal Token Cost Mapping
-export const TOKEN_COSTS = {
-    // 500 Credits ($0.50) per 1 Million Tokens (Input or Output combined as flat rate)
-    // Formula for deduction: (tokens / 1,000,000) * COST_PER_MILLION
-    COST_PER_MILLION: 500,
-};
+/** Lucen Credit system constants (display-only; server is authoritative). */
+export const CREDIT_RULES = {
+    TOKENS_PER_CREDIT: 1000,
+    IMAGE_CREDITS: 2,
+    WEB_SEARCH_CREDITS: 10,
+    FREE_TIER_MAX_SEARCHES: 3,
+} as const;

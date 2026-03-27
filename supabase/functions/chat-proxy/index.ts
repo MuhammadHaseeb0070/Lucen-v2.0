@@ -2,6 +2,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const WEB_PLUGIN_ID = 'web';
+const FREE_TIER_MAX_SEARCHES = 3;
+const CREDITS_PER_1K_TOKENS = 1;
+const CREDITS_PER_IMAGE = 2;
+const CREDITS_PER_WEB_SEARCH = 10;
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
     const base64 = token.split('.')[1];
@@ -14,6 +19,52 @@ function getReasoningTokens(usage: Record<string, unknown> | undefined): number 
     const details = usage.completion_tokens_details as Record<string, unknown> | undefined;
     const value = details?.reasoning_tokens;
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function countImagesInMessages(messages: unknown): number {
+    if (!Array.isArray(messages)) return 0;
+    let count = 0;
+    for (const msg of messages) {
+        if (!msg || typeof msg !== 'object') continue;
+        const content = (msg as Record<string, unknown>).content;
+        if (!Array.isArray(content)) continue;
+        for (const part of content) {
+            if (!part || typeof part !== 'object') continue;
+            const p = part as Record<string, unknown>;
+            if (p.type === 'image_url' && p.image_url && typeof p.image_url === 'object') {
+                const img = p.image_url as Record<string, unknown>;
+                if (typeof img.url === 'string' && img.url) count += 1;
+            }
+        }
+    }
+    return count;
+}
+
+function forceImageDetailLow(messages: unknown): void {
+    if (!Array.isArray(messages)) return;
+    for (const msg of messages) {
+        if (!msg || typeof msg !== 'object') continue;
+        const content = (msg as Record<string, unknown>).content;
+        if (!Array.isArray(content)) continue;
+        for (const part of content) {
+            if (!part || typeof part !== 'object') continue;
+            const p = part as Record<string, unknown>;
+            if (p.type === 'image_url' && p.image_url && typeof p.image_url === 'object') {
+                const img = p.image_url as Record<string, unknown>;
+                img.detail = 'low';
+            }
+        }
+    }
+}
+
+function hasWebPlugin(plugins: unknown): boolean {
+    if (!Array.isArray(plugins)) return false;
+    return plugins.some((p) => p && typeof p === 'object' && (p as Record<string, unknown>).id === WEB_PLUGIN_ID);
+}
+
+function stripWebPlugin(plugins: unknown): unknown {
+    if (!Array.isArray(plugins)) return plugins;
+    return plugins.filter((p) => !(p && typeof p === 'object' && (p as Record<string, unknown>).id === WEB_PLUGIN_ID));
 }
 
 Deno.serve(async (req: Request) => {
@@ -90,21 +141,8 @@ Deno.serve(async (req: Request) => {
         const user = adminUser.user;
         console.log(`[Auth OK] ${user.id} (${user.email})`);
 
-        // ─── Credit Check ───
-        const { data: balance } = await supabaseAdmin.rpc('ensure_user_credits', {
-            p_user_id: user.id,
-            p_initial_credits: 100,
-        });
-
-        if (typeof balance === 'number' && balance <= 0) {
-            return new Response(
-                JSON.stringify({ error: 'Insufficient credits' }),
-                { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
-
         // ─── Parse request body ───
-        const { messages, model, max_tokens, is_reasoning, stream } = await req.json();
+        const { messages, model, max_tokens, is_reasoning, stream, plugins } = await req.json();
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -119,6 +157,61 @@ Deno.serve(async (req: Request) => {
                 { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
+
+        const imageCount = countImagesInMessages(messages);
+        const requestedWebSearch = hasWebPlugin(plugins);
+
+        // ─── Pre-flight: fetch subscription + balance before OpenRouter ───
+        await supabaseAdmin.rpc('ensure_user_credits', {
+            p_user_id: user.id,
+            p_initial_credits: 100,
+        });
+
+        const { data: creditsRow, error: creditsErr } = await supabaseAdmin
+            .from('user_credits')
+            .select('remaining_credits, subscription_status, free_searches_used')
+            .eq('user_id', user.id)
+            .single();
+
+        if (creditsErr || !creditsRow) {
+            return new Response(
+                JSON.stringify({ error: 'Failed to load user credits' }),
+                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        const subscriptionStatus = (creditsRow.subscription_status || 'free') as string;
+        const remainingCredits = typeof creditsRow.remaining_credits === 'number' ? creditsRow.remaining_credits : 0;
+        const freeSearchesUsed = typeof (creditsRow as any).free_searches_used === 'number' ? (creditsRow as any).free_searches_used : 0;
+
+        if (remainingCredits <= 0) {
+            return new Response(
+                JSON.stringify({ error: 'Insufficient credits' }),
+                { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        // ─── Tier 0 (free) constraints ───
+        let effectivePlugins: unknown = plugins;
+        if (subscriptionStatus === 'free') {
+            // Vision override: force all images to low detail.
+            forceImageDetailLow(messages);
+
+            // Web search limit enforcement.
+            if (requestedWebSearch && freeSearchesUsed >= FREE_TIER_MAX_SEARCHES) {
+                // Soft error asking for upgrade (do not call OpenRouter).
+                return new Response(
+                    JSON.stringify({
+                        error: 'Free tier web search limit reached. Upgrade to Regular or Pro for unlimited web search.',
+                        code: 'FREE_SEARCH_LIMIT_REACHED',
+                    }),
+                    { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
+                );
+            }
+        }
+
+        // If we want to silently strip the plugin instead of blocking:
+        // effectivePlugins = subscriptionStatus === 'free' ? stripWebPlugin(effectivePlugins) : effectivePlugins;
 
         // ─── Server-side token cap ───
         // Never trust the client value blindly. Cap at a safe server maximum.
@@ -143,6 +236,7 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({
                 model,
                 messages,
+                ...(effectivePlugins ? { plugins: effectivePlugins } : {}),
                 stream: shouldStream,
                 max_tokens: resolvedMaxTokens,
                 include_usage: true,
@@ -159,31 +253,40 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // ─── Non-stream mode: return JSON (for reliable reasoning_details) ───
+        // ─── Non-stream mode ───
         if (!shouldStream) {
             const json = await openrouterResponse.json();
             const usage = json?.usage || {};
             const promptTokens = usage?.prompt_tokens || 0;
             const completionTokens = usage?.completion_tokens || 0;
             const reasoningTokens = getReasoningTokens(usage);
+            const totalTokens = usage?.total_tokens ?? (promptTokens + completionTokens);
+            const totalTokensNum = typeof totalTokens === 'number' && Number.isFinite(totalTokens) ? totalTokens : (promptTokens + completionTokens);
 
-            const COST_PER_MILLION = 500;
-            const totalTokens = promptTokens + completionTokens;
-            const exactCost = (totalTokens / 1_000_000) * COST_PER_MILLION;
-            const creditCost = Math.max(0.0001, exactCost);
+            const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
+            const imageCost = imageCount * CREDITS_PER_IMAGE;
+            const searchCost = requestedWebSearch ? CREDITS_PER_WEB_SEARCH : 0;
+            const totalCost = textCost + imageCost + searchCost;
 
             try {
                 await supabaseAdmin.rpc('deduct_user_credits', {
                     p_user_id: user.id,
-                    p_amount: creditCost,
+                    p_amount: totalCost,
                 });
+
+                if (subscriptionStatus === 'free' && requestedWebSearch) {
+                    await supabaseAdmin
+                        .from('user_credits')
+                        .update({ free_searches_used: freeSearchesUsed + 1 })
+                        .eq('user_id', user.id);
+                }
 
                 await supabaseAdmin.from('usage_logs').insert({
                     user_id: user.id,
                     prompt_tokens: promptTokens,
                     completion_tokens: completionTokens,
                     reasoning_tokens: reasoningTokens,
-                    total_credits_deducted: creditCost,
+                    total_credits_deducted: totalCost,
                 });
             } catch (dbErr) {
                 console.error('Failed to deduct credits or log usage:', dbErr);
@@ -203,6 +306,7 @@ Deno.serve(async (req: Request) => {
         let promptTokens = 0;
         let completionTokens = 0;
         let reasoningTokens = 0;
+        let totalTokens = 0;
 
         (async () => {
             try {
@@ -227,6 +331,7 @@ Deno.serve(async (req: Request) => {
                                 promptTokens = parsed.usage.prompt_tokens || 0;
                                 completionTokens = parsed.usage.completion_tokens || 0;
                                 reasoningTokens = getReasoningTokens(parsed.usage as Record<string, unknown>);
+                                totalTokens = parsed.usage.total_tokens || (promptTokens + completionTokens);
                             }
                         } catch { /* ignore partial JSON */ }
                     }
@@ -236,26 +341,37 @@ Deno.serve(async (req: Request) => {
             } finally {
                 await writer.close();
 
-                const COST_PER_MILLION = 500;
-                const totalTokens = promptTokens + completionTokens;
-                const exactCost = (totalTokens / 1_000_000) * COST_PER_MILLION;
-                const creditCost = Math.max(0.0001, exactCost);
+                const totalTokensNum = typeof totalTokens === 'number' && Number.isFinite(totalTokens) && totalTokens > 0
+                    ? totalTokens
+                    : (promptTokens + completionTokens);
+
+                const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
+                const imageCost = imageCount * CREDITS_PER_IMAGE;
+                const searchCost = requestedWebSearch ? CREDITS_PER_WEB_SEARCH : 0;
+                const totalCost = textCost + imageCost + searchCost;
 
                 try {
                     await supabaseAdmin.rpc('deduct_user_credits', {
                         p_user_id: user.id,
-                        p_amount: creditCost,
+                        p_amount: totalCost,
                     });
+
+                    if (subscriptionStatus === 'free' && requestedWebSearch) {
+                        await supabaseAdmin
+                            .from('user_credits')
+                            .update({ free_searches_used: freeSearchesUsed + 1 })
+                            .eq('user_id', user.id);
+                    }
 
                     await supabaseAdmin.from('usage_logs').insert({
                         user_id: user.id,
                         prompt_tokens: promptTokens,
                         completion_tokens: completionTokens,
                         reasoning_tokens: reasoningTokens,
-                        total_credits_deducted: creditCost,
+                        total_credits_deducted: totalCost,
                     });
 
-                    console.log(`Deducted ${creditCost.toFixed(4)} credits for ${totalTokens} tokens (User: ${user.id})`);
+                    console.log(`Deducted ${totalCost.toFixed(4)} credits for ${totalTokensNum} tokens (User: ${user.id})`);
                 } catch (dbErr) {
                     console.error('Failed to deduct credits or log usage:', dbErr);
                 }

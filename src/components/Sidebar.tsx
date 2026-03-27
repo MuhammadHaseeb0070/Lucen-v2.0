@@ -35,6 +35,7 @@ const Sidebar: React.FC = () => {
         setSidebarWidth,
         isAdminView,
         setIsAdminView,
+        setBillingOpen,
     } = useUIStore();
     const { remainingCredits, isLoading: creditsLoading } = useCreditsStore();
     const { user } = useAuthStore();
@@ -251,7 +252,11 @@ const Sidebar: React.FC = () => {
 
             {/* Token / Credit Visualizer */}
             {!sidebarCollapsed && user && (
-                <div className="sidebar-credits-block" onClick={() => {/* Future Dashboard/Upgrade */ }}>
+                <div
+                    className="sidebar-credits-block"
+                    onClick={() => setBillingOpen(true)}
+                    title="Upgrade plan"
+                >
                     <div className="sidebar-credits-info">
                         <span className="sidebar-credits-label">Your Balance</span>
                         <div className="sidebar-credits-amount">
