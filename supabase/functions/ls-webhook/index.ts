@@ -361,13 +361,32 @@ serve(async (req: Request) => {
     // ── Payment events (subscription_payment_success) ──
     // This is the ONLY event that grants credits!
     if (eventName.toLowerCase() === "subscription_payment_success") {
-      if (!variantId) {
-        console.log("ls-webhook: payment_success without variant_id, skipping credit grant");
+      let finalVariantId = variantId;
+
+      if (!finalVariantId) {
+        // Fallback: For renewals or portal upgrades, the invoice might lack variant_id.
+        // We fetch the current tracked plan from the database.
+        const supabaseAdmin = getSupabaseAdmin();
+        const { data: userRow } = await supabaseAdmin
+          .from("user_credits")
+          .select("subscription_plan")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (userRow?.subscription_plan === "regular") {
+          finalVariantId = VARIANT_REGULAR;
+        } else if (userRow?.subscription_plan === "pro") {
+          finalVariantId = VARIANT_PRO;
+        }
+      }
+
+      if (!finalVariantId) {
+        console.log("ls-webhook: payment_success without variant_id and no DB plan, skipping credit grant");
         await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      const variantInfo = getCreditsForVariant(variantId);
+      const variantInfo = getCreditsForVariant(finalVariantId);
       if (variantInfo) {
         await grantPaymentCredits({
           userId,
@@ -377,7 +396,7 @@ serve(async (req: Request) => {
           eventId,
           eventName,
           userId,
-          variantId,
+          variantId: finalVariantId,
           creditsGranted: variantInfo.credits,
         });
         console.log(`ls-webhook: payment_success granted ${variantInfo.credits} credits to user ${userId} and tracking billing cycle.`);

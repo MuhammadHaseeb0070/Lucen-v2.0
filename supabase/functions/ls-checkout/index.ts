@@ -64,6 +64,7 @@ async function createLemonCheckout(params: {
     checkout_data: {
       custom: {
         user_id: params.userId,
+        variant_id: params.variantId,
       },
     },
   };
