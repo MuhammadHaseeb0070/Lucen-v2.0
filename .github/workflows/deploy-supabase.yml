@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'supabase/**'
+      # Workflow edits don’t live under supabase/ — include them so secrets deploy + function list updates actually run.
+      - '.github/workflows/deploy-supabase.yml'
   workflow_dispatch:
 
 concurrency:
@@ -38,6 +40,11 @@ jobs:
         run: |
           supabase secrets set OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}"
           supabase secrets set VITE_APP_URL="${{ secrets.VITE_APP_URL }}"
+          supabase secrets set LEMON_SQUEEZY_API_KEY="${{ secrets.LEMON_SQUEEZY_API_KEY }}"
+          supabase secrets set LEMON_SQUEEZY_WEBHOOK_SECRET="${{ secrets.LEMON_SQUEEZY_WEBHOOK_SECRET }}"
+          supabase secrets set LS_VARIANT_REGULAR="${{ secrets.LS_VARIANT_REGULAR }}"
+          supabase secrets set LS_VARIANT_PRO="${{ secrets.LS_VARIANT_PRO }}"
+          supabase secrets set SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
