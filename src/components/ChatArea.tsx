@@ -29,7 +29,7 @@ const ChatArea: React.FC = () => {
         isMessageLoading,
     } = useChatStore();
 
-    const { deductCredits, hasEnoughCredits } = useCreditsStore();
+    const { hasEnoughCredits } = useCreditsStore();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -162,8 +162,10 @@ const ChatArea: React.FC = () => {
                     isTruncated: truncated || false,
                 });
                 abortRef.current = null;
+                // Sync credit balance from server after deduction
+                useCreditsStore.getState().syncFromServer();
             },
-            onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; },
+            onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; useCreditsStore.getState().syncFromServer(); },
         }, { signal: controller.signal });
     };
 
@@ -210,17 +212,14 @@ const ChatArea: React.FC = () => {
     };
 
     const handleSend = async (content: string, attachments?: FileAttachment[]) => {
-        if (!hasEnoughCredits(model.supportsReasoning)) return;
+        if (!hasEnoughCredits()) return;
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
-
-
 
         addMessage(convId, {
             id: uuidv4(), role: 'user', content, timestamp: Date.now(),
             attachments: attachments || undefined,
         });
-        deductCredits(model.supportsReasoning);
 
         const assistantMsgId = uuidv4();
         addMessage(convId, {
@@ -299,10 +298,10 @@ const ChatArea: React.FC = () => {
         if (!lastUserMsg) return;
         const savedPrompt = lastUserMsg.content;
         deleteMessagePair(activeConversationId, lastUserMsg.id);
-        useCreditsStore.getState().addCredits(model.supportsReasoning ? 3 : 1);
+        // No client-side credit refund — server deduction only happens after stream completes
         setPrefillValue(savedPrompt);
         setPrefillCounter((c) => c + 1);
-    }, [activeConversationId, activeConv, deleteMessagePair, model.supportsReasoning]);
+    }, [activeConversationId, activeConv, deleteMessagePair]);
 
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
@@ -555,7 +554,7 @@ const ChatArea: React.FC = () => {
             />
             <MessageInput
                 onSend={handleSend} onStop={handleStop} onHaltAndEdit={handleHaltAndEdit}
-                isStreaming={isStreaming} disabled={!hasEnoughCredits(model.supportsReasoning)}
+                isStreaming={isStreaming} disabled={!hasEnoughCredits()}
                 prefillValue={prefillCounter > 0 ? prefillValue : undefined}
                 onPrefillConsumed={() => {
                     setPrefillValue(''); // Don't reset prefillCounter — that would remount input and clear user's text

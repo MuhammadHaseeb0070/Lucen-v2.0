@@ -37,13 +37,7 @@ export interface SideChatState {
   isOpen: boolean;
 }
 
-export interface CreditPackage {
-  id: string;
-  name: string;
-  credits: number;
-  price: number;
-  popular?: boolean;
-}
+
 
 export type ArtifactType = 'html' | 'svg' | 'mermaid';
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FREE_CREDITS, CREDITS_PER_MESSAGE, CREDITS_PER_REASONING_MESSAGE, formatCredits } from '../config/credits';
+import { FREE_CREDITS, formatLC } from '../config/subscriptionConfig';
+import type { PlanId } from '../config/subscriptionConfig';
 import { hasActiveSessionSync } from '../lib/supabase';
 import * as db from '../services/database';
 
@@ -10,15 +11,12 @@ interface CreditsStore {
     /** Server: free, active, past_due, etc. */
     subscriptionStatus: string;
     /** free | regular | pro (for UI; webhook maintains). */
-    subscriptionPlan: 'free' | 'regular' | 'pro';
+    subscriptionPlan: PlanId;
     isSynced: boolean;
     isLoading: boolean;
 
-    deductCredits: (isReasoning?: boolean) => boolean;
-    addCredits: (amount: number) => void;
-    resetCredits: () => void;
     getFormattedCredits: () => string;
-    hasEnoughCredits: (isReasoning?: boolean) => boolean;
+    hasEnoughCredits: () => boolean;
     syncFromServer: () => Promise<void>;
 }
 
@@ -32,48 +30,15 @@ export const useCreditsStore = create<CreditsStore>()(
             isSynced: false,
             isLoading: false,
 
-            deductCredits: (isReasoning = false) => {
-                const cost = isReasoning ? CREDITS_PER_REASONING_MESSAGE : CREDITS_PER_MESSAGE;
-                const state = get();
-                if (state.remainingCredits < cost) return false;
-
-                // Optimistic local update
-                set({
-                    remainingCredits: state.remainingCredits - cost,
-                    totalUsed: state.totalUsed + cost,
-                });
-
-                // Server-authoritative deduction (fire-and-forget, but update local on response)
-                if (hasActiveSessionSync()) {
-                    db.deductCredits(cost).then((result) => {
-                        if (result) {
-                            // Sync with server truth
-                            set({
-                                remainingCredits: result.remaining,
-                                totalUsed: result.used,
-                            });
-                        }
-                    }).catch(console.error);
-                }
-
-                return true;
-            },
-
-            addCredits: (amount) => {
-                set((state) => ({ remainingCredits: state.remainingCredits + amount }));
-            },
-
-            resetCredits: () => {
-                set({ remainingCredits: FREE_CREDITS, totalUsed: 0 });
-            },
-
             getFormattedCredits: () => {
-                return formatCredits(get().remainingCredits);
+                return formatLC(get().remainingCredits);
             },
 
-            hasEnoughCredits: (isReasoning = false) => {
-                const cost = isReasoning ? CREDITS_PER_REASONING_MESSAGE : CREDITS_PER_MESSAGE;
-                return get().remainingCredits >= cost;
+            hasEnoughCredits: () => {
+                // Credits > 0 means at least one more request is allowed.
+                // Server-side deduction uses actual token cost, so we just
+                // check for a positive balance here.
+                return get().remainingCredits > 0;
             },
 
             syncFromServer: async () => {

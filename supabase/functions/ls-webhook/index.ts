@@ -1,7 +1,10 @@
 // ============================================
 // Supabase Edge Function: ls-webhook
 // ============================================
-// Lemon Squeezy webhook handler with signature verification.
+// Lemon Squeezy webhook handler with:
+//   - HMAC-SHA256 signature verification
+//   - Idempotency (webhook_events table prevents duplicate processing)
+//   - Upgrade/downgrade handling
 //
 // Requirements (Supabase secrets):
 //   - SUPABASE_URL
@@ -9,16 +12,8 @@
 //   - LEMON_SQUEEZY_WEBHOOK_SECRET
 //   - LS_VARIANT_REGULAR
 //   - LS_VARIANT_PRO
-//
-// Event handling:
-//   - subscription_created / subscription_updated:
-//       if variant_id == LS_VARIANT_REGULAR => add 4,000 credits + status active
-//       if variant_id == LS_VARIANT_PRO     => add 10,000 credits + status active
-//   - subscription_cancelled (and best-effort "past due" signals):
-//       set status free
-//
-// Custom user binding:
-//   - Extracts user_id from payload meta.custom_data.user_id (passed via checkout_data.custom.user_id)
+//   - CREDITS_REGULAR (default: 4000)
+//   - CREDITS_PRO     (default: 10000)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -36,7 +31,6 @@ function jsonResponse(body: Json, init: ResponseInit = {}) {
 }
 
 function getHeader(req: Request, name: string): string | null {
-  // Header matching is case-insensitive, but we normalize anyway.
   return req.headers.get(name) ?? req.headers.get(name.toLowerCase());
 }
 
@@ -78,20 +72,17 @@ function asString(v: unknown): string | null {
 }
 
 function extractUserId(payload: any): string | null {
-  // Per docs: meta.custom_data contains checkout custom data.
   const id = payload?.meta?.custom_data?.user_id ?? payload?.meta?.custom_data?.userId;
   return asString(id);
 }
 
 function extractVariantId(payload: any): string | null {
-  // Subscription object typically contains variant_id as an attribute.
   const attr = payload?.data?.attributes;
   const candidate =
     attr?.variant_id ??
     attr?.variantId ??
     attr?.first_subscription_item?.variant_id ??
     attr?.first_subscription_item?.variantId ??
-    // Some events embed order item under first_order_item
     attr?.first_order_item?.variant_id ??
     attr?.first_order_item?.variantId;
   return asString(candidate);
@@ -101,18 +92,74 @@ function extractSubscriptionId(payload: any): string | null {
   return asString(payload?.data?.id);
 }
 
+/** Extract a unique event identifier for idempotency */
+function extractEventId(payload: any, req: Request): string {
+  // Try webhook delivery ID from headers first
+  const deliveryId = getHeader(req, "X-Delivery-Id") ?? getHeader(req, "x-delivery-id");
+  if (deliveryId) return deliveryId;
+  // Fallback: combine event name + subscription id + timestamp
+  const eventName = payload?.meta?.event_name ?? "unknown";
+  const subId = payload?.data?.id ?? "none";
+  const createdAt = payload?.data?.attributes?.created_at ?? Date.now();
+  return `${eventName}-${subId}-${createdAt}`;
+}
+
 function isCancellationEvent(eventName: string): boolean {
-  // You requested subscription_cancelled; we also treat deleted/cancelled variants defensively.
   const n = eventName.toLowerCase();
   return n === "subscription_cancelled" || n === "subscription_deleted" || n === "subscription_expired";
 }
 
 function shouldSetFreeForUpdate(payload: any): boolean {
-  // Best-effort: some "updated" events include a status attribute.
   const status = payload?.data?.attributes?.status;
   if (typeof status !== "string") return false;
   const s = status.toLowerCase();
   return s === "cancelled" || s === "expired" || s === "unpaid" || s === "past_due" || s === "paused";
+}
+
+function getCreditsForVariant(variantId: string): { credits: number; plan: string } | null {
+  const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR");
+  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
+  const CREDITS_REGULAR = parseInt(Deno.env.get("CREDITS_REGULAR") || "4000", 10);
+  const CREDITS_PRO = parseInt(Deno.env.get("CREDITS_PRO") || "10000", 10);
+
+  if (variantId === VARIANT_REGULAR) return { credits: CREDITS_REGULAR, plan: "regular" };
+  if (variantId === VARIANT_PRO) return { credits: CREDITS_PRO, plan: "pro" };
+  return null;
+}
+
+function getSupabaseAdmin() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  return createClient(supabaseUrl, serviceKey);
+}
+
+/** Check if this event was already processed (idempotency) */
+async function isEventProcessed(eventId: string): Promise<boolean> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data } = await supabaseAdmin
+    .from("webhook_events")
+    .select("event_id")
+    .eq("event_id", eventId)
+    .maybeSingle();
+  return !!data;
+}
+
+/** Record that we processed this event */
+async function recordEvent(params: {
+  eventId: string;
+  eventName: string;
+  userId: string;
+  variantId?: string | null;
+  creditsGranted?: number;
+}) {
+  const supabaseAdmin = getSupabaseAdmin();
+  await supabaseAdmin.from("webhook_events").upsert({
+    event_id: params.eventId,
+    event_name: params.eventName,
+    user_id: params.userId,
+    variant_id: params.variantId ?? null,
+    credits_granted: params.creditsGranted ?? 0,
+  }, { onConflict: "event_id" });
 }
 
 async function addCreditsAndActivate(params: {
@@ -120,10 +167,9 @@ async function addCreditsAndActivate(params: {
   variantId: string;
   subscriptionId?: string | null;
   creditsToAdd: number;
+  plan: string;
 }) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { data: creditRow, error: fetchErr } = await supabaseAdmin
     .from("user_credits")
@@ -137,9 +183,6 @@ async function addCreditsAndActivate(params: {
 
   const currentCredits = typeof creditRow?.remaining_credits === "number" ? creditRow.remaining_credits : 0;
 
-  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
-  const subscriptionPlan = params.variantId === VARIANT_PRO ? "pro" : "regular";
-
   const { error: upsertErr } = await supabaseAdmin
     .from("user_credits")
     .upsert(
@@ -147,7 +190,7 @@ async function addCreditsAndActivate(params: {
         user_id: params.userId,
         remaining_credits: currentCredits + params.creditsToAdd,
         subscription_status: "active",
-        subscription_plan: subscriptionPlan,
+        subscription_plan: params.plan,
         lemon_squeezy_subscription_id: params.subscriptionId ?? null,
       },
       { onConflict: "user_id" },
@@ -159,9 +202,7 @@ async function addCreditsAndActivate(params: {
 }
 
 async function setFreeStatus(params: { userId: string; subscriptionId?: string | null }) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { error } = await supabaseAdmin
     .from("user_credits")
@@ -178,7 +219,6 @@ async function setFreeStatus(params: { userId: string; subscriptionId?: string |
 }
 
 serve(async (req: Request) => {
-  // Webhooks are server-to-server; no CORS.
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, { status: 405 });
   }
@@ -223,6 +263,7 @@ serve(async (req: Request) => {
 
   const variantId = extractVariantId(payload);
   const subscriptionId = extractSubscriptionId(payload);
+  const eventId = extractEventId(payload, req);
 
   const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR");
   const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
@@ -232,36 +273,97 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Variant configuration missing" }, { status: 500 });
   }
 
+  // ── Idempotency check ──
   try {
+    const alreadyProcessed = await isEventProcessed(eventId);
+    if (alreadyProcessed) {
+      console.log(`ls-webhook: duplicate event ${eventId}, skipping`);
+      return jsonResponse({ received: true, duplicate: true }, { status: 200 });
+    }
+  } catch (err) {
+    console.error("ls-webhook: idempotency check failed, proceeding cautiously:", err);
+    // If the idempotency check itself fails, we still proceed
+    // (better to double-grant than to silently drop a valid event)
+  }
+
+  try {
+    // ── Cancellation events ──
     if (isCancellationEvent(eventName) || (eventName.toLowerCase() === "subscription_updated" && shouldSetFreeForUpdate(payload))) {
       await setFreeStatus({ userId, subscriptionId });
+      await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
     }
 
+    // ── Subscription created or updated (active) ──
     if (eventName.toLowerCase() === "subscription_created" || eventName.toLowerCase() === "subscription_updated") {
       if (!variantId) {
         console.error("ls-webhook: missing variant_id in subscription payload");
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      let creditsToAdd: number | null = null;
-      if (variantId === VARIANT_REGULAR) creditsToAdd = 4000;
-      if (variantId === VARIANT_PRO) creditsToAdd = 10000;
-
-      if (creditsToAdd === null) {
+      const variantInfo = getCreditsForVariant(variantId);
+      if (!variantInfo) {
         console.log(`ls-webhook: ignoring unknown variant_id=${variantId}`);
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      await addCreditsAndActivate({ userId, variantId, subscriptionId, creditsToAdd });
+      await addCreditsAndActivate({
+        userId,
+        variantId,
+        subscriptionId,
+        creditsToAdd: variantInfo.credits,
+        plan: variantInfo.plan,
+      });
+
+      await recordEvent({
+        eventId,
+        eventName,
+        userId,
+        variantId,
+        creditsGranted: variantInfo.credits,
+      });
+
+      console.log(`ls-webhook: granted ${variantInfo.credits} credits (${variantInfo.plan}) to user ${userId}`);
+      return jsonResponse({ received: true }, { status: 200 });
+    }
+
+    // ── Payment events (subscription_payment_success) ──
+    // Lemon Squeezy sends this on renewals. For recurring billing,
+    // the subscription_updated event typically handles credit grants.
+    // We handle payment_success as a safety net.
+    if (eventName.toLowerCase() === "subscription_payment_success") {
+      if (!variantId) {
+        console.log("ls-webhook: payment_success without variant_id, skipping credit grant");
+        await recordEvent({ eventId, eventName, userId });
+        return jsonResponse({ received: true }, { status: 200 });
+      }
+
+      const variantInfo = getCreditsForVariant(variantId);
+      if (variantInfo) {
+        await addCreditsAndActivate({
+          userId,
+          variantId,
+          subscriptionId,
+          creditsToAdd: variantInfo.credits,
+          plan: variantInfo.plan,
+        });
+        await recordEvent({
+          eventId,
+          eventName,
+          userId,
+          variantId,
+          creditsGranted: variantInfo.credits,
+        });
+        console.log(`ls-webhook: renewal granted ${variantInfo.credits} credits to user ${userId}`);
+      }
       return jsonResponse({ received: true }, { status: 200 });
     }
 
     console.log(`ls-webhook: unhandled event ${eventName}`);
+    await recordEvent({ eventId, eventName, userId });
     return jsonResponse({ received: true }, { status: 200 });
   } catch (err) {
     console.error("ls-webhook handler error:", err);
     return jsonResponse({ error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
   }
 });
-

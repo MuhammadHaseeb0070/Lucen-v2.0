@@ -6,7 +6,7 @@ import { useCreditsStore } from '../store/creditsStore';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import Logo from './Logo';
-import { planLabel } from '../config/pricing';
+import { planLabel, LC, formatLC } from '../config/subscriptionConfig';
 
 const Navbar: React.FC = () => {
     const { sideChatOpen, toggleSideChat, sidebarCollapsed, toggleSidebar, setBillingOpen } = useUIStore();
@@ -35,7 +35,7 @@ const Navbar: React.FC = () => {
 
     const balanceText = creditsLoading
         ? '…'
-        : remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        : formatLC(remainingCredits);
 
     return (
         <nav className="navbar">
@@ -61,7 +61,7 @@ const Navbar: React.FC = () => {
                         type="button"
                         className="billing-nav-pill"
                         onClick={openPlans}
-                        title={`${planLabel(subscriptionPlan)} · ${balanceText} credits (open plans)`}
+                        title={`${planLabel(subscriptionPlan)} · ${balanceText} ${LC.unit} (open plans)`}
                     >
                         <Logo size={17} className="billing-nav-pill__logo" aria-hidden />
                         <span className="billing-nav-pill__text">
@@ -70,7 +70,7 @@ const Navbar: React.FC = () => {
                                 ·
                             </span>
                             <span className="billing-nav-pill__balance">{balanceText}</span>
-                            <span className="billing-nav-pill__unit">cr</span>
+                            <span className="billing-nav-pill__unit">{LC.unit}</span>
                         </span>
                     </button>
                 ) : (

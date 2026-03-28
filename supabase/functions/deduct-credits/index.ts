@@ -123,33 +123,9 @@ Deno.serve(async (req: Request) => {
                 );
             }
 
-            case 'add': {
-                const addAmount = amount || 0;
-                if (addAmount <= 0) {
-                    return new Response(
-                        JSON.stringify({ error: 'Amount must be positive' }),
-                        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-                    );
-                }
-
-                const { data } = await supabaseAdmin
-                    .from('user_credits')
-                    .select('remaining_credits')
-                    .eq('user_id', user.id)
-                    .single();
-
-                const { data: updated } = await supabaseAdmin
-                    .from('user_credits')
-                    .update({ remaining_credits: (data?.remaining_credits || 0) + addAmount })
-                    .eq('user_id', user.id)
-                    .select()
-                    .single();
-
-                return new Response(
-                    JSON.stringify(updated),
-                    { headers: { ...cors, 'Content-Type': 'application/json' } }
-                );
-            }
+            // NOTE: 'add' action REMOVED — only the webhook (server-to-server)
+            // should ever add credits. Exposing 'add' to authenticated users
+            // was a security vulnerability.
 
             default:
                 return new Response(

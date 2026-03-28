@@ -1,11 +1,152 @@
 import React, { useMemo, useState } from 'react';
-import { X, ExternalLink, Sparkles, Check } from 'lucide-react';
+import {
+    X, ExternalLink, Sparkles, Check, ChevronDown, Zap,
+    HelpCircle, CreditCard, Shield, Star,
+} from 'lucide-react';
 import Logo from './Logo';
-import { PACKAGES, planLabel } from '../config/pricing';
+import {
+    PLAN_LIST, planLabel, formatLC, LC, SUBSCRIPTION_FAQ,
+    CREDIT_COSTS, type PlanDefinition,
+} from '../config/subscriptionConfig';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { startLemonCheckout } from '../services/checkout';
 
+// ─── FAQ Accordion Item ───
+const FaqItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
+    const [open, setOpen] = useState(false);
+    return (
+        <div className={`lc-faq-item ${open ? 'lc-faq-item--open' : ''}`}>
+            <button
+                type="button"
+                className="lc-faq-item__trigger"
+                onClick={() => setOpen(!open)}
+                aria-expanded={open}
+            >
+                <span className="lc-faq-item__question">{question}</span>
+                <ChevronDown size={16} className="lc-faq-item__chevron" />
+            </button>
+            {open && (
+                <div className="lc-faq-item__answer">
+                    <p>{answer}</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ─── Credit Progress Bar ───
+const CreditBar: React.FC<{ current: number; max: number }> = ({ current, max }) => {
+    const pct = Math.min(100, Math.max(0, (current / max) * 100));
+    const barClass =
+        pct > 50 ? 'lc-credit-bar__fill--green'
+        : pct > 20 ? 'lc-credit-bar__fill--yellow'
+        : 'lc-credit-bar__fill--red';
+
+    return (
+        <div className="lc-credit-bar">
+            <div className="lc-credit-bar__labels">
+                <span className="lc-credit-bar__current">
+                    {formatLC(current)} <span className="lc-credit-bar__unit">{LC.unit}</span>
+                </span>
+                <span className="lc-credit-bar__max">of {formatLC(max)} {LC.unit}</span>
+            </div>
+            <div className="lc-credit-bar__track">
+                <div
+                    className={`lc-credit-bar__fill ${barClass}`}
+                    style={{ width: `${pct}%` }}
+                />
+            </div>
+        </div>
+    );
+};
+
+// ─── Plan Card ───
+const PlanCard: React.FC<{
+    plan: PlanDefinition;
+    isCurrent: boolean;
+    isLoading: boolean;
+    onCheckout: () => void;
+    disabled: boolean;
+}> = ({ plan, isCurrent, isLoading, onCheckout, disabled }) => {
+    const isPaid = plan.id === 'regular' || plan.id === 'pro';
+    const isFeatured = plan.recommended;
+
+    return (
+        <article
+            className={`lc-plan ${isFeatured ? 'lc-plan--featured' : ''} ${isCurrent ? 'lc-plan--current' : ''} lc-plan--${plan.id}`}
+        >
+            {isFeatured && (
+                <div className="lc-plan__ribbon">
+                    <Star size={12} aria-hidden />
+                    <span>Best Value</span>
+                </div>
+            )}
+
+            {plan.highlight && (
+                <div className="lc-plan__bonus-badge">
+                    <Zap size={12} aria-hidden />
+                    <span>{plan.highlight}</span>
+                </div>
+            )}
+
+            <div className="lc-plan__header">
+                <div className="lc-plan__name-row">
+                    <Logo size={20} className="lc-plan__logo" />
+                    <h3 className="lc-plan__name">{plan.name}</h3>
+                    {isCurrent && <span className="lc-plan__current-badge">Current</span>}
+                </div>
+
+                <div className="lc-plan__price-block">
+                    <span className="lc-plan__currency">$</span>
+                    <span className="lc-plan__amount">{plan.priceUsd}</span>
+                    {plan.priceUsd > 0 && <span className="lc-plan__period">/mo</span>}
+                </div>
+
+                <p className="lc-plan__tagline">{plan.tagline}</p>
+
+                <div className="lc-plan__credit-badge">
+                    <CreditCard size={14} aria-hidden />
+                    <span>{plan.badge}</span>
+                </div>
+            </div>
+
+            <ul className="lc-plan__features">
+                {plan.features.map((feat) => (
+                    <li key={feat}>
+                        <Check size={14} className="lc-plan__check" strokeWidth={2.5} />
+                        <span>{feat}</span>
+                    </li>
+                ))}
+            </ul>
+
+            <div className="lc-plan__footer">
+                {isPaid ? (
+                    <button
+                        type="button"
+                        className={`lc-plan__cta ${isFeatured ? 'lc-plan__cta--primary' : ''}`}
+                        onClick={onCheckout}
+                        disabled={disabled || isCurrent}
+                    >
+                        <ExternalLink size={14} />
+                        {isCurrent
+                            ? 'Your Current Plan'
+                            : isLoading
+                              ? 'Opening Checkout…'
+                              : `Upgrade to ${plan.name}`}
+                    </button>
+                ) : (
+                    <div className="lc-plan__free-label">
+                        <Shield size={14} />
+                        <span>Included free forever</span>
+                    </div>
+                )}
+            </div>
+        </article>
+    );
+};
+
+// ─── Main PricingModal ───
 const PricingModal: React.FC = () => {
     const { billingOpen, setBillingOpen } = useUIStore();
     const {
@@ -16,34 +157,34 @@ const PricingModal: React.FC = () => {
     } = useCreditsStore();
     const [loadingTier, setLoadingTier] = useState<'regular' | 'pro' | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [faqOpen, setFaqOpen] = useState(false);
 
-    const tiers = useMemo(
-        () => [PACKAGES.FREE, PACKAGES.REGULAR, PACKAGES.PRO],
-        [],
-    );
+    const currentPlan = useMemo(() =>
+        PLAN_LIST.find((p) => p.id === subscriptionPlan) ?? PLAN_LIST[0],
+    [subscriptionPlan]);
 
     const statusLine = useMemo(() => {
         if (subscriptionStatus === 'past_due') {
-            return 'Your payment needs attention. Update billing in Lemon Squeezy to keep your plan.';
+            return 'Your payment needs attention. Please update your billing info in Lemon Squeezy.';
         }
-        if (subscriptionStatus === 'active' || subscriptionPlan === 'regular' || subscriptionPlan === 'pro') {
-            return `You are on ${planLabel(subscriptionPlan)}. Credits shown below sync with your account.`;
+        if (subscriptionStatus === 'active') {
+            return `You are on the ${planLabel(subscriptionPlan)} plan. Your ${LC.unit} balance syncs in real-time.`;
         }
-        return 'You are on the free tier. Upgrade when you need more capacity.';
+        return `You are on the Free tier. Upgrade to unlock more ${LC.unit} and unlimited features.`;
     }, [subscriptionStatus, subscriptionPlan]);
 
     if (!billingOpen) return null;
 
     const onCheckout = async (tier: 'regular' | 'pro') => {
         setError(null);
-        const variantId = tier === 'regular' ? PACKAGES.REGULAR.variantId : PACKAGES.PRO.variantId;
-        if (!variantId) {
-            setError(`Set VITE_LS_VARIANT_${tier.toUpperCase()} in hosting env for this tier.`);
+        const plan = PLAN_LIST.find((p) => p.id === tier);
+        if (!plan?.variantId) {
+            setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
             return;
         }
         setLoadingTier(tier);
         try {
-            await startLemonCheckout(variantId);
+            await startLemonCheckout(plan.variantId);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Checkout failed');
             setLoadingTier(null);
@@ -51,135 +192,142 @@ const PricingModal: React.FC = () => {
     };
 
     return (
-        <div className="modal-overlay billing-modal-overlay" onClick={() => setBillingOpen(false)}>
+        <div className="lc-modal-overlay" onClick={() => setBillingOpen(false)}>
             <div
-                className="billing-modal"
+                className="lc-modal"
                 role="dialog"
-                aria-labelledby="billing-modal-title"
+                aria-labelledby="lc-modal-title"
                 onClick={(e) => e.stopPropagation()}
             >
-                <header className="billing-modal__header">
-                    <div className="billing-modal__brand">
-                        <span className="billing-modal__logo-wrap">
-                            <Logo size={28} className="billing-modal__logo" />
-                        </span>
-                        <div>
-                            <h2 id="billing-modal-title" className="billing-modal__title">
-                                Lucen plans
-                            </h2>
-                            <p className="billing-modal__subtitle">
-                                Balance and usage are tracked on the server. Numbers below describe what each Lemon
-                                subscription grant adds; your actual balance may include multiple grants or leftover
-                                credits.
-                            </p>
+                {/* ── Close Button ── */}
+                <button
+                    type="button"
+                    className="lc-modal__close"
+                    onClick={() => setBillingOpen(false)}
+                    aria-label="Close"
+                >
+                    <X size={20} />
+                </button>
+
+                {/* ── Scrollable Content ── */}
+                <div className="lc-modal__scroll">
+                    {/* ── Header ── */}
+                    <header className="lc-modal__header">
+                        <div className="lc-modal__brand">
+                            <Logo size={32} className="lc-modal__brand-logo" />
+                            <div>
+                                <h2 id="lc-modal-title" className="lc-modal__title">
+                                    Subscription & {LC.unit}
+                                </h2>
+                                <p className="lc-modal__subtitle">{statusLine}</p>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* ── LC Explainer ── */}
+                    <div className="lc-explainer">
+                        <div className="lc-explainer__icon">
+                            <Sparkles size={18} />
+                        </div>
+                        <div className="lc-explainer__text">
+                            <strong>What is {LC.unit}?</strong>
+                            <p>{LC.description}</p>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        className="billing-modal__close"
-                        onClick={() => setBillingOpen(false)}
-                        aria-label="Close"
-                    >
-                        <X size={20} />
-                    </button>
-                </header>
 
-                <div className="billing-modal__current">
-                    <div className="billing-modal__current-pill">
-                        <span className="billing-modal__current-label">Current plan</span>
-                        <span className="billing-modal__current-tier">{planLabel(subscriptionPlan)}</span>
-                    </div>
-                    <div className="billing-modal__balance-row">
-                        <span className="billing-modal__balance-label">Balance</span>
-                        <span className="billing-modal__balance-value">
-                            {creditsLoading ? '…' : `${remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })} credits`}
-                        </span>
-                    </div>
-                    <p className="billing-modal__status-copy">{statusLine}</p>
-                </div>
-
-                {error && (
-                    <div className="billing-modal__error" role="alert">
-                        {error}
-                    </div>
-                )}
-
-                <div className="billing-modal__grid">
-                    {tiers.map((p) => {
-                        const isPaid = p.id === 'regular' || p.id === 'pro';
-                        const tierKey = p.id as 'free' | 'regular' | 'pro';
-                        const isLoading = loadingTier === tierKey;
-                        const isFeatured = p.id === 'pro';
-                        const isCurrent =
-                            (p.id === 'free' && subscriptionPlan === 'free') ||
-                            (p.id === 'regular' && subscriptionPlan === 'regular') ||
-                            (p.id === 'pro' && subscriptionPlan === 'pro');
-
-                        return (
-                            <article
-                                key={p.id}
-                                className={`billing-tier ${isFeatured ? 'billing-tier--featured' : ''} ${isCurrent ? 'billing-tier--current' : ''}`}
-                            >
-                                {isFeatured && (
-                                    <div className="billing-tier__ribbon">
-                                        <Sparkles size={14} aria-hidden />
-                                        Best value
-                                    </div>
+                    {/* ── Current Balance ── */}
+                    <div className="lc-balance-card">
+                        <div className="lc-balance-card__row">
+                            <div className="lc-balance-card__plan">
+                                <span className={`lc-balance-card__plan-badge lc-balance-card__plan-badge--${subscriptionPlan}`}>
+                                    {planLabel(subscriptionPlan)}
+                                </span>
+                                {subscriptionStatus === 'past_due' && (
+                                    <span className="lc-balance-card__warning">Payment Past Due</span>
                                 )}
-                                <div className="billing-tier__head">
-                                    <Logo size={22} className="billing-tier__mark" />
-                                    <h3 className="billing-tier__name">{p.name}</h3>
-                                    <div className="billing-tier__price">
-                                        <span className="billing-tier__currency">$</span>
-                                        <span className="billing-tier__amount">{p.priceUsd.toFixed(2)}</span>
-                                        {p.priceUsd > 0 && (
-                                            <span className="billing-tier__period">/mo</span>
-                                        )}
-                                    </div>
-                                    <p className="billing-tier__tagline">{p.tagline}</p>
-                                </div>
+                            </div>
+                        </div>
+                        <CreditBar
+                            current={creditsLoading ? 0 : remainingCredits}
+                            max={currentPlan.creditsProvided}
+                        />
+                    </div>
 
-                                <ul className="billing-tier__features">
-                                    {p.features.map((line) => (
-                                        <li key={line}>
-                                            <Check size={16} className="billing-tier__check" strokeWidth={2.5} />
-                                            <span>{line}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+                    {/* ── Error Banner ── */}
+                    {error && (
+                        <div className="lc-error" role="alert">
+                            <span>⚠️ {error}</span>
+                            <button onClick={() => setError(null)} aria-label="Dismiss">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
 
-                                {p.proExtra && (
-                                    <p className="billing-tier__extra">{p.proExtra}</p>
-                                )}
+                    {/* ── Plan Cards ── */}
+                    <div className="lc-plans-grid">
+                        {PLAN_LIST.map((plan) => (
+                            <PlanCard
+                                key={plan.id}
+                                plan={plan}
+                                isCurrent={plan.id === subscriptionPlan}
+                                isLoading={loadingTier === plan.id}
+                                onCheckout={() => onCheckout(plan.id as 'regular' | 'pro')}
+                                disabled={!!loadingTier}
+                            />
+                        ))}
+                    </div>
 
-                                <div className="billing-tier__footer">
-                                    {isPaid ? (
-                                        <button
-                                            type="button"
-                                            className={`billing-tier__cta ${isFeatured ? 'billing-tier__cta--primary' : ''}`}
-                                            onClick={() => onCheckout(p.id as 'regular' | 'pro')}
-                                            disabled={!!loadingTier || isCurrent}
-                                        >
-                                            <ExternalLink size={16} />
-                                            {isCurrent
-                                                ? 'Current plan'
-                                                : isLoading
-                                                  ? 'Opening checkout…'
-                                                  : `Choose ${p.name}`}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            className="billing-tier__cta billing-tier__cta--ghost"
-                                            onClick={() => setBillingOpen(false)}
-                                        >
-                                            Continue on Free
-                                        </button>
-                                    )}
-                                </div>
-                            </article>
-                        );
-                    })}
+                    {/* ── Credit Cost Reference ── */}
+                    <div className="lc-cost-ref">
+                        <h4 className="lc-cost-ref__title">How {LC.unit} are used</h4>
+                        <div className="lc-cost-ref__grid">
+                            <div className="lc-cost-ref__item">
+                                <span className="lc-cost-ref__value">{CREDIT_COSTS.PER_1K_TOKENS}</span>
+                                <span className="lc-cost-ref__label">{LC.unit} per 1K tokens</span>
+                                <span className="lc-cost-ref__desc">Chat input, output, reasoning</span>
+                            </div>
+                            <div className="lc-cost-ref__item">
+                                <span className="lc-cost-ref__value">{CREDIT_COSTS.PER_IMAGE}</span>
+                                <span className="lc-cost-ref__label">{LC.unit} per image</span>
+                                <span className="lc-cost-ref__desc">Image analysis & vision</span>
+                            </div>
+                            <div className="lc-cost-ref__item">
+                                <span className="lc-cost-ref__value">{CREDIT_COSTS.PER_WEB_SEARCH}</span>
+                                <span className="lc-cost-ref__label">{LC.unit} per web search</span>
+                                <span className="lc-cost-ref__desc">Real-time internet access</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── FAQ Section ── */}
+                    <div className="lc-faq">
+                        <button
+                            type="button"
+                            className="lc-faq__toggle"
+                            onClick={() => setFaqOpen(!faqOpen)}
+                        >
+                            <HelpCircle size={18} />
+                            <span>Frequently Asked Questions</span>
+                            <ChevronDown
+                                size={16}
+                                className={`lc-faq__toggle-chevron ${faqOpen ? 'lc-faq__toggle-chevron--open' : ''}`}
+                            />
+                        </button>
+                        {faqOpen && (
+                            <div className="lc-faq__list">
+                                {SUBSCRIPTION_FAQ.map((item) => (
+                                    <FaqItem key={item.question} question={item.question} answer={item.answer} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ── Footer Note ── */}
+                    <p className="lc-modal__footer-note">
+                        All payments are processed securely by Lemon Squeezy. You can manage your
+                        billing, update payment methods, or cancel anytime from your Lemon Squeezy
+                        customer portal.
+                    </p>
                 </div>
             </div>
         </div>
