@@ -33,348 +33,638 @@ export interface ThemePreset {
     colors: ThemeColors;
 }
 
+
+// ─── 8 BESPOKE THEMES ───────────────────────────────────────────────────────
+// Each theme has a real-world reference. No blue-on-dark. No purple-on-black.
+// These are meant to feel like they were chosen by a human designer with a
+// specific material, era, or place in mind.
+
 export const THEME_PRESETS: ThemePreset[] = [
 
-    // ─── CURATED ───────────────────────────────────────────────────────────────
-
+    // ─── WASHI ────────────────────────────────────────────────────────────────
+    // Reference: Japanese washi paper, sumi-e ink wash painting.
+    // The background has the exact warm cream of real kozo-fiber paper.
+    // Accent is muted teal-green — the colour of aged sumi ink,
+    // not a "teal" you'd find in any default palette.
     {
-        id: 'lucen',
-        name: 'Lucen',
-        emoji: '✨',
-        category: 'curated',
+        id: 'washi',
+        name: 'Washi',
+        emoji: '🪷',
+        category: 'warm',
         isDark: false,
         colors: {
-            bgBase: '#F7F7F9',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#F1F1F4',
-            bgMuted: '#EAEBEF',
-            bgInset: '#E2E3E8',
-            textPrimary: '#1E1E24',
-            textSecondary: '#64646A',
-            textTertiary: '#9A9A9F',
-            accent: '#14B8A6',
-            accentSoft: 'rgba(20, 184, 166, 0.1)',
+            bgBase: '#F5F0E8',
+            bgSurface: '#FDFAF5',
+            bgSurfaceHover: '#EDE8DE',
+            bgMuted: '#E4DDD0',
+            bgInset: '#D6CEC0',
+            textPrimary: '#1C1810',
+            textSecondary: '#6B6358',
+            textTertiary: '#A09588',
+            accent: '#3D6B5E',
+            accentSoft: 'rgba(61, 107, 94, 0.08)',
             accentText: '#FFFFFF',
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-            divider: 'rgba(0, 0, 0, 0.06)',
-            shadow: 'rgba(0, 0, 0, 0.05)',
-            userBubbleBg: '#14B8A6',
+            danger: '#A83030',
+            success: '#3A6B44',
+            warning: '#9A6B20',
+            divider: 'rgba(28, 24, 16, 0.07)',
+            shadow: 'rgba(28, 24, 16, 0.04)',
+            userBubbleBg: '#3D6B5E',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#FDFAF5',
+            aiBubbleBorder: 'rgba(28, 24, 16, 0.07)',
+        },
+    },
+
+    // ─── BIRCH ────────────────────────────────────────────────────────────────
+    // Reference: Scandinavian interior design, Kinfolk magazine, linen texture.
+    // Background is the specific off-white of undyed linen — not grey, not yellow.
+    // Accent is dusty terracotta/clay — totally unexpected on a minimal light UI,
+    // but this is exactly what makes a Scandinavian design feel "considered".
+    {
+        id: 'birch',
+        name: 'Birch',
+        emoji: '🌾',
+        category: 'warm',
+        isDark: false,
+        colors: {
+            bgBase: '#F8F5EF',
+            bgSurface: '#FFFFFF',
+            bgSurfaceHover: '#F0EDE7',
+            bgMuted: '#E6E2DA',
+            bgInset: '#D8D3C9',
+            textPrimary: '#1A1714',
+            textSecondary: '#6E6660',
+            textTertiary: '#A09890',
+            accent: '#C4735A',
+            accentSoft: 'rgba(196, 115, 90, 0.08)',
+            accentText: '#FFFFFF',
+            danger: '#B03030',
+            success: '#3A6040',
+            warning: '#9A6018',
+            divider: 'rgba(26, 23, 20, 0.06)',
+            shadow: 'rgba(26, 23, 20, 0.03)',
+            userBubbleBg: '#C4735A',
             userBubbleText: '#FFFFFF',
             aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+            aiBubbleBorder: 'rgba(26, 23, 20, 0.06)',
         },
     },
 
-    // Replaces: Abyss
-    // Why better: GitHub-inspired navy palette — backgrounds are cooler-neutral (not
-    // heavy blue-tinted), blue accent has excellent WCAG contrast on every surface.
+    // ─── FENNEL ───────────────────────────────────────────────────────────────
+    // Reference: Botanical illustration, Victorian apothecary, pressed herbarium.
+    // Background is a barely-green warm gray — like old botanical paper.
+    // Deep forest green accent reads as ink on a specimen label.
     {
-        id: 'midnight',
-        name: 'Midnight',
-        emoji: '🌙',
-        category: 'curated',
-        isDark: true,
-        colors: {
-            bgBase: '#0D1117',
-            bgSurface: '#161B22',
-            bgSurfaceHover: '#21262D',
-            bgMuted: '#1C2128',
-            bgInset: '#090D13',
-            textPrimary: '#E6EDF3',
-            textSecondary: '#8B949E',
-            textTertiary: '#6E7681',
-            accent: '#58A6FF',
-            accentSoft: 'rgba(88, 166, 255, 0.1)',
-            accentText: '#FFFFFF',
-            danger: '#F85149',
-            success: '#3FB950',
-            warning: '#D29922',
-            divider: 'rgba(255, 255, 255, 0.07)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
-            userBubbleBg: '#58A6FF',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#161B22',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.07)',
-        },
-    },
-
-    // ─── COOL ──────────────────────────────────────────────────────────────────
-
-    // Replaces: Paper
-    // Why better: Paper's black accent (#000) on near-white bg felt blunt.
-    // Cloud uses a professional deep blue accent — cleaner hierarchy, less harsh.
-    {
-        id: 'cloud',
-        name: 'Cloud',
-        emoji: '☁️',
+        id: 'fennel',
+        name: 'Fennel',
+        emoji: '🌿',
         category: 'cool',
         isDark: false,
         colors: {
-            bgBase: '#F6F8FA',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#F0F3F6',
-            bgMuted: '#E8ECF0',
-            bgInset: '#D8DEE6',
-            textPrimary: '#1A1E24',
-            textSecondary: '#57606A',
-            textTertiary: '#8C959F',
-            accent: '#0969DA',
-            accentSoft: 'rgba(9, 105, 218, 0.08)',
+            bgBase: '#ECEEE8',
+            bgSurface: '#F8F9F5',
+            bgSurfaceHover: '#E4E7DF',
+            bgMuted: '#D8DCCF',
+            bgInset: '#C8CCBE',
+            textPrimary: '#1A1F16',
+            textSecondary: '#5A6454',
+            textTertiary: '#8E9886',
+            accent: '#3A5C45',
+            accentSoft: 'rgba(58, 92, 69, 0.08)',
             accentText: '#FFFFFF',
-            danger: '#CF222E',
-            success: '#1A7F37',
-            warning: '#9A6700',
-            divider: 'rgba(0, 0, 0, 0.06)',
-            shadow: 'rgba(0, 0, 0, 0.04)',
-            userBubbleBg: '#0969DA',
+            danger: '#A83028',
+            success: '#2E6040',
+            warning: '#8A6018',
+            divider: 'rgba(26, 31, 22, 0.07)',
+            shadow: 'rgba(26, 31, 22, 0.03)',
+            userBubbleBg: '#3A5C45',
             userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+            aiBubbleBg: '#F8F9F5',
+            aiBubbleBorder: 'rgba(26, 31, 22, 0.07)',
         },
     },
 
-    // Replaces: Carbon
-    // Why better: Carbon's white accent on #121212 was stark and cold.
-    // Graphite uses a calm steel-blue accent — still high contrast, far more refined.
+    // ─── VERDIGRIS ────────────────────────────────────────────────────────────
+    // Reference: Patina on aged copper and bronze — old library hardware,
+    // antique door fittings, cathedral rooftops.
+    // Background is a very specific warm dark green-black (not teal, not grey).
+    // The accent is the exact hue of verdigris copper oxide.
     {
-        id: 'graphite',
-        name: 'Graphite',
+        id: 'verdigris',
+        name: 'Verdigris',
+        emoji: '🏛️',
+        category: 'focus',
+        isDark: true,
+        colors: {
+            bgBase: '#141918',
+            bgSurface: '#1C2320',
+            bgSurfaceHover: '#242E2A',
+            bgMuted: '#1A2220',
+            bgInset: '#0D1210',
+            textPrimary: '#D4DED8',
+            textSecondary: '#7A9890',
+            textTertiary: '#4E6860',
+            accent: '#5BA89A',
+            accentSoft: 'rgba(91, 168, 154, 0.1)',
+            accentText: '#0D1210',
+            danger: '#D05858',
+            success: '#5AAA7A',
+            warning: '#C8A840',
+            divider: 'rgba(91, 168, 154, 0.12)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+            userBubbleBg: '#5BA89A',
+            userBubbleText: '#0D1210',
+            aiBubbleBg: '#1C2320',
+            aiBubbleBorder: 'rgba(91, 168, 154, 0.12)',
+        },
+    },
+
+    // ─── MANIFOLD ─────────────────────────────────────────────────────────────
+    // Reference: Braun consumer electronics (1960–80), Dieter Rams design.
+    // Backgrounds are warm charcoal — the precise dark tone of a Braun T3 radio.
+    // Orange accent is taken directly from Braun's iconic product palette.
+    // Everything feels functional, deliberate, German.
+    {
+        id: 'manifold',
+        name: 'Manifold',
+        emoji: '📻',
+        category: 'focus',
+        isDark: true,
+        colors: {
+            bgBase: '#1F1E1C',
+            bgSurface: '#272522',
+            bgSurfaceHover: '#302E2A',
+            bgMuted: '#252320',
+            bgInset: '#141310',
+            textPrimary: '#E8E4DC',
+            textSecondary: '#9A9288',
+            textTertiary: '#6A6258',
+            accent: '#D4703A',
+            accentSoft: 'rgba(212, 112, 58, 0.1)',
+            accentText: '#FFFFFF',
+            danger: '#CC4444',
+            success: '#5AA870',
+            warning: '#C8A030',
+            divider: 'rgba(212, 112, 58, 0.12)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+            userBubbleBg: '#D4703A',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#272522',
+            aiBubbleBorder: 'rgba(212, 112, 58, 0.12)',
+        },
+    },
+
+    // ─── OBSIDIAN ─────────────────────────────────────────────────────────────
+    // Reference: Volcanic obsidian glass, precision optical instruments.
+    // The background has a barely-perceptible violet undertone (not grey, not black)
+    // — exactly how obsidian looks under light. Accent is cool silver-lavender,
+    // like polished metal in diffuse light. Never seen in a default palette.
+    {
+        id: 'obsidian',
+        name: 'Obsidian',
         emoji: '🪨',
         category: 'cool',
         isDark: true,
         colors: {
-            bgBase: '#141414',
-            bgSurface: '#1E1E1E',
-            bgSurfaceHover: '#292929',
-            bgMuted: '#222222',
-            bgInset: '#0A0A0A',
-            textPrimary: '#EBEBEB',
-            textSecondary: '#999999',
-            textTertiary: '#666666',
-            accent: '#4A90E2',
-            accentSoft: 'rgba(74, 144, 226, 0.1)',
-            accentText: '#FFFFFF',
-            danger: '#EF4444',
-            success: '#22C55E',
-            warning: '#EAB308',
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.6)',
-            userBubbleBg: '#4A90E2',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#1E1E1E',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+            bgBase: '#1A1A1F',
+            bgSurface: '#24242C',
+            bgSurfaceHover: '#2E2E38',
+            bgMuted: '#222229',
+            bgInset: '#111116',
+            textPrimary: '#D8D8E8',
+            textSecondary: '#8888A4',
+            textTertiary: '#58587A',
+            accent: '#9090B8',
+            accentSoft: 'rgba(144, 144, 184, 0.1)',
+            accentText: '#1A1A1F',
+            danger: '#D05070',
+            success: '#50A87A',
+            warning: '#C0A040',
+            divider: 'rgba(144, 144, 184, 0.12)',
+            shadow: 'rgba(0, 0, 0, 0.55)',
+            userBubbleBg: '#9090B8',
+            userBubbleText: '#1A1A1F',
+            aiBubbleBg: '#24242C',
+            aiBubbleBorder: 'rgba(144, 144, 184, 0.12)',
         },
     },
 
-    // ─── WARM ──────────────────────────────────────────────────────────────────
-
-    // Replaces: Sepia
-    // Why better: Sepia's amber text on amber surfaces blended together.
-    // Parchment keeps the warm feel with a distinct burnt-orange accent that
-    // clearly stands apart from all neutral surfaces.
+    // ─── QUARRY ───────────────────────────────────────────────────────────────
+    // Reference: Brutalist architecture, raw poured concrete, design publications
+    // like Wallpaper* or Dezeen — grey, industrial, but with editorial warmth.
+    // The background is cool concrete-grey. Accent is dusty mauve/rose — the
+    // exact combination a brutalist architect would use for interior furnishings.
+    // Feels like a concrete building with a single pink linen chair.
     {
-        id: 'parchment',
-        name: 'Parchment',
-        emoji: '📜',
-        category: 'warm',
-        isDark: false,
+        id: 'quarry',
+        name: 'Quarry',
+        emoji: '🏗️',
+        category: 'cool',
+        isDark: true,
         colors: {
-            bgBase: '#FAF7F0',
-            bgSurface: '#FFFDF8',
-            bgSurfaceHover: '#F2EDE2',
-            bgMuted: '#E9E1D0',
-            bgInset: '#DDD3BC',
-            textPrimary: '#3D2B1A',
-            textSecondary: '#78614A',
-            textTertiary: '#A8907A',
-            accent: '#C05C0A',
-            accentSoft: 'rgba(192, 92, 10, 0.08)',
-            accentText: '#FFFFFF',
-            danger: '#B91C1C',
-            success: '#15803D',
-            warning: '#B45309',
-            divider: 'rgba(61, 43, 26, 0.07)',
-            shadow: 'rgba(61, 43, 26, 0.04)',
-            userBubbleBg: '#C05C0A',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFDF8',
-            aiBubbleBorder: 'rgba(61, 43, 26, 0.07)',
+            bgBase: '#222226',
+            bgSurface: '#2C2C32',
+            bgSurfaceHover: '#36363E',
+            bgMuted: '#28282E',
+            bgInset: '#18181C',
+            textPrimary: '#E4E4EC',
+            textSecondary: '#9090A0',
+            textTertiary: '#606070',
+            accent: '#B8939E',
+            accentSoft: 'rgba(184, 147, 158, 0.1)',
+            accentText: '#222226',
+            danger: '#D05560',
+            success: '#50A870',
+            warning: '#C09840',
+            divider: 'rgba(184, 147, 158, 0.12)',
+            shadow: 'rgba(0, 0, 0, 0.55)',
+            userBubbleBg: '#B8939E',
+            userBubbleText: '#222226',
+            aiBubbleBg: '#2C2C32',
+            aiBubbleBorder: 'rgba(184, 147, 158, 0.12)',
         },
     },
 
-    // Replaces: Cocoa
-    // Why better: Cocoa's gold (#FBBF24) was too bright against dark warm surfaces,
-    // creating a "candy" effect. Ember uses a muted amber-orange that stays warm
-    // without glowing.
+    // ─── CASSETTE ─────────────────────────────────────────────────────────────
+    // Reference: 1980s Japanese portable electronics — Sony, Aiwa, early Walkman.
+    // Background is the warm near-black of matte ABS plastic.
+    // Accent is aged brushed metal gold — not bright, not yellow, specifically
+    // the colour of a Walkman TPS-L2 cassette door trim.
     {
-        id: 'ember',
-        name: 'Ember',
-        emoji: '🔥',
+        id: 'cassette',
+        name: 'Cassette',
+        emoji: '📼',
         category: 'warm',
         isDark: true,
         colors: {
-            bgBase: '#1B1612',
-            bgSurface: '#26201A',
-            bgSurfaceHover: '#322A22',
-            bgMuted: '#211B16',
-            bgInset: '#110E0A',
-            textPrimary: '#EDE8DF',
-            textSecondary: '#A89B8A',
-            textTertiary: '#766858',
-            accent: '#E8894A',
-            accentSoft: 'rgba(232, 137, 74, 0.1)',
-            accentText: '#1B1612',
-            danger: '#E55050',
-            success: '#4EAD7A',
-            warning: '#D4A030',
-            divider: 'rgba(232, 137, 74, 0.12)',
+            bgBase: '#1E1C18',
+            bgSurface: '#272420',
+            bgSurfaceHover: '#312E28',
+            bgMuted: '#241F1C',
+            bgInset: '#131210',
+            textPrimary: '#EAE4D8',
+            textSecondary: '#9A9082',
+            textTertiary: '#6A6058',
+            accent: '#C8961E',
+            accentSoft: 'rgba(200, 150, 30, 0.1)',
+            accentText: '#1E1C18',
+            danger: '#CC4848',
+            success: '#58A870',
+            warning: '#C8961E',
+            divider: 'rgba(200, 150, 30, 0.12)',
             shadow: 'rgba(0, 0, 0, 0.5)',
-            userBubbleBg: '#E8894A',
-            userBubbleText: '#1B1612',
-            aiBubbleBg: '#26201A',
-            aiBubbleBorder: 'rgba(232, 137, 74, 0.12)',
-        },
-    },
-
-    // New theme
-    // A clean, natural light theme. Forest-green accent is professional and
-    // uncommon — provides visual variety without harshness.
-    {
-        id: 'sage',
-        name: 'Sage',
-        emoji: '🌿',
-        category: 'warm',
-        isDark: false,
-        colors: {
-            bgBase: '#F3F7F3',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#EAF1EA',
-            bgMuted: '#DFE9DF',
-            bgInset: '#CFDDCF',
-            textPrimary: '#1A2D1A',
-            textSecondary: '#4A674A',
-            textTertiary: '#7A9A7A',
-            accent: '#2D6A4F',
-            accentSoft: 'rgba(45, 106, 79, 0.08)',
-            accentText: '#FFFFFF',
-            danger: '#C0392B',
-            success: '#1A7F37',
-            warning: '#B45309',
-            divider: 'rgba(26, 45, 26, 0.07)',
-            shadow: 'rgba(26, 45, 26, 0.04)',
-            userBubbleBg: '#2D6A4F',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(26, 45, 26, 0.07)',
-        },
-    },
-
-    // ─── FOCUS ─────────────────────────────────────────────────────────────────
-
-    // Replaces: Frost
-    // Why better: Frost's icy tint on all surfaces (bgMuted: #BAE6FD) was too
-    // saturated — the whole UI looked "dunked in blue". Polar keeps backgrounds
-    // nearly neutral and saves the blue for the accent only.
-    {
-        id: 'polar',
-        name: 'Polar',
-        emoji: '🏔️',
-        category: 'focus',
-        isDark: false,
-        colors: {
-            bgBase: '#EDF3FB',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#E0EAF5',
-            bgMuted: '#D6E3F0',
-            bgInset: '#C0D3E8',
-            textPrimary: '#0D1C2E',
-            textSecondary: '#3D5672',
-            textTertiary: '#7A9AB8',
-            accent: '#1565C0',
-            accentSoft: 'rgba(21, 101, 192, 0.08)',
-            accentText: '#FFFFFF',
-            danger: '#C62828',
-            success: '#2E7D32',
-            warning: '#E65100',
-            divider: 'rgba(13, 28, 46, 0.06)',
-            shadow: 'rgba(13, 28, 46, 0.04)',
-            userBubbleBg: '#1565C0',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(13, 28, 46, 0.06)',
-        },
-    },
-
-    // Replaces: Dracula
-    // Why better: Dracula's mauve (#CBA6F7) was soft but the background hue
-    // (purple-slate mix) created an unresolved clash. Aurora uses a pure near-
-    // neutral dark base so the violet accent reads clearly without competition.
-    {
-        id: 'aurora',
-        name: 'Aurora',
-        emoji: '🌌',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#14141E',
-            bgSurface: '#1C1C2A',
-            bgSurfaceHover: '#262638',
-            bgMuted: '#1A1A28',
-            bgInset: '#0D0D14',
-            textPrimary: '#D8D8EC',
-            textSecondary: '#8A8AAC',
-            textTertiary: '#5A5A7A',
-            accent: '#7B68EE',
-            accentSoft: 'rgba(123, 104, 238, 0.1)',
-            accentText: '#FFFFFF',
-            danger: '#E55C6C',
-            success: '#5DBF8A',
-            warning: '#E8A838',
-            divider: 'rgba(123, 104, 238, 0.1)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
-            userBubbleBg: '#7B68EE',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#1C1C2A',
-            aiBubbleBorder: 'rgba(123, 104, 238, 0.1)',
-        },
-    },
-
-    // Replaces: neon-teal (kept the teal idea, removed the neon)
-    // Why better: neon-teal's accent (#3DF2E0) was eye-piercing. Dusk uses a
-    // calmer teal (#2DD4BF) on a proper navy base — professional, not cyberpunk.
-    {
-        id: 'dusk',
-        name: 'Dusk',
-        emoji: '🌆',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#0E1822',
-            bgSurface: '#16232E',
-            bgSurfaceHover: '#1E303E',
-            bgMuted: '#132030',
-            bgInset: '#08101A',
-            textPrimary: '#E5EFF8',
-            textSecondary: '#85A0B8',
-            textTertiary: '#56788E',
-            accent: '#2DD4BF',
-            accentSoft: 'rgba(45, 212, 191, 0.1)',
-            accentText: '#0E1822',
-            danger: '#F06060',
-            success: '#4ADE80',
-            warning: '#FBBF24',
-            divider: 'rgba(45, 212, 191, 0.1)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
-            userBubbleBg: '#2DD4BF',
-            userBubbleText: '#0E1822',
-            aiBubbleBg: '#16232E',
-            aiBubbleBorder: 'rgba(45, 212, 191, 0.1)',
+            userBubbleBg: '#C8961E',
+            userBubbleText: '#1E1C18',
+            aiBubbleBg: '#272420',
+            aiBubbleBorder: 'rgba(200, 150, 30, 0.12)',
         },
     },
 
 ];
+
+// export const THEME_PRESETS: ThemePreset[] = [
+
+//     // ─── CURATED ───────────────────────────────────────────────────────────────
+
+//     {
+//         id: 'lucen',
+//         name: 'Lucen',
+//         emoji: '✨',
+//         category: 'curated',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#F7F7F9',
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#F1F1F4',
+//             bgMuted: '#EAEBEF',
+//             bgInset: '#E2E3E8',
+//             textPrimary: '#1E1E24',
+//             textSecondary: '#64646A',
+//             textTertiary: '#9A9A9F',
+//             accent: '#14B8A6',
+//             accentSoft: 'rgba(20, 184, 166, 0.1)',
+//             accentText: '#FFFFFF',
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+//             divider: 'rgba(0, 0, 0, 0.06)',
+//             shadow: 'rgba(0, 0, 0, 0.05)',
+//             userBubbleBg: '#14B8A6',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+//         },
+//     },
+
+//     // Replaces: Abyss
+//     // Why better: GitHub-inspired navy palette — backgrounds are cooler-neutral (not
+//     // heavy blue-tinted), blue accent has excellent WCAG contrast on every surface.
+//     {
+//         id: 'midnight',
+//         name: 'Midnight',
+//         emoji: '🌙',
+//         category: 'curated',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#0D1117',
+//             bgSurface: '#161B22',
+//             bgSurfaceHover: '#21262D',
+//             bgMuted: '#1C2128',
+//             bgInset: '#090D13',
+//             textPrimary: '#E6EDF3',
+//             textSecondary: '#8B949E',
+//             textTertiary: '#6E7681',
+//             accent: '#58A6FF',
+//             accentSoft: 'rgba(88, 166, 255, 0.1)',
+//             accentText: '#FFFFFF',
+//             danger: '#F85149',
+//             success: '#3FB950',
+//             warning: '#D29922',
+//             divider: 'rgba(255, 255, 255, 0.07)',
+//             shadow: 'rgba(0, 0, 0, 0.5)',
+//             userBubbleBg: '#58A6FF',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#161B22',
+//             aiBubbleBorder: 'rgba(255, 255, 255, 0.07)',
+//         },
+//     },
+
+//     // ─── COOL ──────────────────────────────────────────────────────────────────
+
+//     // Replaces: Paper
+//     // Why better: Paper's black accent (#000) on near-white bg felt blunt.
+//     // Cloud uses a professional deep blue accent — cleaner hierarchy, less harsh.
+//     {
+//         id: 'cloud',
+//         name: 'Cloud',
+//         emoji: '☁️',
+//         category: 'cool',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#F6F8FA',
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#F0F3F6',
+//             bgMuted: '#E8ECF0',
+//             bgInset: '#D8DEE6',
+//             textPrimary: '#1A1E24',
+//             textSecondary: '#57606A',
+//             textTertiary: '#8C959F',
+//             accent: '#0969DA',
+//             accentSoft: 'rgba(9, 105, 218, 0.08)',
+//             accentText: '#FFFFFF',
+//             danger: '#CF222E',
+//             success: '#1A7F37',
+//             warning: '#9A6700',
+//             divider: 'rgba(0, 0, 0, 0.06)',
+//             shadow: 'rgba(0, 0, 0, 0.04)',
+//             userBubbleBg: '#0969DA',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+//         },
+//     },
+
+//     // Replaces: Carbon
+//     // Why better: Carbon's white accent on #121212 was stark and cold.
+//     // Graphite uses a calm steel-blue accent — still high contrast, far more refined.
+//     {
+//         id: 'graphite',
+//         name: 'Graphite',
+//         emoji: '🪨',
+//         category: 'cool',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#141414',
+//             bgSurface: '#1E1E1E',
+//             bgSurfaceHover: '#292929',
+//             bgMuted: '#222222',
+//             bgInset: '#0A0A0A',
+//             textPrimary: '#EBEBEB',
+//             textSecondary: '#999999',
+//             textTertiary: '#666666',
+//             accent: '#4A90E2',
+//             accentSoft: 'rgba(74, 144, 226, 0.1)',
+//             accentText: '#FFFFFF',
+//             danger: '#EF4444',
+//             success: '#22C55E',
+//             warning: '#EAB308',
+//             divider: 'rgba(255, 255, 255, 0.08)',
+//             shadow: 'rgba(0, 0, 0, 0.6)',
+//             userBubbleBg: '#4A90E2',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#1E1E1E',
+//             aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+//         },
+//     },
+
+//     // ─── WARM ──────────────────────────────────────────────────────────────────
+
+//     // Replaces: Sepia
+//     // Why better: Sepia's amber text on amber surfaces blended together.
+//     // Parchment keeps the warm feel with a distinct burnt-orange accent that
+//     // clearly stands apart from all neutral surfaces.
+//     {
+//         id: 'parchment',
+//         name: 'Parchment',
+//         emoji: '📜',
+//         category: 'warm',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#FAF7F0',
+//             bgSurface: '#FFFDF8',
+//             bgSurfaceHover: '#F2EDE2',
+//             bgMuted: '#E9E1D0',
+//             bgInset: '#DDD3BC',
+//             textPrimary: '#3D2B1A',
+//             textSecondary: '#78614A',
+//             textTertiary: '#A8907A',
+//             accent: '#C05C0A',
+//             accentSoft: 'rgba(192, 92, 10, 0.08)',
+//             accentText: '#FFFFFF',
+//             danger: '#B91C1C',
+//             success: '#15803D',
+//             warning: '#B45309',
+//             divider: 'rgba(61, 43, 26, 0.07)',
+//             shadow: 'rgba(61, 43, 26, 0.04)',
+//             userBubbleBg: '#C05C0A',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFDF8',
+//             aiBubbleBorder: 'rgba(61, 43, 26, 0.07)',
+//         },
+//     },
+
+//     // Replaces: Cocoa
+//     // Why better: Cocoa's gold (#FBBF24) was too bright against dark warm surfaces,
+//     // creating a "candy" effect. Ember uses a muted amber-orange that stays warm
+//     // without glowing.
+//     {
+//         id: 'ember',
+//         name: 'Ember',
+//         emoji: '🔥',
+//         category: 'warm',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#1B1612',
+//             bgSurface: '#26201A',
+//             bgSurfaceHover: '#322A22',
+//             bgMuted: '#211B16',
+//             bgInset: '#110E0A',
+//             textPrimary: '#EDE8DF',
+//             textSecondary: '#A89B8A',
+//             textTertiary: '#766858',
+//             accent: '#E8894A',
+//             accentSoft: 'rgba(232, 137, 74, 0.1)',
+//             accentText: '#1B1612',
+//             danger: '#E55050',
+//             success: '#4EAD7A',
+//             warning: '#D4A030',
+//             divider: 'rgba(232, 137, 74, 0.12)',
+//             shadow: 'rgba(0, 0, 0, 0.5)',
+//             userBubbleBg: '#E8894A',
+//             userBubbleText: '#1B1612',
+//             aiBubbleBg: '#26201A',
+//             aiBubbleBorder: 'rgba(232, 137, 74, 0.12)',
+//         },
+//     },
+
+//     // New theme
+//     // A clean, natural light theme. Forest-green accent is professional and
+//     // uncommon — provides visual variety without harshness.
+//     {
+//         id: 'sage',
+//         name: 'Sage',
+//         emoji: '🌿',
+//         category: 'warm',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#F3F7F3',
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#EAF1EA',
+//             bgMuted: '#DFE9DF',
+//             bgInset: '#CFDDCF',
+//             textPrimary: '#1A2D1A',
+//             textSecondary: '#4A674A',
+//             textTertiary: '#7A9A7A',
+//             accent: '#2D6A4F',
+//             accentSoft: 'rgba(45, 106, 79, 0.08)',
+//             accentText: '#FFFFFF',
+//             danger: '#C0392B',
+//             success: '#1A7F37',
+//             warning: '#B45309',
+//             divider: 'rgba(26, 45, 26, 0.07)',
+//             shadow: 'rgba(26, 45, 26, 0.04)',
+//             userBubbleBg: '#2D6A4F',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(26, 45, 26, 0.07)',
+//         },
+//     },
+
+//     // ─── FOCUS ─────────────────────────────────────────────────────────────────
+
+//     // Replaces: Frost
+//     // Why better: Frost's icy tint on all surfaces (bgMuted: #BAE6FD) was too
+//     // saturated — the whole UI looked "dunked in blue". Polar keeps backgrounds
+//     // nearly neutral and saves the blue for the accent only.
+//     {
+//         id: 'polar',
+//         name: 'Polar',
+//         emoji: '🏔️',
+//         category: 'focus',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#EDF3FB',
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#E0EAF5',
+//             bgMuted: '#D6E3F0',
+//             bgInset: '#C0D3E8',
+//             textPrimary: '#0D1C2E',
+//             textSecondary: '#3D5672',
+//             textTertiary: '#7A9AB8',
+//             accent: '#1565C0',
+//             accentSoft: 'rgba(21, 101, 192, 0.08)',
+//             accentText: '#FFFFFF',
+//             danger: '#C62828',
+//             success: '#2E7D32',
+//             warning: '#E65100',
+//             divider: 'rgba(13, 28, 46, 0.06)',
+//             shadow: 'rgba(13, 28, 46, 0.04)',
+//             userBubbleBg: '#1565C0',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(13, 28, 46, 0.06)',
+//         },
+//     },
+
+//     // Replaces: Dracula
+//     // Why better: Dracula's mauve (#CBA6F7) was soft but the background hue
+//     // (purple-slate mix) created an unresolved clash. Aurora uses a pure near-
+//     // neutral dark base so the violet accent reads clearly without competition.
+//     {
+//         id: 'aurora',
+//         name: 'Aurora',
+//         emoji: '🌌',
+//         category: 'focus',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#14141E',
+//             bgSurface: '#1C1C2A',
+//             bgSurfaceHover: '#262638',
+//             bgMuted: '#1A1A28',
+//             bgInset: '#0D0D14',
+//             textPrimary: '#D8D8EC',
+//             textSecondary: '#8A8AAC',
+//             textTertiary: '#5A5A7A',
+//             accent: '#7B68EE',
+//             accentSoft: 'rgba(123, 104, 238, 0.1)',
+//             accentText: '#FFFFFF',
+//             danger: '#E55C6C',
+//             success: '#5DBF8A',
+//             warning: '#E8A838',
+//             divider: 'rgba(123, 104, 238, 0.1)',
+//             shadow: 'rgba(0, 0, 0, 0.5)',
+//             userBubbleBg: '#7B68EE',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#1C1C2A',
+//             aiBubbleBorder: 'rgba(123, 104, 238, 0.1)',
+//         },
+//     },
+
+//     // Replaces: neon-teal (kept the teal idea, removed the neon)
+//     // Why better: neon-teal's accent (#3DF2E0) was eye-piercing. Dusk uses a
+//     // calmer teal (#2DD4BF) on a proper navy base — professional, not cyberpunk.
+//     {
+//         id: 'dusk',
+//         name: 'Dusk',
+//         emoji: '🌆',
+//         category: 'focus',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#0E1822',
+//             bgSurface: '#16232E',
+//             bgSurfaceHover: '#1E303E',
+//             bgMuted: '#132030',
+//             bgInset: '#08101A',
+//             textPrimary: '#E5EFF8',
+//             textSecondary: '#85A0B8',
+//             textTertiary: '#56788E',
+//             accent: '#2DD4BF',
+//             accentSoft: 'rgba(45, 212, 191, 0.1)',
+//             accentText: '#0E1822',
+//             danger: '#F06060',
+//             success: '#4ADE80',
+//             warning: '#FBBF24',
+//             divider: 'rgba(45, 212, 191, 0.1)',
+//             shadow: 'rgba(0, 0, 0, 0.5)',
+//             userBubbleBg: '#2DD4BF',
+//             userBubbleText: '#0E1822',
+//             aiBubbleBg: '#16232E',
+//             aiBubbleBorder: 'rgba(45, 212, 191, 0.1)',
+//         },
+//     },
+
+// ];
 // export const THEME_PRESETS: ThemePreset[] = [
 //     // ─── CURATED (Brand Default) ───
 //     {
