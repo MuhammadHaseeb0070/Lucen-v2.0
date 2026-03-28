@@ -41,6 +41,7 @@ jobs:
           supabase secrets set OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}"
           supabase secrets set VITE_APP_URL="${{ secrets.VITE_APP_URL }}"
           supabase secrets set LEMON_SQUEEZY_API_KEY="${{ secrets.LEMON_SQUEEZY_API_KEY }}"
+          supabase secrets set LEMON_SQUEEZY_STORE_ID="${{ secrets.LEMON_SQUEEZY_STORE_ID }}"
           supabase secrets set LEMON_SQUEEZY_WEBHOOK_SECRET="${{ secrets.LEMON_SQUEEZY_WEBHOOK_SECRET }}"
           supabase secrets set LS_VARIANT_REGULAR="${{ secrets.LS_VARIANT_REGULAR }}"
           supabase secrets set LS_VARIANT_PRO="${{ secrets.LS_VARIANT_PRO }}"

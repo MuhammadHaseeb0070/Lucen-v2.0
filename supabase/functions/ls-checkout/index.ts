@@ -6,8 +6,9 @@
 //   - SUPABASE_URL
 //   - SUPABASE_ANON_KEY
 //   - LEMON_SQUEEZY_API_KEY
+//   - LEMON_SQUEEZY_STORE_ID   (numeric store id from Lemon dashboard → Settings)
 // Optional:
-//   - VITE_APP_URL (for default redirect URL)
+//   - VITE_APP_URL (for default redirect URL after purchase)
 //
 // Request (JSON):
 //   { "variantId": string | number, "userId"?: string, "redirectUrl"?: string }
@@ -42,21 +43,34 @@ function asStringId(v: unknown): string | null {
 
 async function createLemonCheckout(params: {
   apiKey: string;
+  storeId: string;
   variantId: string;
   userId: string;
   redirectUrl?: string;
 }): Promise<{ url: string }> {
+  // https://docs.lemonsqueezy.com/api/checkouts/create-checkout — store + variant are relationships, not attributes.variant_id.
+  const attributes: Record<string, unknown> = {
+    checkout_data: {
+      custom: {
+        user_id: params.userId,
+      },
+    },
+  };
+  if (params.redirectUrl) {
+    attributes.product_options = { redirect_url: params.redirectUrl };
+  }
+
   const payload = {
     data: {
       type: "checkouts",
-      attributes: {
-        variant_id: Number.isNaN(Number(params.variantId)) ? params.variantId : Number(params.variantId),
-        checkout_data: {
-          custom: {
-            user_id: params.userId,
-          },
+      attributes,
+      relationships: {
+        store: {
+          data: { type: "stores", id: String(params.storeId) },
         },
-        product_options: params.redirectUrl ? { redirect_url: params.redirectUrl } : undefined,
+        variant: {
+          data: { type: "variants", id: String(params.variantId) },
+        },
       },
     },
   };
@@ -108,8 +122,12 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const lemonApiKey = Deno.env.get("LEMON_SQUEEZY_API_KEY");
+    const lemonStoreId = Deno.env.get("LEMON_SQUEEZY_STORE_ID");
     if (!lemonApiKey) {
       return jsonResponse({ error: "LEMON_SQUEEZY_API_KEY not configured on server" }, { status: 500, headers: cors });
+    }
+    if (!lemonStoreId?.trim()) {
+      return jsonResponse({ error: "LEMON_SQUEEZY_STORE_ID not configured on server" }, { status: 500, headers: cors });
     }
 
     const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
@@ -134,6 +152,7 @@ serve(async (req: Request) => {
 
     const checkout = await createLemonCheckout({
       apiKey: lemonApiKey,
+      storeId: lemonStoreId.trim(),
       variantId,
       userId: user.id,
       redirectUrl,
