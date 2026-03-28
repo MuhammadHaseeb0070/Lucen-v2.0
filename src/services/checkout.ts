@@ -30,7 +30,7 @@ async function messageFromFunctionsInvoke(
     return 'Failed to start checkout';
 }
 
-export async function startLemonCheckout(variantId: string): Promise<void> {
+export async function startLemonCheckout(variantId: string, redirectUrl?: string): Promise<void> {
     if (!supabase) {
         throw new Error('Supabase is not configured');
     }
@@ -44,7 +44,7 @@ export async function startLemonCheckout(variantId: string): Promise<void> {
     }
 
     const { data, error, response } = await supabase.functions.invoke('ls-checkout', {
-        body: { variantId },
+        body: { variantId, redirectUrl },
     });
 
     if (error) {

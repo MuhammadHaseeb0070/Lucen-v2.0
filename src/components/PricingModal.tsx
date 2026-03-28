@@ -187,7 +187,7 @@ const PricingModal: React.FC = () => {
         }
         setLoadingTier(tier);
         try {
-            await startLemonCheckout(plan.variantId);
+            await startLemonCheckout(plan.variantId, window.location.href);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Checkout failed');
             setLoadingTier(null);

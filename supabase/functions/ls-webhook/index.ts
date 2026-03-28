@@ -119,14 +119,14 @@ function shouldSetFreeForUpdate(payload: any): boolean {
 }
 
 function getCreditsForVariant(variantId: string): { credits: number; plan: string } | null {
-  const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR")?.replace(/["']/g, "").trim();
-  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO")?.replace(/["']/g, "").trim();
+  const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR")?.replace(/["'#]/g, "").trim();
+  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO")?.replace(/["'#]/g, "").trim();
   const CREDITS_REGULAR_STR = Deno.env.get("CREDITS_REGULAR")?.replace(/["']/g, "").trim() || "4000";
   const CREDITS_PRO_STR = Deno.env.get("CREDITS_PRO")?.replace(/["']/g, "").trim() || "10000";
   const CREDITS_REGULAR = parseInt(CREDITS_REGULAR_STR, 10);
   const CREDITS_PRO = parseInt(CREDITS_PRO_STR, 10);
 
-  const cleanId = variantId.replace(/["']/g, "").trim();
+  const cleanId = variantId.replace(/["'#]/g, "").trim();
 
   if (cleanId === VARIANT_REGULAR) return { credits: CREDITS_REGULAR, plan: "regular" };
   if (cleanId === VARIANT_PRO) return { credits: CREDITS_PRO, plan: "pro" };
