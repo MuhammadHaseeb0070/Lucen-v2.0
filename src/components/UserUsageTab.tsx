@@ -21,7 +21,7 @@ interface UsageLog {
 
 const UserUsageTab: React.FC = () => {
     const { user } = useAuthStore();
-    const { billingCycleUsage, isLoading: creditsLoading, customerPortalUrl } = useCreditsStore();
+    const { billingCycleUsage, isLoading: creditsLoading, customerPortalUrl, subscriptionPlan } = useCreditsStore();
     const [logs, setLogs] = useState<UsageLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,9 @@ const UserUsageTab: React.FC = () => {
 
     return (
         <div className="settings-tab-body usage-tab">
-            <p className="settings-desc usage-tab__desc">Track your {LC.unit} usage and the last 10 requests. Manage your plan from the top bar.</p>
+            <p className="settings-desc usage-tab__desc">
+                You are on the <strong>{planLabel(subscriptionPlan)}</strong> plan. Track your {LC.unit} usage and the last 10 requests below.
+            </p>
 
             <div className="usage-summary-grid">
                 <div className="usage-credit-card">
