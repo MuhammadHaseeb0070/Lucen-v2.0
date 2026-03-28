@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquarePlus, Settings, LogOut, User, ChevronDown, Menu, Sparkles } from 'lucide-react';
+import { MessageSquarePlus, Settings, LogOut, User, ChevronDown, Menu } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { useThemeStore } from '../store/themeStore';
@@ -33,6 +33,10 @@ const Navbar: React.FC = () => {
 
     const openPlans = () => setBillingOpen(true);
 
+    const balanceText = creditsLoading
+        ? '…'
+        : remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
     return (
         <nav className="navbar">
             <div className="navbar-left">
@@ -53,37 +57,26 @@ const Navbar: React.FC = () => {
 
             <div className="navbar-right">
                 {user ? (
-                    <div className="billing-nav-cluster">
-                        <button
-                            type="button"
-                            className="billing-nav-plan"
-                            onClick={openPlans}
-                            title="View plans and subscription"
-                        >
-                            <Logo size={18} className="billing-nav-plan__logo" />
-                            <span className="billing-nav-plan__label">{planLabel(subscriptionPlan)}</span>
-                        </button>
-                        <button
-                            type="button"
-                            className="billing-nav-balance"
-                            onClick={openPlans}
-                            title="Open plans and credit balance"
-                        >
-                            <span className="billing-nav-balance__value">
-                                {creditsLoading ? '…' : remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    <button
+                        type="button"
+                        className="billing-nav-pill"
+                        onClick={openPlans}
+                        title={`${planLabel(subscriptionPlan)} · ${balanceText} credits (open plans)`}
+                    >
+                        <Logo size={17} className="billing-nav-pill__logo" aria-hidden />
+                        <span className="billing-nav-pill__text">
+                            <span className="billing-nav-pill__plan">{planLabel(subscriptionPlan)}</span>
+                            <span className="billing-nav-pill__sep" aria-hidden>
+                                ·
                             </span>
-                            <span className="billing-nav-balance__unit">credits</span>
-                        </button>
-                        <button type="button" className="billing-nav-cta" onClick={openPlans}>
-                            <Sparkles size={16} />
-                            <span className="billing-nav-cta__text">Plans</span>
-                        </button>
-                    </div>
+                            <span className="billing-nav-pill__balance">{balanceText}</span>
+                            <span className="billing-nav-pill__unit">cr</span>
+                        </span>
+                    </button>
                 ) : (
-                    <button type="button" className="billing-nav-cta billing-nav-cta--solo" onClick={openPlans}>
-                        <Logo size={18} className="billing-nav-plan__logo" />
-                        <Sparkles size={16} />
-                        <span className="billing-nav-cta__text">Plans</span>
+                    <button type="button" className="billing-nav-pill billing-nav-pill--guest" onClick={openPlans}>
+                        <Logo size={17} className="billing-nav-pill__logo" aria-hidden />
+                        <span className="billing-nav-pill__text">Plans</span>
                     </button>
                 )}
 
@@ -96,11 +89,7 @@ const Navbar: React.FC = () => {
                     <span className="toggle-label">Side Chat</span>
                 </button>
 
-                <button
-                    className="settings-btn"
-                    onClick={toggleSettings}
-                    title="Settings"
-                >
+                <button className="settings-btn" onClick={toggleSettings} title="Settings">
                     <Settings size={18} />
                 </button>
 
@@ -111,9 +100,7 @@ const Navbar: React.FC = () => {
                             onClick={() => setProfileOpen(!profileOpen)}
                             title={user.email}
                         >
-                            <div className="profile-avatar">
-                                {user.name.charAt(0).toUpperCase()}
-                            </div>
+                            <div className="profile-avatar">{user.name.charAt(0).toUpperCase()}</div>
                             <ChevronDown size={12} className={`profile-chevron ${profileOpen ? 'open' : ''}`} />
                         </button>
 
@@ -135,12 +122,12 @@ const Navbar: React.FC = () => {
                                         openPlans();
                                     }}
                                 >
-                                    <Sparkles size={14} />
-                                    Plans & credits
+                                    <Logo size={14} className="profile-dropdown__item-logo" />
+                                    Plans & balance
                                 </button>
                                 <button className="profile-dropdown__item profile-dropdown__signout" onClick={handleSignOut}>
                                     <LogOut size={14} />
-                                    Sign Out
+                                    Sign out
                                 </button>
                             </div>
                         )}

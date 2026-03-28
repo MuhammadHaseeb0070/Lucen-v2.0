@@ -68,7 +68,9 @@ const PricingModal: React.FC = () => {
                                 Lucen plans
                             </h2>
                             <p className="billing-modal__subtitle">
-                                One credit covers 1,000 blended tokens. Pick the tier that matches how you work.
+                                Balance and usage are tracked on the server. Numbers below describe what each Lemon
+                                subscription grant adds; your actual balance may include multiple grants or leftover
+                                credits.
                             </p>
                         </div>
                     </div>

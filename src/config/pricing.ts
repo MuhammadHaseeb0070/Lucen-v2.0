@@ -1,23 +1,17 @@
 // ============================================
 // Pricing Configuration (Single Source of Truth)
 // ============================================
-// Safe to be imported by the frontend UI to display pricing,
-// and safe to be imported by the backend Edge Functions.
-// Make sure NOT to put secret keys here.
+// Safe for the frontend. No secret keys here.
+// Server deducts credits; balance in the app is from the database.
 
 export interface PricingPackage {
-    /** Internal stable ID for UI + analytics. */
     id: 'free' | 'regular' | 'pro';
-    /** Lemon Squeezy Variant ID (required for paid tiers). */
     variantId?: string;
     name: string;
     priceUsd: number;
     creditsProvided: number;
-    /** Short line under the title. */
     tagline: string;
-    /** Bullet points for the card (no fake em dashes; keep lines short). */
     features: string[];
-    /** Extra callout for Pro (e.g. token volume vs Regular). */
     proExtra?: string;
 }
 
@@ -27,12 +21,12 @@ export const PACKAGES: Record<string, PricingPackage> = {
         name: 'Free',
         priceUsd: 0,
         creditsProvided: 100,
-        tagline: 'Start creating with Lucen at no cost.',
+        tagline: 'Try Lucen with a small monthly allowance.',
         features: [
-            '100 credits to explore Lucen (about 100k tokens at 1 credit per 1k tokens)',
-            'Up to 3 web searches on the free tier, then upgrade for unlimited search',
-            'Vision uses efficient image detail so your credits last longer',
-            'Upgrade anytime without losing your chats',
+            '100 credits on the house (usage is metered in the app)',
+            'Roughly 100k tokens of chat if you only use text at 1 credit per 1k tokens',
+            'Web search is limited on free; paid tiers remove that cap',
+            'Good for testing before you subscribe',
         ],
     },
     REGULAR: {
@@ -41,12 +35,12 @@ export const PACKAGES: Record<string, PricingPackage> = {
         name: 'Regular',
         priceUsd: 10.0,
         creditsProvided: 4000,
-        tagline: 'Solid allowance for daily work and side projects.',
+        tagline: 'Enough for steady daily use.',
         features: [
-            '4,000 credits per month, about 4M tokens at typical usage',
-            'High resolution vision on uploads when your model allows it',
-            'Unlimited web search in chat while your plan is active',
-            'Priority email if you ever need help with billing',
+            'Each successful subscription activation adds 4,000 credits to your balance (via Lemon)',
+            'Usage still draws from that balance: text, images, and search cost credits per server rules',
+            'Unlimited web search in app while subscribed (proxy side)',
+            'Renewals or extra purchases can add credits again, so your total balance can be higher than one grant',
         ],
     },
     PRO: {
@@ -55,19 +49,18 @@ export const PACKAGES: Record<string, PricingPackage> = {
         name: 'Pro',
         priceUsd: 20.0,
         creditsProvided: 10000,
-        tagline: 'Maximum headroom for power users and heavy workflows.',
+        tagline: 'Largest monthly grant for heavy use.',
         features: [
-            '10,000 credits per month, about 10M tokens at typical usage',
-            'Same unlimited search and premium vision as Regular',
-            'Best per credit value when you live in Lucen all day',
-            'Room for long documents, big threads, and image heavy chats',
+            'Each successful subscription activation adds 10,000 credits (via Lemon)',
+            'Same app limits and search behavior as Regular, bigger pool of credits',
+            'If you tested in Lemon test mode and bought again live, grants can stack until you use them',
+            'Best fit if you run long threads, big files, or lots of vision',
         ],
         proExtra:
-            'Pro includes 6,000 more monthly credits than Regular. That is two and a half times the token budget for only double the price.',
+            'Versus Regular: 10,000 credits per grant vs 4,000. If your balance looks like double a single grant, check for test plus live checkouts or a renewal in Lemon.',
     },
 };
 
-/** Lucen Credit system constants (display-only; server is authoritative). */
 export const CREDIT_RULES = {
     TOKENS_PER_CREDIT: 1000,
     IMAGE_CREDITS: 2,
@@ -75,7 +68,6 @@ export const CREDIT_RULES = {
     FREE_TIER_MAX_SEARCHES: 3,
 } as const;
 
-/** Maps server `subscription_plan` to display label. */
 export function planLabel(plan: string | undefined): string {
     const p = (plan || 'free').toLowerCase();
     if (p === 'pro') return 'Pro';

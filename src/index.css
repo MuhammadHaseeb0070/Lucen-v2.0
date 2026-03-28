@@ -289,108 +289,119 @@ h4 {
     font-weight: 600;
 }
 
-/* ─── Navbar: plans + balance (single place; sidebar no longer duplicates) ─── */
-.billing-nav-cluster {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    max-width: min(100%, 420px);
-}
-
-.billing-nav-plan,
-.billing-nav-balance,
-.billing-nav-cta {
+/* ─── Navbar: one pill (plan · balance) opens plans modal ─── */
+.billing-nav-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    max-width: min(100%, 220px);
+    padding: 6px 12px 6px 10px;
     border: 1px solid var(--divider);
-    background: var(--bg-muted);
-    color: var(--text-secondary);
-    font-family: var(--font);
-    font-size: 0.78rem;
-    font-weight: 600;
     border-radius: var(--r-full);
-    cursor: pointer;
-    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
-
-.billing-nav-plan {
-    padding: 5px 10px 5px 8px;
-}
-
-.billing-nav-plan:hover,
-.billing-nav-balance:hover {
-    background: var(--bg-surface-hover);
+    background: var(--bg-muted);
     color: var(--text-primary);
-    border-color: color-mix(in srgb, var(--accent) 35%, var(--divider));
+    font-family: var(--font);
+    font-size: 0.8rem;
+    font-weight: 650;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 
-.billing-nav-plan__logo {
+.billing-nav-pill:hover {
+    background: var(--bg-surface-hover);
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--divider));
+}
+
+.billing-nav-pill__logo {
+    flex-shrink: 0;
+    color: var(--accent);
+}
+
+.billing-nav-pill__text {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.billing-nav-pill__plan {
+    color: var(--text-secondary);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 64px;
+}
+
+.billing-nav-pill__sep {
+    color: var(--text-tertiary);
+    font-weight: 700;
+}
+
+.billing-nav-pill__balance {
+    color: var(--success);
+    font-weight: 700;
+}
+
+.billing-nav-pill__unit {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: lowercase;
+}
+
+.billing-nav-pill--guest {
+    max-width: none;
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+    color: var(--accent);
+}
+
+.billing-nav-pill--guest .billing-nav-pill__text {
+    font-weight: 700;
+}
+
+.profile-dropdown__item-logo {
     color: var(--accent);
     flex-shrink: 0;
 }
 
-.billing-nav-plan__label {
-    max-width: 72px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.billing-nav-balance {
-    padding: 5px 11px;
-    gap: 5px;
-}
-
-.billing-nav-balance__value {
-    color: var(--success);
-    font-variant-numeric: tabular-nums;
-}
-
-.billing-nav-balance__unit {
-    font-size: 0.72rem;
-    opacity: 0.85;
-    font-weight: 600;
-}
-
-.billing-nav-cta {
-    padding: 5px 12px;
-    background: var(--accent-soft);
-    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-    color: var(--accent);
-}
-
-.billing-nav-cta:hover {
-    background: color-mix(in srgb, var(--accent) 18%, var(--bg-surface));
-    color: var(--accent);
-}
-
-.billing-nav-cta--solo {
-    gap: 8px;
-    padding: 5px 14px;
-}
-
-.billing-nav-cta__text {
-    font-weight: 650;
-}
-
 /* ─── Billing / pricing modal ─── */
 .billing-modal-overlay {
-    padding: 16px;
-    align-items: flex-start;
+    padding: 0;
+    align-items: stretch;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .billing-modal {
     width: 100%;
     max-width: 1040px;
-    margin: 24px auto;
+    min-height: min(100%, 100dvh);
+    margin: 0 auto;
     background: var(--bg-surface);
-    border: 1px solid var(--divider);
-    border-radius: var(--r-lg);
-    box-shadow: 0 24px 80px var(--shadow-color);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
     animation: modalSlideUp var(--dur) var(--ease);
+    display: flex;
+    flex-direction: column;
+}
+
+@media (min-width: 640px) {
+    .billing-modal-overlay {
+        padding: 16px;
+        align-items: flex-start;
+    }
+
+    .billing-modal {
+        margin: 20px auto;
+        min-height: 0;
+        border: 1px solid var(--divider);
+        border-radius: var(--r-lg);
+        box-shadow: 0 24px 80px var(--shadow-color);
+    }
 }
 
 .billing-modal__header {
@@ -398,8 +409,15 @@ h4 {
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    padding: 22px 22px 16px;
+    padding: max(16px, env(safe-area-inset-top)) 18px 14px;
     border-bottom: 1px solid var(--divider);
+    flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+    .billing-modal__header {
+        padding: 22px 22px 16px;
+    }
 }
 
 .billing-modal__brand {
@@ -534,7 +552,14 @@ h4 {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
-    padding: 10px 22px 24px;
+    padding: 10px 16px max(20px, env(safe-area-inset-bottom));
+    flex: 1;
+}
+
+@media (min-width: 640px) {
+    .billing-modal__grid {
+        padding: 10px 22px 24px;
+    }
 }
 
 .billing-tier {
@@ -721,36 +746,15 @@ h4 {
     }
 }
 
-@media (max-width: 768px) {
-    .billing-nav-plan__label {
-        display: none;
-    }
-
-    .billing-nav-plan {
-        padding: 5px 8px;
-    }
-
-    .billing-nav-balance__unit {
-        display: none;
-    }
-
-    .billing-nav-cta__text {
-        display: none;
-    }
-
-    .billing-nav-cta {
-        padding: 6px 10px;
-    }
-}
-
 @media (max-width: 480px) {
-    .billing-nav-cluster {
-        max-width: none;
+    .billing-nav-pill {
+        max-width: 160px;
+        padding: 5px 10px 5px 8px;
+        font-size: 0.76rem;
     }
 
-    .billing-nav-balance {
-        padding: 4px 8px;
-        font-size: 0.72rem;
+    .billing-nav-pill__plan {
+        max-width: 44px;
     }
 }
 

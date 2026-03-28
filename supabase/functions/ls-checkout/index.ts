@@ -8,6 +8,7 @@
 //   - LEMON_SQUEEZY_API_KEY
 //   - LEMON_SQUEEZY_STORE_ID   (numeric store id from Lemon dashboard → Settings)
 // Optional:
+//   - LEMON_SQUEEZY_TEST_MODE  ("true" for test checkouts)
 //   - VITE_APP_URL (for default redirect URL after purchase)
 //
 // Request (JSON):
@@ -41,12 +42,22 @@ function asStringId(v: unknown): string | null {
   return null;
 }
 
+/** Strips leading # and whitespace. Lemon relationship ids are sent as strings (do not reject valid ids). */
+function normalizeLemonId(raw: string, label: string): string {
+  const n = raw.replace(/^#/, "").replace(/\s/g, "").trim();
+  if (!n) {
+    throw new Error(`${label} is empty. Set the secret or VITE variant without spaces or a lone #.`);
+  }
+  return n;
+}
+
 async function createLemonCheckout(params: {
   apiKey: string;
   storeId: string;
   variantId: string;
   userId: string;
   redirectUrl?: string;
+  testMode?: boolean;
 }): Promise<{ url: string }> {
   // https://docs.lemonsqueezy.com/api/checkouts/create-checkout — store + variant are relationships, not attributes.variant_id.
   const attributes: Record<string, unknown> = {
@@ -58,6 +69,9 @@ async function createLemonCheckout(params: {
   };
   if (params.redirectUrl) {
     attributes.product_options = { redirect_url: params.redirectUrl };
+  }
+  if (params.testMode) {
+    attributes.test_mode = true;
   }
 
   const payload = {
@@ -122,12 +136,26 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const lemonApiKey = Deno.env.get("LEMON_SQUEEZY_API_KEY");
-    const lemonStoreId = Deno.env.get("LEMON_SQUEEZY_STORE_ID");
-    if (!lemonApiKey) {
+    const lemonStoreIdRaw = Deno.env.get("LEMON_SQUEEZY_STORE_ID");
+    if (!lemonApiKey?.trim()) {
       return jsonResponse({ error: "LEMON_SQUEEZY_API_KEY not configured on server" }, { status: 500, headers: cors });
     }
-    if (!lemonStoreId?.trim()) {
-      return jsonResponse({ error: "LEMON_SQUEEZY_STORE_ID not configured on server" }, { status: 500, headers: cors });
+    if (!lemonStoreIdRaw?.trim()) {
+      return jsonResponse({
+        error:
+          "LEMON_SQUEEZY_STORE_ID missing in Supabase Edge Function secrets. Set it in Dashboard or add GitHub secret so CI does not wipe it.",
+      }, { status: 500, headers: cors });
+    }
+
+    let storeIdNormalized: string;
+    let variantNormalized: string;
+    try {
+      storeIdNormalized = normalizeLemonId(lemonStoreIdRaw.trim(), "LEMON_SQUEEZY_STORE_ID");
+    } catch (e) {
+      return jsonResponse(
+        { error: e instanceof Error ? e.message : "Invalid LEMON_SQUEEZY_STORE_ID" },
+        { status: 400, headers: cors },
+      );
     }
 
     const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
@@ -140,9 +168,20 @@ serve(async (req: Request) => {
     }
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const variantId = asStringId(body.variantId);
-    if (!variantId) {
-      return jsonResponse({ error: "Missing variantId" }, { status: 400, headers: cors });
+    const variantIdRaw = asStringId(body.variantId);
+    if (!variantIdRaw) {
+      return jsonResponse(
+        { error: "Missing variantId. Set VITE_LS_VARIANT_REGULAR / VITE_LS_VARIANT_PRO in Vercel." },
+        { status: 400, headers: cors },
+      );
+    }
+    try {
+      variantNormalized = normalizeLemonId(variantIdRaw, "variantId");
+    } catch (e) {
+      return jsonResponse(
+        { error: e instanceof Error ? e.message : "Invalid variantId" },
+        { status: 400, headers: cors },
+      );
     }
 
     const redirectUrl =
@@ -150,12 +189,19 @@ serve(async (req: Request) => {
         ? body.redirectUrl.trim()
         : (Deno.env.get("VITE_APP_URL") ? `${Deno.env.get("VITE_APP_URL")}` : undefined);
 
+    const testFlag = Deno.env.get("LEMON_SQUEEZY_TEST_MODE");
+    const testMode =
+      testFlag === "true" ||
+      testFlag === "1" ||
+      String(testFlag).toLowerCase() === "yes";
+
     const checkout = await createLemonCheckout({
-      apiKey: lemonApiKey,
-      storeId: lemonStoreId.trim(),
-      variantId,
+      apiKey: lemonApiKey.trim(),
+      storeId: storeIdNormalized,
+      variantId: variantNormalized,
       userId: user.id,
       redirectUrl,
+      testMode,
     });
 
     return jsonResponse({ url: checkout.url }, { status: 200, headers: cors });
