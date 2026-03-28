@@ -84,7 +84,9 @@ function extractVariantId(payload: any): string | null {
     attr?.first_subscription_item?.variant_id ??
     attr?.first_subscription_item?.variantId ??
     attr?.first_order_item?.variant_id ??
-    attr?.first_order_item?.variantId;
+    attr?.first_order_item?.variantId ??
+    payload?.meta?.custom_data?.variant_id ??
+    payload?.meta?.custom_data?.variantId;
   return asString(candidate);
 }
 
@@ -117,13 +119,15 @@ function shouldSetFreeForUpdate(payload: any): boolean {
 }
 
 function getCreditsForVariant(variantId: string): { credits: number; plan: string } | null {
-  const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR");
-  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
+  const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR")?.replace(/["']/g, "").trim();
+  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO")?.replace(/["']/g, "").trim();
   const CREDITS_REGULAR = parseInt(Deno.env.get("CREDITS_REGULAR") || "4000", 10);
   const CREDITS_PRO = parseInt(Deno.env.get("CREDITS_PRO") || "10000", 10);
 
-  if (variantId === VARIANT_REGULAR) return { credits: CREDITS_REGULAR, plan: "regular" };
-  if (variantId === VARIANT_PRO) return { credits: CREDITS_PRO, plan: "pro" };
+  const cleanId = variantId.replace(/["']/g, "").trim();
+
+  if (cleanId === VARIANT_REGULAR) return { credits: CREDITS_REGULAR, plan: "regular" };
+  if (cleanId === VARIANT_PRO) return { credits: CREDITS_PRO, plan: "pro" };
   return null;
 }
 
