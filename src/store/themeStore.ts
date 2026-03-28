@@ -32,8 +32,11 @@ export interface ThemePreset {
     isDark: boolean;
     colors: ThemeColors;
 }
+
 export const THEME_PRESETS: ThemePreset[] = [
-    // ─── CURATED (Brand Default) ───
+
+    // ─── CURATED ───────────────────────────────────────────────────────────────
+
     {
         id: 'lucen',
         name: 'Lucen',
@@ -63,425 +66,765 @@ export const THEME_PRESETS: ThemePreset[] = [
             aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
         },
     },
+
+    // Replaces: Abyss
+    // Why better: GitHub-inspired navy palette — backgrounds are cooler-neutral (not
+    // heavy blue-tinted), blue accent has excellent WCAG contrast on every surface.
     {
-        id: 'abyss',
-        name: 'Abyss',
-        emoji: '🌌',
+        id: 'midnight',
+        name: 'Midnight',
+        emoji: '🌙',
         category: 'curated',
         isDark: true,
         colors: {
-            bgBase: '#0B0F19', // Deep, rich professional slate (not muddy)
-            bgSurface: '#151C2C',
-            bgSurfaceHover: '#1E293B',
-            bgMuted: '#1A2234',
-            bgInset: '#070A10',
-            textPrimary: '#F8FAFC',
-            textSecondary: '#94A3B8',
-            textTertiary: '#64748B',
-            accent: '#38BDF8', // Crisp sky blue for high dark-mode contrast
-            accentSoft: 'rgba(56, 189, 248, 0.12)',
-            accentText: '#082F49',
-            danger: '#F87171',
-            success: '#34D399',
-            warning: '#FBBF24',
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.6)',
-            userBubbleBg: '#38BDF8',
-            userBubbleText: '#082F49',
-            aiBubbleBg: '#151C2C',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+            bgBase: '#0D1117',
+            bgSurface: '#161B22',
+            bgSurfaceHover: '#21262D',
+            bgMuted: '#1C2128',
+            bgInset: '#090D13',
+            textPrimary: '#E6EDF3',
+            textSecondary: '#8B949E',
+            textTertiary: '#6E7681',
+            accent: '#58A6FF',
+            accentSoft: 'rgba(88, 166, 255, 0.1)',
+            accentText: '#FFFFFF',
+            danger: '#F85149',
+            success: '#3FB950',
+            warning: '#D29922',
+            divider: 'rgba(255, 255, 255, 0.07)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+            userBubbleBg: '#58A6FF',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#161B22',
+            aiBubbleBorder: 'rgba(255, 255, 255, 0.07)',
         },
     },
 
-    // ─── MINIMAL (Ultra Clean & Sharp) ───
+    // ─── COOL ──────────────────────────────────────────────────────────────────
+
+    // Replaces: Paper
+    // Why better: Paper's black accent (#000) on near-white bg felt blunt.
+    // Cloud uses a professional deep blue accent — cleaner hierarchy, less harsh.
     {
-        id: 'paper',
-        name: 'Paper',
-        emoji: '📄',
+        id: 'cloud',
+        name: 'Cloud',
+        emoji: '☁️',
         category: 'cool',
         isDark: false,
         colors: {
-            bgBase: '#F9FAFB', // Extremely subtle cool off-white
+            bgBase: '#F6F8FA',
             bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#F3F4F6',
-            bgMuted: '#E5E7EB',
-            bgInset: '#D1D5DB',
-            textPrimary: '#111827', // Near black for maximum crispness
-            textSecondary: '#4B5563',
-            textTertiary: '#9CA3AF',
-            accent: '#000000', // Bold monochromatic accent
-            accentSoft: 'rgba(0, 0, 0, 0.05)',
+            bgSurfaceHover: '#F0F3F6',
+            bgMuted: '#E8ECF0',
+            bgInset: '#D8DEE6',
+            textPrimary: '#1A1E24',
+            textSecondary: '#57606A',
+            textTertiary: '#8C959F',
+            accent: '#0969DA',
+            accentSoft: 'rgba(9, 105, 218, 0.08)',
             accentText: '#FFFFFF',
-            danger: '#DC2626',
-            success: '#059669',
-            warning: '#D97706',
-            divider: 'rgba(0, 0, 0, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.03)',
-            userBubbleBg: '#111827',
+            danger: '#CF222E',
+            success: '#1A7F37',
+            warning: '#9A6700',
+            divider: 'rgba(0, 0, 0, 0.06)',
+            shadow: 'rgba(0, 0, 0, 0.04)',
+            userBubbleBg: '#0969DA',
             userBubbleText: '#FFFFFF',
             aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(0, 0, 0, 0.08)',
+            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
         },
     },
+
+    // Replaces: Carbon
+    // Why better: Carbon's white accent on #121212 was stark and cold.
+    // Graphite uses a calm steel-blue accent — still high contrast, far more refined.
     {
-        id: 'carbon',
-        name: 'Carbon',
-        emoji: '⬛',
+        id: 'graphite',
+        name: 'Graphite',
+        emoji: '🪨',
         category: 'cool',
         isDark: true,
         colors: {
-            bgBase: '#121212', // Classic OLED-friendly dark
+            bgBase: '#141414',
             bgSurface: '#1E1E1E',
-            bgSurfaceHover: '#2A2A2A',
-            bgMuted: '#242424',
-            bgInset: '#000000',
-            textPrimary: '#E5E5E5',
-            textSecondary: '#A3A3A3',
-            textTertiary: '#737373',
-            accent: '#FFFFFF', // High-impact white accent
-            accentSoft: 'rgba(255, 255, 255, 0.08)',
-            accentText: '#000000',
+            bgSurfaceHover: '#292929',
+            bgMuted: '#222222',
+            bgInset: '#0A0A0A',
+            textPrimary: '#EBEBEB',
+            textSecondary: '#999999',
+            textTertiary: '#666666',
+            accent: '#4A90E2',
+            accentSoft: 'rgba(74, 144, 226, 0.1)',
+            accentText: '#FFFFFF',
             danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
+            success: '#22C55E',
+            warning: '#EAB308',
             divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
-            userBubbleBg: '#E5E5E5',
-            userBubbleText: '#121212',
+            shadow: 'rgba(0, 0, 0, 0.6)',
+            userBubbleBg: '#4A90E2',
+            userBubbleText: '#FFFFFF',
             aiBubbleBg: '#1E1E1E',
             aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
         },
     },
 
-    // ─── READING (Blue-light reduction & Warmth) ───
+    // ─── WARM ──────────────────────────────────────────────────────────────────
+
+    // Replaces: Sepia
+    // Why better: Sepia's amber text on amber surfaces blended together.
+    // Parchment keeps the warm feel with a distinct burnt-orange accent that
+    // clearly stands apart from all neutral surfaces.
     {
-        id: 'sepia',
-        name: 'Sepia',
-        emoji: '☕',
+        id: 'parchment',
+        name: 'Parchment',
+        emoji: '📜',
         category: 'warm',
         isDark: false,
         colors: {
-            bgBase: '#FDF6E3', // Classic e-reader background
-            bgSurface: '#FFFAF0',
-            bgSurfaceHover: '#F4E8D3',
-            bgMuted: '#EFE3CE',
-            bgInset: '#E3D5BA',
-            textPrimary: '#433422', // Deep espresso text (less harsh than black)
-            textSecondary: '#786854',
-            textTertiary: '#A69886',
-            accent: '#D97706',
-            accentSoft: 'rgba(217, 119, 6, 0.08)',
+            bgBase: '#FAF7F0',
+            bgSurface: '#FFFDF8',
+            bgSurfaceHover: '#F2EDE2',
+            bgMuted: '#E9E1D0',
+            bgInset: '#DDD3BC',
+            textPrimary: '#3D2B1A',
+            textSecondary: '#78614A',
+            textTertiary: '#A8907A',
+            accent: '#C05C0A',
+            accentSoft: 'rgba(192, 92, 10, 0.08)',
             accentText: '#FFFFFF',
-            danger: '#DC2626',
-            success: '#16A34A',
+            danger: '#B91C1C',
+            success: '#15803D',
             warning: '#B45309',
-            divider: 'rgba(67, 52, 34, 0.08)',
-            shadow: 'rgba(67, 52, 34, 0.04)',
-            userBubbleBg: '#D97706',
+            divider: 'rgba(61, 43, 26, 0.07)',
+            shadow: 'rgba(61, 43, 26, 0.04)',
+            userBubbleBg: '#C05C0A',
             userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFAF0',
-            aiBubbleBorder: 'rgba(67, 52, 34, 0.08)',
-        },
-    },
-    {
-        id: 'cocoa',
-        name: 'Cocoa',
-        emoji: '🦉',
-        category: 'warm',
-        isDark: true,
-        colors: {
-            bgBase: '#1C1917', // Very warm, earthy dark gray
-            bgSurface: '#292524',
-            bgSurfaceHover: '#393433',
-            bgMuted: '#302C2B',
-            bgInset: '#12100F',
-            textPrimary: '#E7E5E4',
-            textSecondary: '#A8A29E',
-            textTertiary: '#78716C',
-            accent: '#FBBF24', // Soft gold
-            accentSoft: 'rgba(251, 191, 36, 0.1)',
-            accentText: '#451A03',
-            danger: '#F87171',
-            success: '#4ADE80',
-            warning: '#FCD34D',
-            divider: 'rgba(255, 255, 255, 0.06)',
-            shadow: 'rgba(0, 0, 0, 0.4)',
-            userBubbleBg: '#FBBF24',
-            userBubbleText: '#451A03',
-            aiBubbleBg: '#292524',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.06)',
+            aiBubbleBg: '#FFFDF8',
+            aiBubbleBorder: 'rgba(61, 43, 26, 0.07)',
         },
     },
 
-    // ─── DEVELOPER (Cool, IDE-inspired Focus) ───
+    // Replaces: Cocoa
+    // Why better: Cocoa's gold (#FBBF24) was too bright against dark warm surfaces,
+    // creating a "candy" effect. Ember uses a muted amber-orange that stays warm
+    // without glowing.
     {
-        id: 'frost',
-        name: 'Frost',
-        emoji: '❄️',
-        category: 'focus',
+        id: 'ember',
+        name: 'Ember',
+        emoji: '🔥',
+        category: 'warm',
+        isDark: true,
+        colors: {
+            bgBase: '#1B1612',
+            bgSurface: '#26201A',
+            bgSurfaceHover: '#322A22',
+            bgMuted: '#211B16',
+            bgInset: '#110E0A',
+            textPrimary: '#EDE8DF',
+            textSecondary: '#A89B8A',
+            textTertiary: '#766858',
+            accent: '#E8894A',
+            accentSoft: 'rgba(232, 137, 74, 0.1)',
+            accentText: '#1B1612',
+            danger: '#E55050',
+            success: '#4EAD7A',
+            warning: '#D4A030',
+            divider: 'rgba(232, 137, 74, 0.12)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+            userBubbleBg: '#E8894A',
+            userBubbleText: '#1B1612',
+            aiBubbleBg: '#26201A',
+            aiBubbleBorder: 'rgba(232, 137, 74, 0.12)',
+        },
+    },
+
+    // New theme
+    // A clean, natural light theme. Forest-green accent is professional and
+    // uncommon — provides visual variety without harshness.
+    {
+        id: 'sage',
+        name: 'Sage',
+        emoji: '🌿',
+        category: 'warm',
         isDark: false,
         colors: {
-            bgBase: '#F0F9FF', // Icy cool blue tint
+            bgBase: '#F3F7F3',
             bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#E0F2FE',
-            bgMuted: '#E6F4FE',
-            bgInset: '#BAE6FD',
-            textPrimary: '#0F172A',
-            textSecondary: '#475569',
-            textTertiary: '#94A3B8',
-            accent: '#0284C7', // Vivid cerulean
-            accentSoft: 'rgba(2, 132, 199, 0.08)',
+            bgSurfaceHover: '#EAF1EA',
+            bgMuted: '#DFE9DF',
+            bgInset: '#CFDDCF',
+            textPrimary: '#1A2D1A',
+            textSecondary: '#4A674A',
+            textTertiary: '#7A9A7A',
+            accent: '#2D6A4F',
+            accentSoft: 'rgba(45, 106, 79, 0.08)',
             accentText: '#FFFFFF',
-            danger: '#E11D48',
-            success: '#059669',
-            warning: '#EA580C',
-            divider: 'rgba(15, 23, 42, 0.06)',
-            shadow: 'rgba(15, 23, 42, 0.04)',
-            userBubbleBg: '#0284C7',
+            danger: '#C0392B',
+            success: '#1A7F37',
+            warning: '#B45309',
+            divider: 'rgba(26, 45, 26, 0.07)',
+            shadow: 'rgba(26, 45, 26, 0.04)',
+            userBubbleBg: '#2D6A4F',
             userBubbleText: '#FFFFFF',
             aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(15, 23, 42, 0.06)',
+            aiBubbleBorder: 'rgba(26, 45, 26, 0.07)',
         },
     },
+
+    // ─── FOCUS ─────────────────────────────────────────────────────────────────
+
+    // Replaces: Frost
+    // Why better: Frost's icy tint on all surfaces (bgMuted: #BAE6FD) was too
+    // saturated — the whole UI looked "dunked in blue". Polar keeps backgrounds
+    // nearly neutral and saves the blue for the accent only.
     {
-        id: 'dracula',
-        name: 'Dracula',
-        emoji: '🧛',
+        id: 'polar',
+        name: 'Polar',
+        emoji: '🏔️',
+        category: 'focus',
+        isDark: false,
+        colors: {
+            bgBase: '#EDF3FB',
+            bgSurface: '#FFFFFF',
+            bgSurfaceHover: '#E0EAF5',
+            bgMuted: '#D6E3F0',
+            bgInset: '#C0D3E8',
+            textPrimary: '#0D1C2E',
+            textSecondary: '#3D5672',
+            textTertiary: '#7A9AB8',
+            accent: '#1565C0',
+            accentSoft: 'rgba(21, 101, 192, 0.08)',
+            accentText: '#FFFFFF',
+            danger: '#C62828',
+            success: '#2E7D32',
+            warning: '#E65100',
+            divider: 'rgba(13, 28, 46, 0.06)',
+            shadow: 'rgba(13, 28, 46, 0.04)',
+            userBubbleBg: '#1565C0',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#FFFFFF',
+            aiBubbleBorder: 'rgba(13, 28, 46, 0.06)',
+        },
+    },
+
+    // Replaces: Dracula
+    // Why better: Dracula's mauve (#CBA6F7) was soft but the background hue
+    // (purple-slate mix) created an unresolved clash. Aurora uses a pure near-
+    // neutral dark base so the violet accent reads clearly without competition.
+    {
+        id: 'aurora',
+        name: 'Aurora',
+        emoji: '🌌',
         category: 'focus',
         isDark: true,
         colors: {
-            bgBase: '#1E1E2E', // Popular developer purple-slate
-            bgSurface: '#28283E',
-            bgSurfaceHover: '#353551',
-            bgMuted: '#2F2F48',
-            bgInset: '#151521',
-            textPrimary: '#CDD6F4',
-            textSecondary: '#A6ADC8',
-            textTertiary: '#7F849C',
-            accent: '#CBA6F7', // Soft mauve/purple
-            accentSoft: 'rgba(203, 166, 247, 0.12)',
-            accentText: '#181825',
-            danger: '#F38BA8',
-            success: '#A6E3A1',
-            warning: '#F9E2AF',
-            divider: 'rgba(205, 214, 244, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.4)',
-            userBubbleBg: '#CBA6F7',
-            userBubbleText: '#181825',
-            aiBubbleBg: '#28283E',
-            aiBubbleBorder: 'rgba(205, 214, 244, 0.08)',
+            bgBase: '#14141E',
+            bgSurface: '#1C1C2A',
+            bgSurfaceHover: '#262638',
+            bgMuted: '#1A1A28',
+            bgInset: '#0D0D14',
+            textPrimary: '#D8D8EC',
+            textSecondary: '#8A8AAC',
+            textTertiary: '#5A5A7A',
+            accent: '#7B68EE',
+            accentSoft: 'rgba(123, 104, 238, 0.1)',
+            accentText: '#FFFFFF',
+            danger: '#E55C6C',
+            success: '#5DBF8A',
+            warning: '#E8A838',
+            divider: 'rgba(123, 104, 238, 0.1)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+            userBubbleBg: '#7B68EE',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#1C1C2A',
+            aiBubbleBorder: 'rgba(123, 104, 238, 0.1)',
         },
-    }, {
-        id: 'neon-teal',
-        name: 'Neon Teal',
-        emoji: '🌊',
+    },
+
+    // Replaces: neon-teal (kept the teal idea, removed the neon)
+    // Why better: neon-teal's accent (#3DF2E0) was eye-piercing. Dusk uses a
+    // calmer teal (#2DD4BF) on a proper navy base — professional, not cyberpunk.
+    {
+        id: 'dusk',
+        name: 'Dusk',
+        emoji: '🌆',
         category: 'focus',
         isDark: true,
         colors: {
-            bgBase: '#0B0F14',
-            bgSurface: '#131A22',
-            bgSurfaceHover: '#1A2430',
-            bgMuted: '#0F1620',
-            bgInset: '#070A0E',
-
-            textPrimary: '#F8FAFC',
-            textSecondary: '#9AA6B2',
-            textTertiary: '#6B7A88',
-
-            accent: '#3DF2E0',
-            accentSoft: 'rgba(61, 242, 224, 0.12)',
-            accentText: '#0B0F14',
-
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-
-            divider: 'rgba(61, 242, 224, 0.18)',
-            shadow: 'rgba(0, 0, 0, 0.55)',
-
-            userBubbleBg: '#3DF2E0',
-            userBubbleText: '#0B0F14',
-            aiBubbleBg: '#131A22',
-            aiBubbleBorder: 'rgba(61, 242, 224, 0.18)',
+            bgBase: '#0E1822',
+            bgSurface: '#16232E',
+            bgSurfaceHover: '#1E303E',
+            bgMuted: '#132030',
+            bgInset: '#08101A',
+            textPrimary: '#E5EFF8',
+            textSecondary: '#85A0B8',
+            textTertiary: '#56788E',
+            accent: '#2DD4BF',
+            accentSoft: 'rgba(45, 212, 191, 0.1)',
+            accentText: '#0E1822',
+            danger: '#F06060',
+            success: '#4ADE80',
+            warning: '#FBBF24',
+            divider: 'rgba(45, 212, 191, 0.1)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+            userBubbleBg: '#2DD4BF',
+            userBubbleText: '#0E1822',
+            aiBubbleBg: '#16232E',
+            aiBubbleBorder: 'rgba(45, 212, 191, 0.1)',
         },
     },
 
-    {
-        id: 'indigo-volt',
-        name: 'Indigo Volt',
-        emoji: '🟣',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#0E2A47',
-            bgSurface: '#123556',
-            bgSurfaceHover: '#163F6B',
-            bgMuted: '#0B223B',
-            bgInset: '#081728',
-
-            textPrimary: '#F8FAFC',
-            textSecondary: '#A8B8CC',
-            textTertiary: '#6E86A3',
-
-            accent: '#8A6CFF',
-            accentSoft: 'rgba(138, 108, 255, 0.12)',
-            accentText: '#0E2A47',
-
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-
-            divider: 'rgba(138, 108, 255, 0.18)',
-            shadow: 'rgba(0, 0, 0, 0.6)',
-
-            userBubbleBg: '#8A6CFF',
-            userBubbleText: '#0E2A47',
-            aiBubbleBg: '#123556',
-            aiBubbleBorder: 'rgba(138, 108, 255, 0.18)',
-        },
-    },
-
-    {
-        id: 'lime-vector',
-        name: 'Lime Vector',
-        emoji: '🟢',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#0C1A2B',
-            bgSurface: '#10263B',
-            bgSurfaceHover: '#17324E',
-            bgMuted: '#0E1F33',
-            bgInset: '#07121F',
-
-            textPrimary: '#F8FAFC',
-            textSecondary: '#A7B7C7',
-            textTertiary: '#6C839A',
-
-            accent: '#B6FF3B',
-            accentSoft: 'rgba(182, 255, 59, 0.12)',
-            accentText: '#0C1A2B',
-
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-
-            divider: 'rgba(182, 255, 59, 0.18)',
-            shadow: 'rgba(0, 0, 0, 0.6)',
-
-            userBubbleBg: '#B6FF3B',
-            userBubbleText: '#0C1A2B',
-            aiBubbleBg: '#10263B',
-            aiBubbleBorder: 'rgba(182, 255, 59, 0.18)',
-        },
-    },
-
-    {
-        id: 'blood-ink',
-        name: 'Blood Ink',
-        emoji: '🩸',
-        category: 'cool',
-        isDark: true,
-        colors: {
-            bgBase: '#11131A',
-            bgSurface: '#191C24',
-            bgSurfaceHover: '#22242E',
-            bgMuted: '#171A22',
-            bgInset: '#0A0B10',
-
-            textPrimary: '#F8FAFC',
-            textSecondary: '#A6AAB3',
-            textTertiary: '#6B6F7A',
-
-            accent: '#FF3B3B',
-            accentSoft: 'rgba(255, 59, 59, 0.12)',
-            accentText: '#11131A',
-
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-
-            divider: 'rgba(255, 59, 59, 0.18)',
-            shadow: 'rgba(0, 0, 0, 0.65)',
-
-            userBubbleBg: '#FF3B3B',
-            userBubbleText: '#11131A',
-            aiBubbleBg: '#191C24',
-            aiBubbleBorder: 'rgba(255, 59, 59, 0.18)',
-        },
-    },
-
-    {
-        id: 'sage-ivory',
-        name: 'Sage Ivory',
-        emoji: '🫒',
-        category: 'warm',
-        isDark: true,
-        colors: {
-            bgBase: '#3E4A3F',
-            bgSurface: '#4B5A4B',
-            bgSurfaceHover: '#5A6A59',
-            bgMuted: '#3A463A',
-            bgInset: '#2B332B',
-
-            textPrimary: '#FFF8F2',
-            textSecondary: '#E8DED2',
-            textTertiary: '#B7AFA4',
-
-            accent: '#E6D8CE',
-            accentSoft: 'rgba(230, 216, 206, 0.14)',
-            accentText: '#3E4A3F',
-
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-
-            divider: 'rgba(230, 216, 206, 0.2)',
-            shadow: 'rgba(0, 0, 0, 0.55)',
-
-            userBubbleBg: '#E6D8CE',
-            userBubbleText: '#3E4A3F',
-            aiBubbleBg: '#4B5A4B',
-            aiBubbleBorder: 'rgba(230, 216, 206, 0.2)',
-        },
-    },
-
-    {
-        id: 'steel-ice',
-        name: 'Steel Ice',
-        emoji: '🧊',
-        category: 'cool',
-        isDark: true,
-        colors: {
-            bgBase: '#2C3A47',
-            bgSurface: '#364755',
-            bgSurfaceHover: '#415566',
-            bgMuted: '#2A3642',
-            bgInset: '#1B252C',
-
-            textPrimary: '#F5FAFF',
-            textSecondary: '#A8B5BF',
-            textTertiary: '#6C7B86',
-
-            accent: '#C7D2D8',
-            accentSoft: 'rgba(199, 210, 216, 0.14)',
-            accentText: '#2C3A47',
-
-            danger: '#EF4444',
-            success: '#10B981',
-            warning: '#F59E0B',
-
-            divider: 'rgba(199, 210, 216, 0.22)',
-            shadow: 'rgba(0, 0, 0, 0.55)',
-
-            userBubbleBg: '#C7D2D8',
-            userBubbleText: '#2C3A47',
-            aiBubbleBg: '#364755',
-            aiBubbleBorder: 'rgba(199, 210, 216, 0.22)',
-        }
-
-    }
 ];
+// export const THEME_PRESETS: ThemePreset[] = [
+//     // ─── CURATED (Brand Default) ───
+//     {
+//         id: 'lucen',
+//         name: 'Lucen',
+//         emoji: '✨',
+//         category: 'curated',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#F7F7F9',
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#F1F1F4',
+//             bgMuted: '#EAEBEF',
+//             bgInset: '#E2E3E8',
+//             textPrimary: '#1E1E24',
+//             textSecondary: '#64646A',
+//             textTertiary: '#9A9A9F',
+//             accent: '#14B8A6',
+//             accentSoft: 'rgba(20, 184, 166, 0.1)',
+//             accentText: '#FFFFFF',
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+//             divider: 'rgba(0, 0, 0, 0.06)',
+//             shadow: 'rgba(0, 0, 0, 0.05)',
+//             userBubbleBg: '#14B8A6',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+//         },
+//     },
+//     {
+//         id: 'abyss',
+//         name: 'Abyss',
+//         emoji: '🌌',
+//         category: 'curated',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#0B0F19', // Deep, rich professional slate (not muddy)
+//             bgSurface: '#151C2C',
+//             bgSurfaceHover: '#1E293B',
+//             bgMuted: '#1A2234',
+//             bgInset: '#070A10',
+//             textPrimary: '#F8FAFC',
+//             textSecondary: '#94A3B8',
+//             textTertiary: '#64748B',
+//             accent: '#38BDF8', // Crisp sky blue for high dark-mode contrast
+//             accentSoft: 'rgba(56, 189, 248, 0.12)',
+//             accentText: '#082F49',
+//             danger: '#F87171',
+//             success: '#34D399',
+//             warning: '#FBBF24',
+//             divider: 'rgba(255, 255, 255, 0.08)',
+//             shadow: 'rgba(0, 0, 0, 0.6)',
+//             userBubbleBg: '#38BDF8',
+//             userBubbleText: '#082F49',
+//             aiBubbleBg: '#151C2C',
+//             aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+//         },
+//     },
+
+//     // ─── MINIMAL (Ultra Clean & Sharp) ───
+//     {
+//         id: 'paper',
+//         name: 'Paper',
+//         emoji: '📄',
+//         category: 'cool',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#F9FAFB', // Extremely subtle cool off-white
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#F3F4F6',
+//             bgMuted: '#E5E7EB',
+//             bgInset: '#D1D5DB',
+//             textPrimary: '#111827', // Near black for maximum crispness
+//             textSecondary: '#4B5563',
+//             textTertiary: '#9CA3AF',
+//             accent: '#000000', // Bold monochromatic accent
+//             accentSoft: 'rgba(0, 0, 0, 0.05)',
+//             accentText: '#FFFFFF',
+//             danger: '#DC2626',
+//             success: '#059669',
+//             warning: '#D97706',
+//             divider: 'rgba(0, 0, 0, 0.08)',
+//             shadow: 'rgba(0, 0, 0, 0.03)',
+//             userBubbleBg: '#111827',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(0, 0, 0, 0.08)',
+//         },
+//     },
+//     {
+//         id: 'carbon',
+//         name: 'Carbon',
+//         emoji: '⬛',
+//         category: 'cool',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#121212', // Classic OLED-friendly dark
+//             bgSurface: '#1E1E1E',
+//             bgSurfaceHover: '#2A2A2A',
+//             bgMuted: '#242424',
+//             bgInset: '#000000',
+//             textPrimary: '#E5E5E5',
+//             textSecondary: '#A3A3A3',
+//             textTertiary: '#737373',
+//             accent: '#FFFFFF', // High-impact white accent
+//             accentSoft: 'rgba(255, 255, 255, 0.08)',
+//             accentText: '#000000',
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+//             divider: 'rgba(255, 255, 255, 0.08)',
+//             shadow: 'rgba(0, 0, 0, 0.5)',
+//             userBubbleBg: '#E5E5E5',
+//             userBubbleText: '#121212',
+//             aiBubbleBg: '#1E1E1E',
+//             aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+//         },
+//     },
+
+//     // ─── READING (Blue-light reduction & Warmth) ───
+//     {
+//         id: 'sepia',
+//         name: 'Sepia',
+//         emoji: '☕',
+//         category: 'warm',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#FDF6E3', // Classic e-reader background
+//             bgSurface: '#FFFAF0',
+//             bgSurfaceHover: '#F4E8D3',
+//             bgMuted: '#EFE3CE',
+//             bgInset: '#E3D5BA',
+//             textPrimary: '#433422', // Deep espresso text (less harsh than black)
+//             textSecondary: '#786854',
+//             textTertiary: '#A69886',
+//             accent: '#D97706',
+//             accentSoft: 'rgba(217, 119, 6, 0.08)',
+//             accentText: '#FFFFFF',
+//             danger: '#DC2626',
+//             success: '#16A34A',
+//             warning: '#B45309',
+//             divider: 'rgba(67, 52, 34, 0.08)',
+//             shadow: 'rgba(67, 52, 34, 0.04)',
+//             userBubbleBg: '#D97706',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFAF0',
+//             aiBubbleBorder: 'rgba(67, 52, 34, 0.08)',
+//         },
+//     },
+//     {
+//         id: 'cocoa',
+//         name: 'Cocoa',
+//         emoji: '🦉',
+//         category: 'warm',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#1C1917', // Very warm, earthy dark gray
+//             bgSurface: '#292524',
+//             bgSurfaceHover: '#393433',
+//             bgMuted: '#302C2B',
+//             bgInset: '#12100F',
+//             textPrimary: '#E7E5E4',
+//             textSecondary: '#A8A29E',
+//             textTertiary: '#78716C',
+//             accent: '#FBBF24', // Soft gold
+//             accentSoft: 'rgba(251, 191, 36, 0.1)',
+//             accentText: '#451A03',
+//             danger: '#F87171',
+//             success: '#4ADE80',
+//             warning: '#FCD34D',
+//             divider: 'rgba(255, 255, 255, 0.06)',
+//             shadow: 'rgba(0, 0, 0, 0.4)',
+//             userBubbleBg: '#FBBF24',
+//             userBubbleText: '#451A03',
+//             aiBubbleBg: '#292524',
+//             aiBubbleBorder: 'rgba(255, 255, 255, 0.06)',
+//         },
+//     },
+
+//     // ─── DEVELOPER (Cool, IDE-inspired Focus) ───
+//     {
+//         id: 'frost',
+//         name: 'Frost',
+//         emoji: '❄️',
+//         category: 'focus',
+//         isDark: false,
+//         colors: {
+//             bgBase: '#F0F9FF', // Icy cool blue tint
+//             bgSurface: '#FFFFFF',
+//             bgSurfaceHover: '#E0F2FE',
+//             bgMuted: '#E6F4FE',
+//             bgInset: '#BAE6FD',
+//             textPrimary: '#0F172A',
+//             textSecondary: '#475569',
+//             textTertiary: '#94A3B8',
+//             accent: '#0284C7', // Vivid cerulean
+//             accentSoft: 'rgba(2, 132, 199, 0.08)',
+//             accentText: '#FFFFFF',
+//             danger: '#E11D48',
+//             success: '#059669',
+//             warning: '#EA580C',
+//             divider: 'rgba(15, 23, 42, 0.06)',
+//             shadow: 'rgba(15, 23, 42, 0.04)',
+//             userBubbleBg: '#0284C7',
+//             userBubbleText: '#FFFFFF',
+//             aiBubbleBg: '#FFFFFF',
+//             aiBubbleBorder: 'rgba(15, 23, 42, 0.06)',
+//         },
+//     },
+//     {
+//         id: 'dracula',
+//         name: 'Dracula',
+//         emoji: '🧛',
+//         category: 'focus',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#1E1E2E', // Popular developer purple-slate
+//             bgSurface: '#28283E',
+//             bgSurfaceHover: '#353551',
+//             bgMuted: '#2F2F48',
+//             bgInset: '#151521',
+//             textPrimary: '#CDD6F4',
+//             textSecondary: '#A6ADC8',
+//             textTertiary: '#7F849C',
+//             accent: '#CBA6F7', // Soft mauve/purple
+//             accentSoft: 'rgba(203, 166, 247, 0.12)',
+//             accentText: '#181825',
+//             danger: '#F38BA8',
+//             success: '#A6E3A1',
+//             warning: '#F9E2AF',
+//             divider: 'rgba(205, 214, 244, 0.08)',
+//             shadow: 'rgba(0, 0, 0, 0.4)',
+//             userBubbleBg: '#CBA6F7',
+//             userBubbleText: '#181825',
+//             aiBubbleBg: '#28283E',
+//             aiBubbleBorder: 'rgba(205, 214, 244, 0.08)',
+//         },
+//     }, {
+//         id: 'neon-teal',
+//         name: 'Neon Teal',
+//         emoji: '🌊',
+//         category: 'focus',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#0B0F14',
+//             bgSurface: '#131A22',
+//             bgSurfaceHover: '#1A2430',
+//             bgMuted: '#0F1620',
+//             bgInset: '#070A0E',
+
+//             textPrimary: '#F8FAFC',
+//             textSecondary: '#9AA6B2',
+//             textTertiary: '#6B7A88',
+
+//             accent: '#3DF2E0',
+//             accentSoft: 'rgba(61, 242, 224, 0.12)',
+//             accentText: '#0B0F14',
+
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+
+//             divider: 'rgba(61, 242, 224, 0.18)',
+//             shadow: 'rgba(0, 0, 0, 0.55)',
+
+//             userBubbleBg: '#3DF2E0',
+//             userBubbleText: '#0B0F14',
+//             aiBubbleBg: '#131A22',
+//             aiBubbleBorder: 'rgba(61, 242, 224, 0.18)',
+//         },
+//     },
+
+//     {
+//         id: 'indigo-volt',
+//         name: 'Indigo Volt',
+//         emoji: '🟣',
+//         category: 'focus',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#0E2A47',
+//             bgSurface: '#123556',
+//             bgSurfaceHover: '#163F6B',
+//             bgMuted: '#0B223B',
+//             bgInset: '#081728',
+
+//             textPrimary: '#F8FAFC',
+//             textSecondary: '#A8B8CC',
+//             textTertiary: '#6E86A3',
+
+//             accent: '#8A6CFF',
+//             accentSoft: 'rgba(138, 108, 255, 0.12)',
+//             accentText: '#0E2A47',
+
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+
+//             divider: 'rgba(138, 108, 255, 0.18)',
+//             shadow: 'rgba(0, 0, 0, 0.6)',
+
+//             userBubbleBg: '#8A6CFF',
+//             userBubbleText: '#0E2A47',
+//             aiBubbleBg: '#123556',
+//             aiBubbleBorder: 'rgba(138, 108, 255, 0.18)',
+//         },
+//     },
+
+//     {
+//         id: 'lime-vector',
+//         name: 'Lime Vector',
+//         emoji: '🟢',
+//         category: 'focus',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#0C1A2B',
+//             bgSurface: '#10263B',
+//             bgSurfaceHover: '#17324E',
+//             bgMuted: '#0E1F33',
+//             bgInset: '#07121F',
+
+//             textPrimary: '#F8FAFC',
+//             textSecondary: '#A7B7C7',
+//             textTertiary: '#6C839A',
+
+//             accent: '#B6FF3B',
+//             accentSoft: 'rgba(182, 255, 59, 0.12)',
+//             accentText: '#0C1A2B',
+
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+
+//             divider: 'rgba(182, 255, 59, 0.18)',
+//             shadow: 'rgba(0, 0, 0, 0.6)',
+
+//             userBubbleBg: '#B6FF3B',
+//             userBubbleText: '#0C1A2B',
+//             aiBubbleBg: '#10263B',
+//             aiBubbleBorder: 'rgba(182, 255, 59, 0.18)',
+//         },
+//     },
+
+//     {
+//         id: 'blood-ink',
+//         name: 'Blood Ink',
+//         emoji: '🩸',
+//         category: 'cool',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#11131A',
+//             bgSurface: '#191C24',
+//             bgSurfaceHover: '#22242E',
+//             bgMuted: '#171A22',
+//             bgInset: '#0A0B10',
+
+//             textPrimary: '#F8FAFC',
+//             textSecondary: '#A6AAB3',
+//             textTertiary: '#6B6F7A',
+
+//             accent: '#FF3B3B',
+//             accentSoft: 'rgba(255, 59, 59, 0.12)',
+//             accentText: '#11131A',
+
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+
+//             divider: 'rgba(255, 59, 59, 0.18)',
+//             shadow: 'rgba(0, 0, 0, 0.65)',
+
+//             userBubbleBg: '#FF3B3B',
+//             userBubbleText: '#11131A',
+//             aiBubbleBg: '#191C24',
+//             aiBubbleBorder: 'rgba(255, 59, 59, 0.18)',
+//         },
+//     },
+
+//     {
+//         id: 'sage-ivory',
+//         name: 'Sage Ivory',
+//         emoji: '🫒',
+//         category: 'warm',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#3E4A3F',
+//             bgSurface: '#4B5A4B',
+//             bgSurfaceHover: '#5A6A59',
+//             bgMuted: '#3A463A',
+//             bgInset: '#2B332B',
+
+//             textPrimary: '#FFF8F2',
+//             textSecondary: '#E8DED2',
+//             textTertiary: '#B7AFA4',
+
+//             accent: '#E6D8CE',
+//             accentSoft: 'rgba(230, 216, 206, 0.14)',
+//             accentText: '#3E4A3F',
+
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+
+//             divider: 'rgba(230, 216, 206, 0.2)',
+//             shadow: 'rgba(0, 0, 0, 0.55)',
+
+//             userBubbleBg: '#E6D8CE',
+//             userBubbleText: '#3E4A3F',
+//             aiBubbleBg: '#4B5A4B',
+//             aiBubbleBorder: 'rgba(230, 216, 206, 0.2)',
+//         },
+//     },
+
+//     {
+//         id: 'steel-ice',
+//         name: 'Steel Ice',
+//         emoji: '🧊',
+//         category: 'cool',
+//         isDark: true,
+//         colors: {
+//             bgBase: '#2C3A47',
+//             bgSurface: '#364755',
+//             bgSurfaceHover: '#415566',
+//             bgMuted: '#2A3642',
+//             bgInset: '#1B252C',
+
+//             textPrimary: '#F5FAFF',
+//             textSecondary: '#A8B5BF',
+//             textTertiary: '#6C7B86',
+
+//             accent: '#C7D2D8',
+//             accentSoft: 'rgba(199, 210, 216, 0.14)',
+//             accentText: '#2C3A47',
+
+//             danger: '#EF4444',
+//             success: '#10B981',
+//             warning: '#F59E0B',
+
+//             divider: 'rgba(199, 210, 216, 0.22)',
+//             shadow: 'rgba(0, 0, 0, 0.55)',
+
+//             userBubbleBg: '#C7D2D8',
+//             userBubbleText: '#2C3A47',
+//             aiBubbleBg: '#364755',
+//             aiBubbleBorder: 'rgba(199, 210, 216, 0.22)',
+//         }
+
+//     }
+// ];
 // export const THEME_PRESETS: ThemePreset[] = [
 //     // ─── CURATED (Brand Default) ───
 //     {
