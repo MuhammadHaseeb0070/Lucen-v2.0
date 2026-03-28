@@ -44,7 +44,8 @@ jobs:
           supabase secrets set LEMON_SQUEEZY_WEBHOOK_SECRET="${{ secrets.LEMON_SQUEEZY_WEBHOOK_SECRET }}"
           supabase secrets set LS_VARIANT_REGULAR="${{ secrets.LS_VARIANT_REGULAR }}"
           supabase secrets set LS_VARIANT_PRO="${{ secrets.LS_VARIANT_PRO }}"
-          supabase secrets set SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+          # Do not set SUPABASE_* via CLI — names are reserved; Edge Functions already receive
+          # SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY from the platform.
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
