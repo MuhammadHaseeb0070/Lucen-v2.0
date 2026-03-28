@@ -154,6 +154,8 @@ const PricingModal: React.FC = () => {
         isLoading: creditsLoading,
         subscriptionPlan,
         subscriptionStatus,
+        customerPortalUrl,
+        renewsAt,
     } = useCreditsStore();
     const [loadingTier, setLoadingTier] = useState<'regular' | 'pro' | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -168,10 +170,11 @@ const PricingModal: React.FC = () => {
             return 'Your payment needs attention. Please update your billing info in Lemon Squeezy.';
         }
         if (subscriptionStatus === 'active') {
-            return `You are on the ${planLabel(subscriptionPlan)} plan. Your ${LC.unit} balance syncs in real-time.`;
+            const renewText = renewsAt ? ` Renews on ${new Date(renewsAt).toLocaleDateString()}.` : '';
+            return `You are on the ${planLabel(subscriptionPlan)} plan.${renewText}`;
         }
         return `You are on the Free tier. Upgrade to unlock more ${LC.unit} and unlimited features.`;
-    }, [subscriptionStatus, subscriptionPlan]);
+    }, [subscriptionStatus, subscriptionPlan, renewsAt]);
 
     if (!billingOpen) return null;
 
@@ -237,7 +240,7 @@ const PricingModal: React.FC = () => {
 
                     {/* ── Current Balance ── */}
                     <div className="lc-balance-card">
-                        <div className="lc-balance-card__row">
+                        <div className="lc-balance-card__row lc-balance-card__row--space">
                             <div className="lc-balance-card__plan">
                                 <span className={`lc-balance-card__plan-badge lc-balance-card__plan-badge--${subscriptionPlan}`}>
                                     {planLabel(subscriptionPlan)}
@@ -246,6 +249,17 @@ const PricingModal: React.FC = () => {
                                     <span className="lc-balance-card__warning">Payment Past Due</span>
                                 )}
                             </div>
+                            
+                            {customerPortalUrl && (
+                                <a
+                                    href={customerPortalUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="lc-manage-link"
+                                >
+                                    Manage Subscription <ExternalLink size={14} />
+                                </a>
+                            )}
                         </div>
                         <CreditBar
                             current={creditsLoading ? 0 : remainingCredits}

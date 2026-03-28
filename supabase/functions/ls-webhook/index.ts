@@ -162,12 +162,42 @@ async function recordEvent(params: {
   }, { onConflict: "event_id" });
 }
 
-async function addCreditsAndActivate(params: {
+async function updateSubscriptionStatus(params: {
   userId: string;
   variantId: string;
   subscriptionId?: string | null;
-  creditsToAdd: number;
   plan: string;
+  customerPortalUrl?: string | null;
+  renewsAt?: string | null;
+}) {
+  const supabaseAdmin = getSupabaseAdmin();
+  
+  const updateData: any = {
+    user_id: params.userId,
+    subscription_status: "active",
+    subscription_plan: params.plan,
+    lemon_squeezy_subscription_id: params.subscriptionId ?? null,
+  };
+  
+  if (params.customerPortalUrl) {
+    updateData.lemon_squeezy_customer_portal_url = params.customerPortalUrl;
+  }
+  if (params.renewsAt) {
+    updateData.subscription_renews_at = params.renewsAt;
+  }
+
+  const { error: upsertErr } = await supabaseAdmin
+    .from("user_credits")
+    .upsert(updateData, { onConflict: "user_id" });
+
+  if (upsertErr) {
+    throw new Error(`Failed to update subscription status: ${upsertErr.message}`);
+  }
+}
+
+async function grantPaymentCredits(params: {
+  userId: string;
+  creditsToAdd: number;
 }) {
   const supabaseAdmin = getSupabaseAdmin();
 
@@ -183,21 +213,16 @@ async function addCreditsAndActivate(params: {
 
   const currentCredits = typeof creditRow?.remaining_credits === "number" ? creditRow.remaining_credits : 0;
 
-  const { error: upsertErr } = await supabaseAdmin
+  const { error: updateErr } = await supabaseAdmin
     .from("user_credits")
-    .upsert(
-      {
-        user_id: params.userId,
-        remaining_credits: currentCredits + params.creditsToAdd,
-        subscription_status: "active",
-        subscription_plan: params.plan,
-        lemon_squeezy_subscription_id: params.subscriptionId ?? null,
-      },
-      { onConflict: "user_id" },
-    );
+    .upsert({
+      user_id: params.userId,
+      remaining_credits: currentCredits + params.creditsToAdd,
+      billing_cycle_usage: 0
+    }, { onConflict: "user_id" });
 
-  if (upsertErr) {
-    throw new Error(`Failed to update credits: ${upsertErr.message}`);
+  if (updateErr) {
+    throw new Error(`Failed to update credits: ${updateErr.message}`);
   }
 }
 
@@ -210,6 +235,8 @@ async function setFreeStatus(params: { userId: string; subscriptionId?: string |
       subscription_status: "free",
       subscription_plan: "free",
       lemon_squeezy_subscription_id: params.subscriptionId ?? null,
+      lemon_squeezy_customer_portal_url: null,
+      subscription_renews_at: null
     })
     .eq("user_id", params.userId);
 
@@ -294,7 +321,7 @@ serve(async (req: Request) => {
       return jsonResponse({ received: true }, { status: 200 });
     }
 
-    // ── Subscription created or updated (active) ──
+    // ── Subscription created or updated (metadata only, no credits) ──
     if (eventName.toLowerCase() === "subscription_created" || eventName.toLowerCase() === "subscription_updated") {
       if (!variantId) {
         console.error("ls-webhook: missing variant_id in subscription payload");
@@ -307,12 +334,16 @@ serve(async (req: Request) => {
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      await addCreditsAndActivate({
+      const customerPortalUrl = payload?.data?.attributes?.urls?.customer_portal;
+      const renewsAt = payload?.data?.attributes?.renews_at;
+
+      await updateSubscriptionStatus({
         userId,
         variantId,
         subscriptionId,
-        creditsToAdd: variantInfo.credits,
         plan: variantInfo.plan,
+        customerPortalUrl,
+        renewsAt
       });
 
       await recordEvent({
@@ -320,17 +351,15 @@ serve(async (req: Request) => {
         eventName,
         userId,
         variantId,
-        creditsGranted: variantInfo.credits,
+        creditsGranted: 0,
       });
 
-      console.log(`ls-webhook: granted ${variantInfo.credits} credits (${variantInfo.plan}) to user ${userId}`);
+      console.log(`ls-webhook: updated subscription metadata for user ${userId}. No credits granted (waiting for payment_success).`);
       return jsonResponse({ received: true }, { status: 200 });
     }
 
     // ── Payment events (subscription_payment_success) ──
-    // Lemon Squeezy sends this on renewals. For recurring billing,
-    // the subscription_updated event typically handles credit grants.
-    // We handle payment_success as a safety net.
+    // This is the ONLY event that grants credits!
     if (eventName.toLowerCase() === "subscription_payment_success") {
       if (!variantId) {
         console.log("ls-webhook: payment_success without variant_id, skipping credit grant");
@@ -340,12 +369,9 @@ serve(async (req: Request) => {
 
       const variantInfo = getCreditsForVariant(variantId);
       if (variantInfo) {
-        await addCreditsAndActivate({
+        await grantPaymentCredits({
           userId,
-          variantId,
-          subscriptionId,
           creditsToAdd: variantInfo.credits,
-          plan: variantInfo.plan,
         });
         await recordEvent({
           eventId,
@@ -354,7 +380,7 @@ serve(async (req: Request) => {
           variantId,
           creditsGranted: variantInfo.credits,
         });
-        console.log(`ls-webhook: renewal granted ${variantInfo.credits} credits to user ${userId}`);
+        console.log(`ls-webhook: payment_success granted ${variantInfo.credits} credits to user ${userId} and tracking billing cycle.`);
       }
       return jsonResponse({ received: true }, { status: 200 });
     }

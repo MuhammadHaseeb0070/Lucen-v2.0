@@ -49,7 +49,7 @@ export const THEME_PRESETS: ThemePreset[] = [
             textPrimary: '#1E1E24',
             textSecondary: '#64646A',
             textTertiary: '#9A9A9F',
-            accent: '#14B8A6', 
+            accent: '#14B8A6',
             accentSoft: 'rgba(20, 184, 166, 0.1)',
             accentText: '#FFFFFF',
             danger: '#EF4444',
@@ -169,7 +169,7 @@ export const THEME_PRESETS: ThemePreset[] = [
             textPrimary: '#433422', // Deep espresso text (less harsh than black)
             textSecondary: '#786854',
             textTertiary: '#A69886',
-            accent: '#D97706', 
+            accent: '#D97706',
             accentSoft: 'rgba(217, 119, 6, 0.08)',
             accentText: '#FFFFFF',
             danger: '#DC2626',
@@ -271,6 +271,215 @@ export const THEME_PRESETS: ThemePreset[] = [
             aiBubbleBg: '#28283E',
             aiBubbleBorder: 'rgba(205, 214, 244, 0.08)',
         },
+    }, {
+        id: 'neon-teal',
+        name: 'Neon Teal',
+        emoji: '🌊',
+        category: 'focus',
+        isDark: true,
+        colors: {
+            bgBase: '#0B0F14',
+            bgSurface: '#131A22',
+            bgSurfaceHover: '#1A2430',
+            bgMuted: '#0F1620',
+            bgInset: '#070A0E',
+
+            textPrimary: '#F8FAFC',
+            textSecondary: '#9AA6B2',
+            textTertiary: '#6B7A88',
+
+            accent: '#3DF2E0',
+            accentSoft: 'rgba(61, 242, 224, 0.12)',
+            accentText: '#0B0F14',
+
+            danger: '#EF4444',
+            success: '#10B981',
+            warning: '#F59E0B',
+
+            divider: 'rgba(61, 242, 224, 0.18)',
+            shadow: 'rgba(0, 0, 0, 0.55)',
+
+            userBubbleBg: '#3DF2E0',
+            userBubbleText: '#0B0F14',
+            aiBubbleBg: '#131A22',
+            aiBubbleBorder: 'rgba(61, 242, 224, 0.18)',
+        },
+    },
+
+    {
+        id: 'indigo-volt',
+        name: 'Indigo Volt',
+        emoji: '🟣',
+        category: 'focus',
+        isDark: true,
+        colors: {
+            bgBase: '#0E2A47',
+            bgSurface: '#123556',
+            bgSurfaceHover: '#163F6B',
+            bgMuted: '#0B223B',
+            bgInset: '#081728',
+
+            textPrimary: '#F8FAFC',
+            textSecondary: '#A8B8CC',
+            textTertiary: '#6E86A3',
+
+            accent: '#8A6CFF',
+            accentSoft: 'rgba(138, 108, 255, 0.12)',
+            accentText: '#0E2A47',
+
+            danger: '#EF4444',
+            success: '#10B981',
+            warning: '#F59E0B',
+
+            divider: 'rgba(138, 108, 255, 0.18)',
+            shadow: 'rgba(0, 0, 0, 0.6)',
+
+            userBubbleBg: '#8A6CFF',
+            userBubbleText: '#0E2A47',
+            aiBubbleBg: '#123556',
+            aiBubbleBorder: 'rgba(138, 108, 255, 0.18)',
+        },
+    },
+
+    {
+        id: 'lime-vector',
+        name: 'Lime Vector',
+        emoji: '🟢',
+        category: 'focus',
+        isDark: true,
+        colors: {
+            bgBase: '#0C1A2B',
+            bgSurface: '#10263B',
+            bgSurfaceHover: '#17324E',
+            bgMuted: '#0E1F33',
+            bgInset: '#07121F',
+
+            textPrimary: '#F8FAFC',
+            textSecondary: '#A7B7C7',
+            textTertiary: '#6C839A',
+
+            accent: '#B6FF3B',
+            accentSoft: 'rgba(182, 255, 59, 0.12)',
+            accentText: '#0C1A2B',
+
+            danger: '#EF4444',
+            success: '#10B981',
+            warning: '#F59E0B',
+
+            divider: 'rgba(182, 255, 59, 0.18)',
+            shadow: 'rgba(0, 0, 0, 0.6)',
+
+            userBubbleBg: '#B6FF3B',
+            userBubbleText: '#0C1A2B',
+            aiBubbleBg: '#10263B',
+            aiBubbleBorder: 'rgba(182, 255, 59, 0.18)',
+        },
+    },
+
+    {
+        id: 'blood-ink',
+        name: 'Blood Ink',
+        emoji: '🩸',
+        category: 'cool',
+        isDark: true,
+        colors: {
+            bgBase: '#11131A',
+            bgSurface: '#191C24',
+            bgSurfaceHover: '#22242E',
+            bgMuted: '#171A22',
+            bgInset: '#0A0B10',
+
+            textPrimary: '#F8FAFC',
+            textSecondary: '#A6AAB3',
+            textTertiary: '#6B6F7A',
+
+            accent: '#FF3B3B',
+            accentSoft: 'rgba(255, 59, 59, 0.12)',
+            accentText: '#11131A',
+
+            danger: '#EF4444',
+            success: '#10B981',
+            warning: '#F59E0B',
+
+            divider: 'rgba(255, 59, 59, 0.18)',
+            shadow: 'rgba(0, 0, 0, 0.65)',
+
+            userBubbleBg: '#FF3B3B',
+            userBubbleText: '#11131A',
+            aiBubbleBg: '#191C24',
+            aiBubbleBorder: 'rgba(255, 59, 59, 0.18)',
+        },
+    },
+
+    {
+        id: 'sage-ivory',
+        name: 'Sage Ivory',
+        emoji: '🫒',
+        category: 'warm',
+        isDark: true,
+        colors: {
+            bgBase: '#3E4A3F',
+            bgSurface: '#4B5A4B',
+            bgSurfaceHover: '#5A6A59',
+            bgMuted: '#3A463A',
+            bgInset: '#2B332B',
+
+            textPrimary: '#FFF8F2',
+            textSecondary: '#E8DED2',
+            textTertiary: '#B7AFA4',
+
+            accent: '#E6D8CE',
+            accentSoft: 'rgba(230, 216, 206, 0.14)',
+            accentText: '#3E4A3F',
+
+            danger: '#EF4444',
+            success: '#10B981',
+            warning: '#F59E0B',
+
+            divider: 'rgba(230, 216, 206, 0.2)',
+            shadow: 'rgba(0, 0, 0, 0.55)',
+
+            userBubbleBg: '#E6D8CE',
+            userBubbleText: '#3E4A3F',
+            aiBubbleBg: '#4B5A4B',
+            aiBubbleBorder: 'rgba(230, 216, 206, 0.2)',
+        },
+    },
+
+    {
+        id: 'steel-ice',
+        name: 'Steel Ice',
+        emoji: '🧊',
+        category: 'cool',
+        isDark: true,
+        colors: {
+            bgBase: '#2C3A47',
+            bgSurface: '#364755',
+            bgSurfaceHover: '#415566',
+            bgMuted: '#2A3642',
+            bgInset: '#1B252C',
+
+            textPrimary: '#F5FAFF',
+            textSecondary: '#A8B5BF',
+            textTertiary: '#6C7B86',
+
+            accent: '#C7D2D8',
+            accentSoft: 'rgba(199, 210, 216, 0.14)',
+            accentText: '#2C3A47',
+
+            danger: '#EF4444',
+            success: '#10B981',
+            warning: '#F59E0B',
+
+            divider: 'rgba(199, 210, 216, 0.22)',
+            shadow: 'rgba(0, 0, 0, 0.55)',
+
+            userBubbleBg: '#C7D2D8',
+            userBubbleText: '#2C3A47',
+            aiBubbleBg: '#364755',
+            aiBubbleBorder: 'rgba(199, 210, 216, 0.22)',
+        }
+
     }
 ];
 // export const THEME_PRESETS: ThemePreset[] = [

@@ -146,3 +146,6 @@
         align-items: flex-start;
     }
 }
+
+.usage-summary-grid { display: grid; gap: 16px; grid-template-columns: 1fr; margin-bottom: 24px; } @media (min-width: 640px) { .usage-summary-grid { grid-template-columns: 1fr 1fr; } }
+.usage-portal-link { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 24px; border-radius: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text-secondary); text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: all 0.2s ease; cursor: pointer; } .usage-portal-link:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.15); color: var(--text-primary); } .usage-portal-link__icon { color: var(--accent-blue, #3b82f6); display: flex; }

@@ -200,8 +200,11 @@ export async function deleteMessagePair(
 export async function fetchCredits(): Promise<{
     remaining: number;
     used: number;
+    billingCycleUsage: number;
     subscriptionStatus: string;
     subscriptionPlan: 'free' | 'regular' | 'pro';
+    customerPortalUrl: string | null;
+    renewsAt: string | null;
 } | null> {
     if (!hasActiveSessionSync() || !supabase) return null;
     if (!(await ensureFreshSession())) return null;
@@ -223,8 +226,11 @@ export async function fetchCredits(): Promise<{
     return {
         remaining: data.remaining_credits,
         used: data.total_used ?? 0,
+        billingCycleUsage: data.billing_cycle_usage ?? 0,
         subscriptionStatus: String((data as { subscription_status?: string }).subscription_status || 'free'),
         subscriptionPlan,
+        customerPortalUrl: (data as { lemon_squeezy_customer_portal_url?: string }).lemon_squeezy_customer_portal_url || null,
+        renewsAt: (data as { subscription_renews_at?: string }).subscription_renews_at || null,
     };
 }
 

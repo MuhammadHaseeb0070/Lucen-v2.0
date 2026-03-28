@@ -21,7 +21,7 @@ interface UsageLog {
 
 const UserUsageTab: React.FC = () => {
     const { user } = useAuthStore();
-    const { remainingCredits, isLoading: creditsLoading, subscriptionPlan } = useCreditsStore();
+    const { billingCycleUsage, isLoading: creditsLoading, customerPortalUrl } = useCreditsStore();
     const [logs, setLogs] = useState<UsageLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -65,16 +65,27 @@ const UserUsageTab: React.FC = () => {
         <div className="settings-tab-body usage-tab">
             <p className="settings-desc usage-tab__desc">Track your {LC.unit} usage and the last 10 requests. Manage your plan from the top bar.</p>
 
-            <div className="usage-credit-card">
-                <div className="usage-credit-card__icon">
-                    <Database size={20} />
+            <div className="usage-summary-grid">
+                <div className="usage-credit-card">
+                    <div className="usage-credit-card__icon">
+                        <Database size={20} />
+                    </div>
+                    <div className="usage-credit-card__content">
+                        <span className="usage-credit-card__label">Current Cycle Usage</span>
+                        <p className="usage-credit-card__value">
+                            {creditsLoading ? '...' : `${formatLC(billingCycleUsage)} ${LC.unit}`}
+                        </p>
+                    </div>
                 </div>
-                <div className="usage-credit-card__content">
-                    <span className="usage-credit-card__label">Plan · {planLabel(subscriptionPlan)}</span>
-                    <p className="usage-credit-card__value">
-                        {creditsLoading ? '...' : `${formatLC(remainingCredits)} ${LC.unit}`}
-                    </p>
-                </div>
+
+                {customerPortalUrl && (
+                    <a href={customerPortalUrl} target="_blank" rel="noopener noreferrer" className="usage-portal-link">
+                        <div className="usage-portal-link__icon">
+                            <Database size={16} />
+                        </div>
+                        <span>View Billing History & Invoices →</span>
+                    </a>
+                )}
             </div>
 
             <div className="usage-logs-section">

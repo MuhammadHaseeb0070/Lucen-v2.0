@@ -12,6 +12,9 @@ interface CreditsStore {
     subscriptionStatus: string;
     /** free | regular | pro (for UI; webhook maintains). */
     subscriptionPlan: PlanId;
+    customerPortalUrl: string | null;
+    renewsAt: string | null;
+    billingCycleUsage: number;
     isSynced: boolean;
     isLoading: boolean;
 
@@ -27,6 +30,9 @@ export const useCreditsStore = create<CreditsStore>()(
             totalUsed: 0,
             subscriptionStatus: 'free',
             subscriptionPlan: 'free',
+            customerPortalUrl: null,
+            renewsAt: null,
+            billingCycleUsage: 0,
             isSynced: false,
             isLoading: false,
 
@@ -50,8 +56,11 @@ export const useCreditsStore = create<CreditsStore>()(
                     set({
                         remainingCredits: result.remaining,
                         totalUsed: result.used,
+                        billingCycleUsage: result.billingCycleUsage,
                         subscriptionStatus: result.subscriptionStatus,
                         subscriptionPlan: result.subscriptionPlan,
+                        customerPortalUrl: result.customerPortalUrl,
+                        renewsAt: result.renewsAt,
                         isSynced: true,
                     });
                 }

@@ -7232,3 +7232,27 @@ h4 {
         padding: 0 14px 12px;
     }
 }
+
+.lc-balance-card__row--space {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.lc-manage-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.lc-manage-link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.1);
+}
