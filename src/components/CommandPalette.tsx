@@ -14,6 +14,7 @@ import {
     ArrowRight,
     Command,
     MessageSquare,
+    Sparkles,
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
@@ -77,6 +78,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
         sideChatOpen,
         toggleSidebar,
         toggleSideChat,
+        setBillingOpen,
     } = useUIStore();
 
     const {
@@ -176,6 +178,15 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
 
         // — Settings —
         cmds.push({
+            id: 'open-plans',
+            label: 'Plans & credits',
+            category: 'Billing',
+            keywords: ['upgrade', 'pricing', 'subscription', 'credits', 'lemon', 'pay', 'plan', 'tier'],
+            icon: <Sparkles size={16} />,
+            action: () => { setBillingOpen(true); onClose(); },
+        });
+
+        cmds.push({
             id: 'open-settings',
             label: 'Open Settings',
             category: 'Settings',
@@ -229,6 +240,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
         activeConversationId, sideChatOpen, sidebarCollapsed, activeThemeId,
         createConversation, deleteConversation, getActiveConversation,
         toggleSideChat, clearSideChatMessages, toggleSidebar,
+        setBillingOpen, onClose,
         setSettingsOpen, setSettingsTab, setTheme,
     ]);
 

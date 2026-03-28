@@ -7,6 +7,10 @@ import * as db from '../services/database';
 interface CreditsStore {
     remainingCredits: number;
     totalUsed: number;
+    /** Server: free, active, past_due, etc. */
+    subscriptionStatus: string;
+    /** free | regular | pro (for UI; webhook maintains). */
+    subscriptionPlan: 'free' | 'regular' | 'pro';
     isSynced: boolean;
     isLoading: boolean;
 
@@ -23,6 +27,8 @@ export const useCreditsStore = create<CreditsStore>()(
         (set, get) => ({
             remainingCredits: FREE_CREDITS,
             totalUsed: 0,
+            subscriptionStatus: 'free',
+            subscriptionPlan: 'free',
             isSynced: false,
             isLoading: false,
 
@@ -79,6 +85,8 @@ export const useCreditsStore = create<CreditsStore>()(
                     set({
                         remainingCredits: result.remaining,
                         totalUsed: result.used,
+                        subscriptionStatus: result.subscriptionStatus,
+                        subscriptionPlan: result.subscriptionPlan,
                         isSynced: true,
                     });
                 }

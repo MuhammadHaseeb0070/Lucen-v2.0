@@ -61,14 +61,20 @@ Deno.serve(async (req: Request) => {
             case 'get-balance': {
                 const { data, error } = await supabaseAdmin
                     .from('user_credits')
-                    .select('remaining_credits, total_used')
+                    .select('remaining_credits, total_used, subscription_status, subscription_plan, lemon_squeezy_subscription_id')
                     .eq('user_id', user.id)
                     .single();
 
                 if (error && error.code === 'PGRST116') {
                     const { data: newRow } = await supabaseAdmin
                         .from('user_credits')
-                        .insert({ user_id: user.id, remaining_credits: 100, total_used: 0 })
+                        .insert({
+                            user_id: user.id,
+                            remaining_credits: 100,
+                            total_used: 0,
+                            subscription_status: 'free',
+                            subscription_plan: 'free',
+                        })
                         .select()
                         .single();
                     return new Response(

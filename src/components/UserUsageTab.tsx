@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useCreditsStore } from '../store/creditsStore';
+import { planLabel } from '../config/pricing';
 import { Database } from 'lucide-react';
 import './UserUsageTab.css';
 
@@ -20,7 +21,7 @@ interface UsageLog {
 
 const UserUsageTab: React.FC = () => {
     const { user } = useAuthStore();
-    const { remainingCredits, isLoading: creditsLoading } = useCreditsStore();
+    const { remainingCredits, isLoading: creditsLoading, subscriptionPlan } = useCreditsStore();
     const [logs, setLogs] = useState<UsageLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -62,16 +63,16 @@ const UserUsageTab: React.FC = () => {
 
     return (
         <div className="settings-tab-body usage-tab">
-            <p className="settings-desc usage-tab__desc">Track your credits and the last 10 requests.</p>
+            <p className="settings-desc usage-tab__desc">Track your credits and the last 10 requests. Change plans from the top bar (Plans).</p>
 
             <div className="usage-credit-card">
                 <div className="usage-credit-card__icon">
                     <Database size={20} />
                 </div>
                 <div className="usage-credit-card__content">
-                    <span className="usage-credit-card__label">Available Credits</span>
+                    <span className="usage-credit-card__label">Plan · {planLabel(subscriptionPlan)}</span>
                     <p className="usage-credit-card__value">
-                        {creditsLoading ? '...' : remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })} CR
+                        {creditsLoading ? '...' : `${remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })} credits`}
                     </p>
                 </div>
             </div>

@@ -1,21 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquarePlus, Coins, Settings, LogOut, User, ChevronDown, Menu } from 'lucide-react';
+import { MessageSquarePlus, Settings, LogOut, User, ChevronDown, Menu, Sparkles } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import Logo from './Logo';
+import { planLabel } from '../config/pricing';
 
 const Navbar: React.FC = () => {
-    const { sideChatOpen, toggleSideChat, sidebarCollapsed, toggleSidebar } = useUIStore();
-    const { getFormattedCredits } = useCreditsStore();
+    const { sideChatOpen, toggleSideChat, sidebarCollapsed, toggleSidebar, setBillingOpen } = useUIStore();
+    const { remainingCredits, isLoading: creditsLoading, subscriptionPlan } = useCreditsStore();
     const { toggleSettings } = useThemeStore();
     const { user, signOut } = useAuthStore();
     const [profileOpen, setProfileOpen] = useState(false);
     const profileRef = useRef<HTMLDivElement>(null);
 
-    // Close profile dropdown on outside click
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
             if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -31,13 +31,15 @@ const Navbar: React.FC = () => {
         await signOut();
     };
 
+    const openPlans = () => setBillingOpen(true);
+
     return (
         <nav className="navbar">
             <div className="navbar-left">
                 <button
                     className="mobile-menu-btn"
                     onClick={toggleSidebar}
-                    title={sidebarCollapsed ? "Open menu" : "Close menu"}
+                    title={sidebarCollapsed ? 'Open menu' : 'Close menu'}
                 >
                     <Menu size={20} />
                 </button>
@@ -49,12 +51,41 @@ const Navbar: React.FC = () => {
                 </Link>
             </div>
 
-
             <div className="navbar-right">
-                <div className="credits-display" title="Remaining credits">
-                    <Coins size={16} />
-                    <span>{getFormattedCredits()}</span>
-                </div>
+                {user ? (
+                    <div className="billing-nav-cluster">
+                        <button
+                            type="button"
+                            className="billing-nav-plan"
+                            onClick={openPlans}
+                            title="View plans and subscription"
+                        >
+                            <Logo size={18} className="billing-nav-plan__logo" />
+                            <span className="billing-nav-plan__label">{planLabel(subscriptionPlan)}</span>
+                        </button>
+                        <button
+                            type="button"
+                            className="billing-nav-balance"
+                            onClick={openPlans}
+                            title="Open plans and credit balance"
+                        >
+                            <span className="billing-nav-balance__value">
+                                {creditsLoading ? '…' : remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="billing-nav-balance__unit">credits</span>
+                        </button>
+                        <button type="button" className="billing-nav-cta" onClick={openPlans}>
+                            <Sparkles size={16} />
+                            <span className="billing-nav-cta__text">Plans</span>
+                        </button>
+                    </div>
+                ) : (
+                    <button type="button" className="billing-nav-cta billing-nav-cta--solo" onClick={openPlans}>
+                        <Logo size={18} className="billing-nav-plan__logo" />
+                        <Sparkles size={16} />
+                        <span className="billing-nav-cta__text">Plans</span>
+                    </button>
+                )}
 
                 <button
                     className={`side-chat-toggle ${sideChatOpen ? 'active' : ''}`}
@@ -73,7 +104,6 @@ const Navbar: React.FC = () => {
                     <Settings size={18} />
                 </button>
 
-                {/* User profile */}
                 {user && (
                     <div className="navbar-profile" ref={profileRef}>
                         <button
@@ -97,6 +127,17 @@ const Navbar: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="profile-dropdown__divider" />
+                                <button
+                                    type="button"
+                                    className="profile-dropdown__item"
+                                    onClick={() => {
+                                        setProfileOpen(false);
+                                        openPlans();
+                                    }}
+                                >
+                                    <Sparkles size={14} />
+                                    Plans & credits
+                                </button>
                                 <button className="profile-dropdown__item profile-dropdown__signout" onClick={handleSignOut}>
                                     <LogOut size={14} />
                                     Sign Out

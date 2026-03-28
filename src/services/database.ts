@@ -196,8 +196,13 @@ export async function deleteMessagePair(
 //  CREDITS
 // ═══════════════════════════════════════════
 
-/** Fetch credit balance from server */
-export async function fetchCredits(): Promise<{ remaining: number; used: number } | null> {
+/** Fetch credit balance and subscription fields from server */
+export async function fetchCredits(): Promise<{
+    remaining: number;
+    used: number;
+    subscriptionStatus: string;
+    subscriptionPlan: 'free' | 'regular' | 'pro';
+} | null> {
     if (!hasActiveSessionSync() || !supabase) return null;
     if (!(await ensureFreshSession())) return null;
 
@@ -211,9 +216,15 @@ export async function fetchCredits(): Promise<{ remaining: number; used: number 
     }
     if (!data || data.remaining_credits == null) return null;
 
+    const rawPlan = String((data as { subscription_plan?: string }).subscription_plan || 'free').toLowerCase();
+    const subscriptionPlan =
+        rawPlan === 'pro' || rawPlan === 'regular' ? rawPlan : 'free';
+
     return {
         remaining: data.remaining_credits,
         used: data.total_used ?? 0,
+        subscriptionStatus: String((data as { subscription_status?: string }).subscription_status || 'free'),
+        subscriptionPlan,
     };
 }
 

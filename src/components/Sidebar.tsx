@@ -8,12 +8,10 @@ import {
     MessageSquare,
     ChevronLeft,
     ChevronRight,
-    Loader2,
     Terminal
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
-import { useCreditsStore } from '../store/creditsStore';
 import { useAuthStore } from '../store/authStore';
 import { isAdminUser } from '../config/admin';
 
@@ -35,9 +33,7 @@ const Sidebar: React.FC = () => {
         setSidebarWidth,
         isAdminView,
         setIsAdminView,
-        setBillingOpen,
     } = useUIStore();
-    const { remainingCredits, isLoading: creditsLoading } = useCreditsStore();
     const { user } = useAuthStore();
     const isAdmin = isAdminUser(user?.email);
 
@@ -247,27 +243,6 @@ const Sidebar: React.FC = () => {
                 >
                     <Terminal size={16} />
                     <span>Mission Control</span>
-                </div>
-            )}
-
-            {/* Token / Credit Visualizer */}
-            {!sidebarCollapsed && user && (
-                <div
-                    className="sidebar-credits-block"
-                    onClick={() => setBillingOpen(true)}
-                    title="Upgrade plan"
-                >
-                    <div className="sidebar-credits-info">
-                        <span className="sidebar-credits-label">Your Balance</span>
-                        <div className="sidebar-credits-amount">
-                            {creditsLoading ? <Loader2 size={14} className="auth-spinner" style={{ opacity: 0.5 }} /> : (
-                                <>
-                                    <span>{remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                                    <span className="sidebar-credits-unit">CR</span>
-                                </>
-                            )}
-                        </div>
-                    </div>
                 </div>
             )}
 

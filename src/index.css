@@ -289,6 +289,471 @@ h4 {
     font-weight: 600;
 }
 
+/* ─── Navbar: plans + balance (single place; sidebar no longer duplicates) ─── */
+.billing-nav-cluster {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: min(100%, 420px);
+}
+
+.billing-nav-plan,
+.billing-nav-balance,
+.billing-nav-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--divider);
+    background: var(--bg-muted);
+    color: var(--text-secondary);
+    font-family: var(--font);
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: var(--r-full);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.billing-nav-plan {
+    padding: 5px 10px 5px 8px;
+}
+
+.billing-nav-plan:hover,
+.billing-nav-balance:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--divider));
+}
+
+.billing-nav-plan__logo {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.billing-nav-plan__label {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.billing-nav-balance {
+    padding: 5px 11px;
+    gap: 5px;
+}
+
+.billing-nav-balance__value {
+    color: var(--success);
+    font-variant-numeric: tabular-nums;
+}
+
+.billing-nav-balance__unit {
+    font-size: 0.72rem;
+    opacity: 0.85;
+    font-weight: 600;
+}
+
+.billing-nav-cta {
+    padding: 5px 12px;
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--accent);
+}
+
+.billing-nav-cta:hover {
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg-surface));
+    color: var(--accent);
+}
+
+.billing-nav-cta--solo {
+    gap: 8px;
+    padding: 5px 14px;
+}
+
+.billing-nav-cta__text {
+    font-weight: 650;
+}
+
+/* ─── Billing / pricing modal ─── */
+.billing-modal-overlay {
+    padding: 16px;
+    align-items: flex-start;
+    overflow-y: auto;
+}
+
+.billing-modal {
+    width: 100%;
+    max-width: 1040px;
+    margin: 24px auto;
+    background: var(--bg-surface);
+    border: 1px solid var(--divider);
+    border-radius: var(--r-lg);
+    box-shadow: 0 24px 80px var(--shadow-color);
+    animation: modalSlideUp var(--dur) var(--ease);
+}
+
+.billing-modal__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 22px 16px;
+    border-bottom: 1px solid var(--divider);
+}
+
+.billing-modal__brand {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    min-width: 0;
+}
+
+.billing-modal__logo-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    flex-shrink: 0;
+}
+
+.billing-modal__logo {
+    color: var(--accent);
+}
+
+.billing-modal__title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.billing-modal__subtitle {
+    margin: 6px 0 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    max-width: 52ch;
+}
+
+.billing-modal__close {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.billing-modal__close:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.billing-modal__current {
+    padding: 16px 22px 8px;
+    display: grid;
+    gap: 10px;
+}
+
+.billing-modal__current-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.billing-modal__current-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+}
+
+.billing-modal__current-tier {
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: var(--r-full);
+    background: var(--bg-muted);
+    border: 1px solid var(--divider);
+    color: var(--text-primary);
+}
+
+.billing-modal__balance-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.billing-modal__balance-label {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    font-weight: 600;
+}
+
+.billing-modal__balance-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--success);
+}
+
+.billing-modal__status-copy {
+    margin: 0;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    max-width: 70ch;
+}
+
+.billing-modal__error {
+    margin: 0 22px 12px;
+    padding: 10px 14px;
+    border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    color: var(--danger);
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+.billing-modal__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    padding: 10px 22px 24px;
+}
+
+.billing-tier {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 16px 16px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--divider);
+    background: var(--bg-muted);
+    min-height: 100%;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.billing-tier--featured {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--divider));
+    box-shadow: 0 12px 40px color-mix(in srgb, var(--accent) 12%, transparent);
+    background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, var(--bg-surface)) 0%, var(--bg-muted) 48%);
+}
+
+.billing-tier--current {
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    outline-offset: 0;
+}
+
+.billing-tier__ribbon {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+}
+
+.billing-tier__head {
+    padding-right: 88px;
+    margin-bottom: 12px;
+}
+
+.billing-tier__mark {
+    color: var(--accent);
+    margin-bottom: 8px;
+}
+
+.billing-tier__name {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+}
+
+.billing-tier__price {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    margin-bottom: 8px;
+}
+
+.billing-tier__currency {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.billing-tier__amount {
+    font-size: 1.65rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+}
+
+.billing-tier__period {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-left: 4px;
+}
+
+.billing-tier__tagline {
+    margin: 0;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.billing-tier__features {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+}
+
+.billing-tier__features li {
+    display: flex;
+    gap: 10px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.billing-tier__check {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--accent);
+}
+
+.billing-tier__extra {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: var(--r-md);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.billing-tier__footer {
+    margin-top: auto;
+}
+
+.billing-tier__cta {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--divider);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.84rem;
+    font-weight: 650;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: filter var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.billing-tier__cta:hover:not(:disabled) {
+    filter: brightness(1.03);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--divider));
+}
+
+.billing-tier__cta:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.billing-tier__cta--primary {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: transparent;
+}
+
+.billing-tier__cta--primary:hover:not(:disabled) {
+    filter: brightness(1.06);
+}
+
+.billing-tier__cta--ghost {
+    background: transparent;
+}
+
+@media (max-width: 900px) {
+    .billing-modal__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .billing-tier__head {
+        padding-right: 0;
+    }
+
+    .billing-tier__ribbon {
+        position: static;
+        margin-bottom: 8px;
+    }
+}
+
+@media (max-width: 768px) {
+    .billing-nav-plan__label {
+        display: none;
+    }
+
+    .billing-nav-plan {
+        padding: 5px 8px;
+    }
+
+    .billing-nav-balance__unit {
+        display: none;
+    }
+
+    .billing-nav-cta__text {
+        display: none;
+    }
+
+    .billing-nav-cta {
+        padding: 6px 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .billing-nav-cluster {
+        max-width: none;
+    }
+
+    .billing-nav-balance {
+        padding: 4px 8px;
+        font-size: 0.72rem;
+    }
+}
+
 .side-chat-toggle,
 .settings-btn {
     display: flex;

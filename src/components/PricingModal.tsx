@@ -1,19 +1,36 @@
 import React, { useMemo, useState } from 'react';
-import { X, ExternalLink, Sparkles } from 'lucide-react';
-import { PACKAGES } from '../config/pricing';
+import { X, ExternalLink, Sparkles, Check } from 'lucide-react';
+import Logo from './Logo';
+import { PACKAGES, planLabel } from '../config/pricing';
 import { useUIStore } from '../store/uiStore';
+import { useCreditsStore } from '../store/creditsStore';
 import { startLemonCheckout } from '../services/checkout';
 
 const PricingModal: React.FC = () => {
     const { billingOpen, setBillingOpen } = useUIStore();
+    const {
+        remainingCredits,
+        isLoading: creditsLoading,
+        subscriptionPlan,
+        subscriptionStatus,
+    } = useCreditsStore();
     const [loadingTier, setLoadingTier] = useState<'regular' | 'pro' | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const tiers = useMemo(() => ([
-        PACKAGES.FREE,
-        PACKAGES.REGULAR,
-        PACKAGES.PRO,
-    ]), []);
+    const tiers = useMemo(
+        () => [PACKAGES.FREE, PACKAGES.REGULAR, PACKAGES.PRO],
+        [],
+    );
+
+    const statusLine = useMemo(() => {
+        if (subscriptionStatus === 'past_due') {
+            return 'Your payment needs attention. Update billing in Lemon Squeezy to keep your plan.';
+        }
+        if (subscriptionStatus === 'active' || subscriptionPlan === 'regular' || subscriptionPlan === 'pro') {
+            return `You are on ${planLabel(subscriptionPlan)}. Credits shown below sync with your account.`;
+        }
+        return 'You are on the free tier. Upgrade when you need more capacity.';
+    }, [subscriptionStatus, subscriptionPlan]);
 
     if (!billingOpen) return null;
 
@@ -21,7 +38,7 @@ const PricingModal: React.FC = () => {
         setError(null);
         const variantId = tier === 'regular' ? PACKAGES.REGULAR.variantId : PACKAGES.PRO.variantId;
         if (!variantId) {
-            setError(`Missing ${tier.toUpperCase()} variant id. Set VITE_LS_VARIANT_${tier.toUpperCase()} in your environment.`);
+            setError(`Set VITE_LS_VARIANT_${tier.toUpperCase()} in hosting env for this tier.`);
             return;
         }
         setLoadingTier(tier);
@@ -34,91 +51,133 @@ const PricingModal: React.FC = () => {
     };
 
     return (
-        <div className="modal-overlay" onClick={() => setBillingOpen(false)}>
-            <div className="settings-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920 }}>
-                <div className="settings-content__header">
-                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Sparkles size={18} />
-                        Lucen Credits
-                    </h3>
-                    <button className="settings-close" onClick={() => setBillingOpen(false)}>
-                        <X size={18} />
+        <div className="modal-overlay billing-modal-overlay" onClick={() => setBillingOpen(false)}>
+            <div
+                className="billing-modal"
+                role="dialog"
+                aria-labelledby="billing-modal-title"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <header className="billing-modal__header">
+                    <div className="billing-modal__brand">
+                        <span className="billing-modal__logo-wrap">
+                            <Logo size={28} className="billing-modal__logo" />
+                        </span>
+                        <div>
+                            <h2 id="billing-modal-title" className="billing-modal__title">
+                                Lucen plans
+                            </h2>
+                            <p className="billing-modal__subtitle">
+                                One credit covers 1,000 blended tokens. Pick the tier that matches how you work.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        className="billing-modal__close"
+                        onClick={() => setBillingOpen(false)}
+                        aria-label="Close"
+                    >
+                        <X size={20} />
                     </button>
+                </header>
+
+                <div className="billing-modal__current">
+                    <div className="billing-modal__current-pill">
+                        <span className="billing-modal__current-label">Current plan</span>
+                        <span className="billing-modal__current-tier">{planLabel(subscriptionPlan)}</span>
+                    </div>
+                    <div className="billing-modal__balance-row">
+                        <span className="billing-modal__balance-label">Balance</span>
+                        <span className="billing-modal__balance-value">
+                            {creditsLoading ? '…' : `${remainingCredits.toLocaleString(undefined, { maximumFractionDigits: 0 })} credits`}
+                        </span>
+                    </div>
+                    <p className="billing-modal__status-copy">{statusLine}</p>
                 </div>
 
-                <div className="settings-tab-body">
-                    <p className="settings-desc" style={{ marginBottom: 14 }}>
-                        1 Credit = 1,000 blended tokens. Upgrade anytime.
-                    </p>
+                {error && (
+                    <div className="billing-modal__error" role="alert">
+                        {error}
+                    </div>
+                )}
 
-                    {error && (
-                        <p className="security-error" style={{ marginTop: 0, marginBottom: 12 }}>
-                            {error}
-                        </p>
-                    )}
+                <div className="billing-modal__grid">
+                    {tiers.map((p) => {
+                        const isPaid = p.id === 'regular' || p.id === 'pro';
+                        const tierKey = p.id as 'free' | 'regular' | 'pro';
+                        const isLoading = loadingTier === tierKey;
+                        const isFeatured = p.id === 'pro';
+                        const isCurrent =
+                            (p.id === 'free' && subscriptionPlan === 'free') ||
+                            (p.id === 'regular' && subscriptionPlan === 'regular') ||
+                            (p.id === 'pro' && subscriptionPlan === 'pro');
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-                        {tiers.map((p) => {
-                            const isPaid = p.id === 'regular' || p.id === 'pro';
-                            const tierKey = p.id as 'free' | 'regular' | 'pro';
-                            const isLoading = loadingTier === tierKey;
-                            return (
-                                <div
-                                    key={p.id}
-                                    style={{
-                                        border: '1px solid var(--divider)',
-                                        borderRadius: 'var(--r-lg)',
-                                        background: 'var(--bg-surface)',
-                                        padding: 14,
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: 10,
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                        <div style={{ fontWeight: 700 }}>{p.name}</div>
-                                        <div style={{ fontWeight: 700 }}>
-                                            ${p.priceUsd.toFixed(2)}
-                                            <span style={{ opacity: 0.65, fontWeight: 600, marginLeft: 6 }}>
-                                                {p.priceUsd > 0 ? '/mo' : ''}
-                                            </span>
-                                        </div>
+                        return (
+                            <article
+                                key={p.id}
+                                className={`billing-tier ${isFeatured ? 'billing-tier--featured' : ''} ${isCurrent ? 'billing-tier--current' : ''}`}
+                            >
+                                {isFeatured && (
+                                    <div className="billing-tier__ribbon">
+                                        <Sparkles size={14} aria-hidden />
+                                        Best value
                                     </div>
-
-                                    <div style={{ opacity: 0.85 }}>
-                                        <div style={{ fontWeight: 700 }}>
-                                            {p.creditsProvided.toLocaleString()} Credits
-                                        </div>
-                                        <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>
-                                            {p.description}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ marginTop: 'auto' }}>
-                                        {isPaid ? (
-                                            <button
-                                                className="auth-submit"
-                                                onClick={() => onCheckout(p.id as 'regular' | 'pro')}
-                                                disabled={!!loadingTier}
-                                                style={{ width: '100%', display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}
-                                            >
-                                                <ExternalLink size={16} />
-                                                {isLoading ? 'Redirecting…' : `Upgrade to ${p.name}`}
-                                            </button>
-                                        ) : (
-                                            <button
-                                                className="auth-submit"
-                                                onClick={() => setBillingOpen(false)}
-                                                style={{ width: '100%', opacity: 0.8 }}
-                                            >
-                                                Stay Free
-                                            </button>
+                                )}
+                                <div className="billing-tier__head">
+                                    <Logo size={22} className="billing-tier__mark" />
+                                    <h3 className="billing-tier__name">{p.name}</h3>
+                                    <div className="billing-tier__price">
+                                        <span className="billing-tier__currency">$</span>
+                                        <span className="billing-tier__amount">{p.priceUsd.toFixed(2)}</span>
+                                        {p.priceUsd > 0 && (
+                                            <span className="billing-tier__period">/mo</span>
                                         )}
                                     </div>
+                                    <p className="billing-tier__tagline">{p.tagline}</p>
                                 </div>
-                            );
-                        })}
-                    </div>
+
+                                <ul className="billing-tier__features">
+                                    {p.features.map((line) => (
+                                        <li key={line}>
+                                            <Check size={16} className="billing-tier__check" strokeWidth={2.5} />
+                                            <span>{line}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+
+                                {p.proExtra && (
+                                    <p className="billing-tier__extra">{p.proExtra}</p>
+                                )}
+
+                                <div className="billing-tier__footer">
+                                    {isPaid ? (
+                                        <button
+                                            type="button"
+                                            className={`billing-tier__cta ${isFeatured ? 'billing-tier__cta--primary' : ''}`}
+                                            onClick={() => onCheckout(p.id as 'regular' | 'pro')}
+                                            disabled={!!loadingTier || isCurrent}
+                                        >
+                                            <ExternalLink size={16} />
+                                            {isCurrent
+                                                ? 'Current plan'
+                                                : isLoading
+                                                  ? 'Opening checkout…'
+                                                  : `Choose ${p.name}`}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="billing-tier__cta billing-tier__cta--ghost"
+                                            onClick={() => setBillingOpen(false)}
+                                        >
+                                            Continue on Free
+                                        </button>
+                                    )}
+                                </div>
+                            </article>
+                        );
+                    })}
                 </div>
             </div>
         </div>
@@ -126,4 +185,3 @@ const PricingModal: React.FC = () => {
 };
 
 export default PricingModal;
-

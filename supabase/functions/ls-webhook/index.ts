@@ -137,6 +137,9 @@ async function addCreditsAndActivate(params: {
 
   const currentCredits = typeof creditRow?.remaining_credits === "number" ? creditRow.remaining_credits : 0;
 
+  const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
+  const subscriptionPlan = params.variantId === VARIANT_PRO ? "pro" : "regular";
+
   const { error: upsertErr } = await supabaseAdmin
     .from("user_credits")
     .upsert(
@@ -144,6 +147,7 @@ async function addCreditsAndActivate(params: {
         user_id: params.userId,
         remaining_credits: currentCredits + params.creditsToAdd,
         subscription_status: "active",
+        subscription_plan: subscriptionPlan,
         lemon_squeezy_subscription_id: params.subscriptionId ?? null,
       },
       { onConflict: "user_id" },
@@ -163,6 +167,7 @@ async function setFreeStatus(params: { userId: string; subscriptionId?: string |
     .from("user_credits")
     .update({
       subscription_status: "free",
+      subscription_plan: "free",
       lemon_squeezy_subscription_id: params.subscriptionId ?? null,
     })
     .eq("user_id", params.userId);
