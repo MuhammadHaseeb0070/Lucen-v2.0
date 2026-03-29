@@ -364,9 +364,24 @@ serve(async (req: Request) => {
       return jsonResponse({ received: true }, { status: 200 });
     }
 
-    // ── Payment events (subscription_payment_success) ──
-    // This is the ONLY event that grants credits!
-    if (eventName.toLowerCase() === "subscription_payment_success") {
+    // ── Payment events (order_created AND subscription_payment_success) ──
+    // order_created handles the initial checkout payment beautifully without race conditions.
+    // subscription_payment_success handles the renewal payments securely.
+    const isOrderCreated = eventName.toLowerCase() === "order_created";
+    const isPaymentSuccess = eventName.toLowerCase() === "subscription_payment_success";
+
+    if (isOrderCreated || isPaymentSuccess) {
+      if (isPaymentSuccess) {
+        // Skip 'initial' billing reason for subscription_payment_success to prevent double-granting, 
+        // as order_created already handled the initial credit grant natively.
+        const billingReason = payload?.data?.attributes?.billing_reason;
+        if (billingReason === "initial") {
+          console.log("ls-webhook: skipping initial subscription_payment_success because order_created handles it.");
+          await recordEvent({ eventId, eventName, userId });
+          return jsonResponse({ received: true }, { status: 200 });
+        }
+      }
+
       let finalVariantId = variantId;
 
       if (!finalVariantId) {
@@ -387,7 +402,7 @@ serve(async (req: Request) => {
       }
 
       if (!finalVariantId) {
-        console.log("ls-webhook: payment_success without variant_id and no DB plan, skipping credit grant");
+        console.log(`ls-webhook: ${eventName} without variant_id and no DB plan, skipping credit grant`);
         await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
@@ -405,7 +420,7 @@ serve(async (req: Request) => {
           variantId: finalVariantId,
           creditsGranted: variantInfo.credits,
         });
-        console.log(`ls-webhook: payment_success granted ${variantInfo.credits} credits to user ${userId} and tracking billing cycle.`);
+        console.log(`ls-webhook: ${eventName} granted ${variantInfo.credits} credits to user ${userId} and tracking billing cycle.`);
       }
       return jsonResponse({ received: true }, { status: 200 });
     }

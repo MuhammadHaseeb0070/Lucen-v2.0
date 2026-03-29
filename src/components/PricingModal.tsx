@@ -187,7 +187,8 @@ const PricingModal: React.FC = () => {
         }
         setLoadingTier(tier);
         try {
-            await startLemonCheckout(plan.variantId, window.location.href);
+            const redirectUrl = `${window.location.origin}/chat`;
+            await startLemonCheckout(plan.variantId, redirectUrl);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Checkout failed');
             setLoadingTier(null);
