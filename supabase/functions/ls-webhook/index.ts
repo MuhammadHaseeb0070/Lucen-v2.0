@@ -177,59 +177,52 @@ async function updateSubscriptionStatus(params: {
   renewsAt?: string | null;
 }) {
   const supabaseAdmin = getSupabaseAdmin();
-  
-  const updateData: any = {
-    user_id: params.userId,
-    subscription_status: "active",
-    subscription_plan: params.plan,
-    lemon_squeezy_subscription_id: params.subscriptionId ?? null,
-  };
-  
-  if (params.customerPortalUrl) {
-    updateData.lemon_squeezy_customer_portal_url = params.customerPortalUrl;
-  }
-  if (params.renewsAt) {
-    updateData.subscription_renews_at = params.renewsAt;
-  }
 
-  const { error: upsertErr } = await supabaseAdmin
-    .from("user_credits")
-    .upsert(updateData, { onConflict: "user_id" });
+  // Atomic RPC: updates ONLY metadata, NEVER touches remaining_credits.
+  // Safe for concurrent execution with grantPaymentCredits.
+  const { error } = await supabaseAdmin.rpc("update_subscription_meta", {
+    p_user_id: params.userId,
+    p_plan: params.plan,
+    p_subscription_id: params.subscriptionId ?? null,
+    p_customer_portal_url: params.customerPortalUrl ?? null,
+    p_renews_at: params.renewsAt ?? null,
+  });
 
-  if (upsertErr) {
-    throw new Error(`Failed to update subscription status: ${upsertErr.message}`);
+  if (error) {
+    throw new Error(`Failed to update subscription status: ${error.message}`);
   }
 }
 
 async function grantPaymentCredits(params: {
   userId: string;
   creditsToAdd: number;
+  plan?: string | null;
+  subscriptionId?: string | null;
+  customerPortalUrl?: string | null;
+  renewsAt?: string | null;
 }) {
   const supabaseAdmin = getSupabaseAdmin();
 
-  const { data: creditRow, error: fetchErr } = await supabaseAdmin
-    .from("user_credits")
-    .select("remaining_credits")
-    .eq("user_id", params.userId)
-    .maybeSingle();
+  // Atomic RPC: ensures row exists → increments credits in a SINGLE UPDATE.
+  // Also sets subscription metadata so this handler alone is self-sufficient
+  // (no dependency on subscription_created arriving first).
+  const { data: newBalance, error } = await supabaseAdmin.rpc(
+    "grant_subscription_credits",
+    {
+      p_user_id: params.userId,
+      p_credits_to_add: params.creditsToAdd,
+      p_plan: params.plan ?? null,
+      p_subscription_id: params.subscriptionId ?? null,
+      p_customer_portal_url: params.customerPortalUrl ?? null,
+      p_renews_at: params.renewsAt ?? null,
+    },
+  );
 
-  if (fetchErr) {
-    throw new Error(`Error fetching user credits: ${fetchErr.message}`);
+  if (error) {
+    throw new Error(`Failed to grant credits: ${error.message}`);
   }
 
-  const currentCredits = typeof creditRow?.remaining_credits === "number" ? creditRow.remaining_credits : 0;
-
-  const { error: updateErr } = await supabaseAdmin
-    .from("user_credits")
-    .upsert({
-      user_id: params.userId,
-      remaining_credits: currentCredits + params.creditsToAdd,
-      billing_cycle_usage: 0
-    }, { onConflict: "user_id" });
-
-  if (updateErr) {
-    throw new Error(`Failed to update credits: ${updateErr.message}`);
-  }
+  return typeof newBalance === "number" ? newBalance : null;
 }
 
 async function setFreeStatus(params: { userId: string; subscriptionId?: string | null }) {
@@ -371,16 +364,25 @@ serve(async (req: Request) => {
     const isPaymentSuccess = eventName.toLowerCase() === "subscription_payment_success";
 
     if (isPaymentSuccess) {
-      // 1. We aggressively fallback to the database. For upgrades via the customer portal,
-      // Lemon Squeezy's custom_data contains the STALE initial variant_id.
-      // Since subscription_payment_success fires concurrently with subscription_updated,
-      // we poll the database briefly to defeat the race condition without timing out.
-      
+      // ── Determine the correct variant/plan ──
+      // For upgrades via the customer portal, Lemon Squeezy's custom_data
+      // contains the STALE initial variant_id. We resolve the correct plan by:
+      //   1. Checking the payload's variant_id first (reliable for new subscriptions)
+      //   2. Polling the DB for the plan set by subscription_updated (reliable for upgrades)
+      //   3. Taking the HIGHER-credit plan if payload and DB disagree (safe: always grant
+      //      the upgrade amount, never the old amount)
+
       let finalVariantId = variantId;
       const supabaseAdmin = getSupabaseAdmin();
       let dbPlan: string | null = null;
 
-      for (let i = 0; i < 5; i++) {
+      // Determine what the payload thinks the plan is
+      const payloadVariantInfo = variantId ? getCreditsForVariant(variantId) : null;
+
+      // Poll DB briefly to let subscription_updated finish if it's in-flight.
+      // Key fix: do NOT break early on the OLD plan — wait for a plan that
+      // is DIFFERENT from the payload's plan (indicates an upgrade was processed).
+      for (let i = 0; i < 8; i++) {
         const { data: userRow } = await supabaseAdmin
           .from("user_credits")
           .select("subscription_plan")
@@ -388,30 +390,59 @@ serve(async (req: Request) => {
           .maybeSingle();
 
         dbPlan = userRow?.subscription_plan ?? null;
-        // If the metadata webhook has correctly upgraded the plan, we aggressively break.
-        if (dbPlan === "regular" || dbPlan === "pro") {
+
+        // If DB has a paid plan that is HIGHER than what the payload says,
+        // the upgrade has been processed. Use the DB plan.
+        if (dbPlan === "pro") {
+          // Pro is always the highest — trust it immediately.
           break;
         }
-        await new Promise((r) => setTimeout(r, 200));
+        if (dbPlan === "regular" && (!payloadVariantInfo || payloadVariantInfo.plan === "regular")) {
+          // DB says regular and payload agrees (or has no opinion) — good enough.
+          break;
+        }
+        // Otherwise keep polling (DB might still be on "free" or old plan).
+        await new Promise((r) => setTimeout(r, 300));
       }
 
-      if (dbPlan === "regular") {
-        finalVariantId = VARIANT_REGULAR;
-      } else if (dbPlan === "pro") {
-        finalVariantId = VARIANT_PRO;
+      // Resolve final variant: prefer the plan with MORE credits (safe for upgrades).
+      const dbVariantInfo = dbPlan === "regular" || dbPlan === "pro"
+        ? getCreditsForVariant(
+            dbPlan === "pro"
+              ? (VARIANT_PRO ?? "")
+              : (VARIANT_REGULAR ?? ""),
+          )
+        : null;
+
+      // Pick whichever gives more credits (handles upgrade race safely).
+      if (dbVariantInfo && payloadVariantInfo) {
+        finalVariantId = dbVariantInfo.credits >= payloadVariantInfo.credits
+          ? (dbPlan === "pro" ? VARIANT_PRO! : VARIANT_REGULAR!)
+          : variantId!;
+      } else if (dbVariantInfo) {
+        finalVariantId = dbPlan === "pro" ? VARIANT_PRO! : VARIANT_REGULAR!;
       }
+      // else: keep finalVariantId = variantId (from payload)
 
       if (!finalVariantId) {
-        console.log(`ls-webhook: ${eventName} without variant_id and no DB plan, skipping credit grant`);
+        console.error(`ls-webhook: ${eventName} — no variant_id from payload or DB. userId=${userId}`);
         await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
       const variantInfo = getCreditsForVariant(finalVariantId);
       if (variantInfo) {
-        await grantPaymentCredits({
+        // Extract metadata from the payment payload to pass to the atomic RPC.
+        const portalUrl = payload?.data?.attributes?.urls?.customer_portal ?? null;
+        const renewsAtVal = payload?.data?.attributes?.renews_at ?? null;
+
+        const newBalance = await grantPaymentCredits({
           userId,
           creditsToAdd: variantInfo.credits,
+          plan: variantInfo.plan,
+          subscriptionId,
+          customerPortalUrl: portalUrl,
+          renewsAt: renewsAtVal,
         });
         await recordEvent({
           eventId,
@@ -420,7 +451,10 @@ serve(async (req: Request) => {
           variantId: finalVariantId,
           creditsGranted: variantInfo.credits,
         });
-        console.log(`ls-webhook: ${eventName} granted ${variantInfo.credits} credits to user ${userId} and tracking billing cycle.`);
+        console.log(
+          `ls-webhook: ${eventName} granted ${variantInfo.credits} credits to user ${userId}. ` +
+          `New balance: ${newBalance}. Plan: ${variantInfo.plan}.`,
+        );
       }
       return jsonResponse({ received: true }, { status: 200 });
     }

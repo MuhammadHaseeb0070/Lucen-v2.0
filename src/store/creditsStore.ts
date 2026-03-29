@@ -21,6 +21,8 @@ interface CreditsStore {
     getFormattedCredits: () => string;
     hasEnoughCredits: () => boolean;
     syncFromServer: () => Promise<void>;
+    /** Graduated retry sync for post-checkout — polls multiple times to cover webhook delays. */
+    syncWithRetry: () => Promise<void>;
 }
 
 export const useCreditsStore = create<CreditsStore>()(
@@ -65,6 +67,45 @@ export const useCreditsStore = create<CreditsStore>()(
                     });
                 }
                 set({ isLoading: false });
+            },
+
+            syncWithRetry: async () => {
+                if (!hasActiveSessionSync()) return;
+
+                // Graduated delays cover webhook processing latency.
+                // Lemon Squeezy webhooks can take several seconds to arrive and be processed.
+                // We sync immediately, then retry at 2.5s, 5s, and 10s.
+                const delays = [0, 2500, 5000, 10000];
+
+                for (let i = 0; i < delays.length; i++) {
+                    if (delays[i] > 0) {
+                        await new Promise(r => setTimeout(r, delays[i]));
+                    }
+
+                    set({ isLoading: true });
+                    const result = await db.fetchCredits();
+                    if (result) {
+                        set({
+                            remainingCredits: result.remaining,
+                            totalUsed: result.used,
+                            billingCycleUsage: result.billingCycleUsage,
+                            subscriptionStatus: result.subscriptionStatus,
+                            subscriptionPlan: result.subscriptionPlan,
+                            customerPortalUrl: result.customerPortalUrl,
+                            renewsAt: result.renewsAt,
+                            isSynced: true,
+                        });
+
+                        // Once we see an active paid subscription, credits are confirmed.
+                        // Stop polling early — no need to waste network requests.
+                        if (result.subscriptionStatus === 'active' &&
+                            (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro')) {
+                            set({ isLoading: false });
+                            return;
+                        }
+                    }
+                    set({ isLoading: false });
+                }
             },
         }),
         {

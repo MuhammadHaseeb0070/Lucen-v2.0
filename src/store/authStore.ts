@@ -325,6 +325,19 @@ function syncDataOnLogin() {
     // Small delay to ensure auth state is propagated to session cache
     setTimeout(() => {
         useChatStore.getState().loadFromSupabase();
-        useCreditsStore.getState().syncFromServer();
+
+        // Detect post-checkout redirect (Lemon Squeezy sends user back with this param).
+        const url = new URL(window.location.href);
+        const isPostCheckout = url.searchParams.has('subscription_updated');
+
+        if (isPostCheckout) {
+            // Clean up the URL parameter so it doesn't persist on refresh.
+            url.searchParams.delete('subscription_updated');
+            window.history.replaceState({}, '', url.toString());
+            // Graduated retry: webhooks may still be processing when the user lands.
+            useCreditsStore.getState().syncWithRetry();
+        } else {
+            useCreditsStore.getState().syncFromServer();
+        }
     }, 500);
 }
