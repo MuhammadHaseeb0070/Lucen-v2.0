@@ -96,10 +96,11 @@ export const useCreditsStore = create<CreditsStore>()(
                             isSynced: true,
                         });
 
-                        // Once we see an active paid subscription, credits are confirmed.
+                        // Once we see an active paid subscription AND the credits > free tier amount, credits are confirmed.
                         // Stop polling early — no need to waste network requests.
                         if (result.subscriptionStatus === 'active' &&
-                            (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro')) {
+                            (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro') &&
+                            result.remaining > 100) {
                             set({ isLoading: false });
                             return;
                         }

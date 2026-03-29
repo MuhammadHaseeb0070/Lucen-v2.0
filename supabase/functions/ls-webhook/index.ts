@@ -313,6 +313,16 @@ serve(async (req: Request) => {
   }
 
   try {
+    // ── Pre-fetch DB state to compare for upgrades ──
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: userDbRow } = await supabaseAdmin
+      .from("user_credits")
+      .select("subscription_plan")
+      .eq("user_id", userId)
+      .maybeSingle();
+      
+    const currentDbPlan = userDbRow?.subscription_plan ?? "free";
+
     // ── Cancellation events ──
     if (isCancellationEvent(eventName) || (eventName.toLowerCase() === "subscription_updated" && shouldSetFreeForUpdate(payload))) {
       await setFreeStatus({ userId, subscriptionId });
@@ -320,7 +330,7 @@ serve(async (req: Request) => {
       return jsonResponse({ received: true }, { status: 200 });
     }
 
-    // ── Subscription created or updated (metadata only, no credits) ──
+    // ── Subscription created or updated (Grant Credits & Metadata) ──
     if (eventName.toLowerCase() === "subscription_created" || eventName.toLowerCase() === "subscription_updated") {
       if (!variantId) {
         console.error("ls-webhook: missing variant_id in subscription payload");
@@ -336,103 +346,58 @@ serve(async (req: Request) => {
       const customerPortalUrl = payload?.data?.attributes?.urls?.customer_portal;
       const renewsAt = payload?.data?.attributes?.renews_at;
 
-      await updateSubscriptionStatus({
-        userId,
-        variantId,
-        subscriptionId,
-        plan: variantInfo.plan,
-        customerPortalUrl,
-        renewsAt
-      });
+      // Determine if we should grant credits.
+      // - subscription_created: always grant.
+      // - subscription_updated: only grant if the plan actual changed (e.g. upgraded to Pro).
+      //   (If it's just a card update, the plan remains the same, do not grant.)
+      const isNewPlan = eventName.toLowerCase() === "subscription_created" || currentDbPlan !== variantInfo.plan;
 
-      await recordEvent({
-        eventId,
-        eventName,
-        userId,
-        variantId,
-        creditsGranted: 0,
-      });
+      if (isNewPlan) {
+        // Atomic RPC sets BOTH metadata and grants credits in one go
+        const newBalance = await grantPaymentCredits({
+          userId,
+          creditsToAdd: variantInfo.credits,
+          plan: variantInfo.plan,
+          subscriptionId,
+          customerPortalUrl,
+          renewsAt
+        });
 
-      console.log(`ls-webhook: updated subscription metadata for user ${userId}. No credits granted (waiting for payment_success).`);
+        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
+        console.log(`ls-webhook: ${eventName} granted ${variantInfo.credits} LC to user ${userId}. Plan: ${variantInfo.plan}. Balance: ${newBalance}`);
+      } else {
+        // Just a metadata update (e.g. card changed, next renewal date shifted)
+        await updateSubscriptionStatus({
+          userId,
+          variantId,
+          subscriptionId,
+          plan: variantInfo.plan,
+          customerPortalUrl,
+          renewsAt
+        });
+
+        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: 0 });
+        console.log(`ls-webhook: updated metadata ONLY for user ${userId}. No new plan detected.`);
+      }
+
       return jsonResponse({ received: true }, { status: 200 });
     }
 
     // ── Payment events (subscription_payment_success) ──
-    // We rely solely on subscription_payment_success to avoid requiring users to enable non-standard webhooks.
-    // However, there is a race condition: subscription_payment_success fires simultaneously with subscription_created/updated.
-    // To solve this, we introduce a deliberate delay so the metadata webhook finishes updating the database first.
-    const isPaymentSuccess = eventName.toLowerCase() === "subscription_payment_success";
-
-    if (isPaymentSuccess) {
-      // ── Determine the correct variant/plan ──
-      // For upgrades via the customer portal, Lemon Squeezy's custom_data
-      // contains the STALE initial variant_id. We resolve the correct plan by:
-      //   1. Checking the payload's variant_id first (reliable for new subscriptions)
-      //   2. Polling the DB for the plan set by subscription_updated (reliable for upgrades)
-      //   3. Taking the HIGHER-credit plan if payload and DB disagree (safe: always grant
-      //      the upgrade amount, never the old amount)
-
-      let finalVariantId = variantId;
-      const supabaseAdmin = getSupabaseAdmin();
-      let dbPlan: string | null = null;
-
-      // Determine what the payload thinks the plan is
-      const payloadVariantInfo = variantId ? getCreditsForVariant(variantId) : null;
-
-      // Poll DB briefly to let subscription_updated finish if it's in-flight.
-      // Key fix: do NOT break early on the OLD plan — wait for a plan that
-      // is DIFFERENT from the payload's plan (indicates an upgrade was processed).
-      for (let i = 0; i < 8; i++) {
-        const { data: userRow } = await supabaseAdmin
-          .from("user_credits")
-          .select("subscription_plan")
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        dbPlan = userRow?.subscription_plan ?? null;
-
-        // If DB has a paid plan that is HIGHER than what the payload says,
-        // the upgrade has been processed. Use the DB plan.
-        if (dbPlan === "pro") {
-          // Pro is always the highest — trust it immediately.
-          break;
-        }
-        if (dbPlan === "regular" && (!payloadVariantInfo || payloadVariantInfo.plan === "regular")) {
-          // DB says regular and payload agrees (or has no opinion) — good enough.
-          break;
-        }
-        // Otherwise keep polling (DB might still be on "free" or old plan).
-        await new Promise((r) => setTimeout(r, 300));
+    if (eventName.toLowerCase() === "subscription_payment_success") {
+      // NOTE: subscription_payment_success is fired alongside subscription_created for the INITIAL payment.
+      // We already granted credits on subscription_created. We MUST NOT double grant.
+      // We only grant credits here if it's a RENEWAL.
+      const billingReason = payload?.data?.attributes?.billing_reason;
+      
+      if (billingReason === 'initial') {
+         console.log(`ls-webhook: ignoring initial payment success, credits already granted on subscription_created`);
+         await recordEvent({ eventId, eventName, userId });
+         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      // Resolve final variant: prefer the plan with MORE credits (safe for upgrades).
-      const dbVariantInfo = dbPlan === "regular" || dbPlan === "pro"
-        ? getCreditsForVariant(
-            dbPlan === "pro"
-              ? (VARIANT_PRO ?? "")
-              : (VARIANT_REGULAR ?? ""),
-          )
-        : null;
-
-      // Pick whichever gives more credits (handles upgrade race safely).
-      if (dbVariantInfo && payloadVariantInfo) {
-        finalVariantId = dbVariantInfo.credits >= payloadVariantInfo.credits
-          ? (dbPlan === "pro" ? VARIANT_PRO! : VARIANT_REGULAR!)
-          : variantId!;
-      } else if (dbVariantInfo) {
-        finalVariantId = dbPlan === "pro" ? VARIANT_PRO! : VARIANT_REGULAR!;
-      }
-      // else: keep finalVariantId = variantId (from payload)
-
-      if (!finalVariantId) {
-        console.error(`ls-webhook: ${eventName} — no variant_id from payload or DB. userId=${userId}`);
-        await recordEvent({ eventId, eventName, userId });
-        return jsonResponse({ received: true }, { status: 200 });
-      }
-
-      const variantInfo = getCreditsForVariant(finalVariantId);
+      const variantInfo = variantId ? getCreditsForVariant(variantId) : null;
       if (variantInfo) {
-        // Extract metadata from the payment payload to pass to the atomic RPC.
         const portalUrl = payload?.data?.attributes?.urls?.customer_portal ?? null;
         const renewsAtVal = payload?.data?.attributes?.renews_at ?? null;
 
@@ -444,18 +409,13 @@ serve(async (req: Request) => {
           customerPortalUrl: portalUrl,
           renewsAt: renewsAtVal,
         });
-        await recordEvent({
-          eventId,
-          eventName,
-          userId,
-          variantId: finalVariantId,
-          creditsGranted: variantInfo.credits,
-        });
-        console.log(
-          `ls-webhook: ${eventName} granted ${variantInfo.credits} credits to user ${userId}. ` +
-          `New balance: ${newBalance}. Plan: ${variantInfo.plan}.`,
-        );
+
+        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
+        console.log(`ls-webhook: ${eventName} RENEWAL granted ${variantInfo.credits} LC to user ${userId}. Balance: ${newBalance}`);
+      } else {
+        console.error(`ls-webhook: missing or invalid variant_id on renewal event for user ${userId}`);
       }
+
       return jsonResponse({ received: true }, { status: 200 });
     }
 
