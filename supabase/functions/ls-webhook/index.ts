@@ -371,26 +371,33 @@ serve(async (req: Request) => {
     const isPaymentSuccess = eventName.toLowerCase() === "subscription_payment_success";
 
     if (isPaymentSuccess) {
-      // 1. Give the metadata webhook (subscription_created / subscription_updated) a 3 second head start.
-      // This ensures the database 'subscription_plan' is perfectly up-to-date before we evaluate credits.
-      console.log(`ls-webhook: delaying payment processing 3s to defeat race conditions...`);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      let finalVariantId = variantId;
-
-      // 2. We aggressively fallback to the database. For upgrades via the customer portal,
+      // 1. We aggressively fallback to the database. For upgrades via the customer portal,
       // Lemon Squeezy's custom_data contains the STALE initial variant_id.
-      // So we prioritize what the database says the plan is right now (which just got updated nicely).
+      // Since subscription_payment_success fires concurrently with subscription_updated,
+      // we poll the database briefly to defeat the race condition without timing out.
+      
+      let finalVariantId = variantId;
       const supabaseAdmin = getSupabaseAdmin();
-      const { data: userRow } = await supabaseAdmin
-        .from("user_credits")
-        .select("subscription_plan")
-        .eq("user_id", userId)
-        .maybeSingle();
+      let dbPlan: string | null = null;
 
-      if (userRow?.subscription_plan === "regular") {
+      for (let i = 0; i < 5; i++) {
+        const { data: userRow } = await supabaseAdmin
+          .from("user_credits")
+          .select("subscription_plan")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        dbPlan = userRow?.subscription_plan ?? null;
+        // If the metadata webhook has correctly upgraded the plan, we aggressively break.
+        if (dbPlan === "regular" || dbPlan === "pro") {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      if (dbPlan === "regular") {
         finalVariantId = VARIANT_REGULAR;
-      } else if (userRow?.subscription_plan === "pro") {
+      } else if (dbPlan === "pro") {
         finalVariantId = VARIANT_PRO;
       }
 
