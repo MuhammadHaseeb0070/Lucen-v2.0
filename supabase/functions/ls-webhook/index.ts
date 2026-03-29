@@ -364,41 +364,34 @@ serve(async (req: Request) => {
       return jsonResponse({ received: true }, { status: 200 });
     }
 
-    // ── Payment events (order_created AND subscription_payment_success) ──
-    // order_created handles the initial checkout payment beautifully without race conditions.
-    // subscription_payment_success handles the renewal payments securely.
-    const isOrderCreated = eventName.toLowerCase() === "order_created";
+    // ── Payment events (subscription_payment_success) ──
+    // We rely solely on subscription_payment_success to avoid requiring users to enable non-standard webhooks.
+    // However, there is a race condition: subscription_payment_success fires simultaneously with subscription_created/updated.
+    // To solve this, we introduce a deliberate delay so the metadata webhook finishes updating the database first.
     const isPaymentSuccess = eventName.toLowerCase() === "subscription_payment_success";
 
-    if (isOrderCreated || isPaymentSuccess) {
-      if (isPaymentSuccess) {
-        // Skip 'initial' billing reason for subscription_payment_success to prevent double-granting, 
-        // as order_created already handled the initial credit grant natively.
-        const billingReason = payload?.data?.attributes?.billing_reason;
-        if (billingReason === "initial") {
-          console.log("ls-webhook: skipping initial subscription_payment_success because order_created handles it.");
-          await recordEvent({ eventId, eventName, userId });
-          return jsonResponse({ received: true }, { status: 200 });
-        }
-      }
+    if (isPaymentSuccess) {
+      // 1. Give the metadata webhook (subscription_created / subscription_updated) a 3 second head start.
+      // This ensures the database 'subscription_plan' is perfectly up-to-date before we evaluate credits.
+      console.log(`ls-webhook: delaying payment processing 3s to defeat race conditions...`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       let finalVariantId = variantId;
 
-      if (!finalVariantId) {
-        // Fallback: For renewals or portal upgrades, the invoice might lack variant_id.
-        // We fetch the current tracked plan from the database.
-        const supabaseAdmin = getSupabaseAdmin();
-        const { data: userRow } = await supabaseAdmin
-          .from("user_credits")
-          .select("subscription_plan")
-          .eq("user_id", userId)
-          .maybeSingle();
+      // 2. We aggressively fallback to the database. For upgrades via the customer portal,
+      // Lemon Squeezy's custom_data contains the STALE initial variant_id.
+      // So we prioritize what the database says the plan is right now (which just got updated nicely).
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: userRow } = await supabaseAdmin
+        .from("user_credits")
+        .select("subscription_plan")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-        if (userRow?.subscription_plan === "regular") {
-          finalVariantId = VARIANT_REGULAR;
-        } else if (userRow?.subscription_plan === "pro") {
-          finalVariantId = VARIANT_PRO;
-        }
+      if (userRow?.subscription_plan === "regular") {
+        finalVariantId = VARIANT_REGULAR;
+      } else if (userRow?.subscription_plan === "pro") {
+        finalVariantId = VARIANT_PRO;
       }
 
       if (!finalVariantId) {
