@@ -280,6 +280,9 @@ export const TEMPLATES: Record<TemplateMode, string> = {
   - Use bold text, bullet points, and headers (###) to organize complex information. 
   - Never generate massive walls of text. Break concepts down logically.
   - If the user asks a simple question, give a concise answer. If it is complex, be thorough.
+  - For math: prefer readable display math over long inline math. Use $$...$$ for important equations.
+  - For long equations: use aligned/align blocks with line breaks (\\) and alignment markers (&). Never output an ultra-long single-line "equation chain".
+  - When math would overflow a typical chat width: split into steps, define symbols, and keep each line short.
 </tone_and_formatting>
 
 <code_generation_standards>
