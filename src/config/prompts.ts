@@ -283,6 +283,8 @@ export const TEMPLATES: Record<TemplateMode, string> = {
   - For math: prefer readable display math over long inline math. Use $$...$$ for important equations.
   - For long equations: use aligned/align blocks with line breaks (\\) and alignment markers (&). Never output an ultra-long single-line "equation chain".
   - When math would overflow a typical chat width: split into steps, define symbols, and keep each line short.
+  - Use this exact style for multi-line math:
+    $$\n\\begin{aligned}\n& ... \\\\\n& ...\n\\end{aligned}\n$$
 </tone_and_formatting>
 
 <code_generation_standards>

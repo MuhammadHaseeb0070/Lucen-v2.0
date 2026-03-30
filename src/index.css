@@ -4,7 +4,7 @@
    ============================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-@import url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
+/* KaTeX CSS removed: MathJax (SVG) is used for math rendering */
 
 /* ─── Design Tokens ─── */
 :root {
@@ -2166,7 +2166,8 @@ h4 {
     word-break: break-word;
 }
 
-/* KaTeX math readability: prevent off-screen "equation chains" */
+/* Math readability: prevent off-screen "equation chains" */
+/* KaTeX */
 .markdown-body .katex-display {
     overflow-x: auto;
     overflow-y: hidden;
@@ -2181,6 +2182,20 @@ h4 {
 
 .markdown-body .katex {
     font-size: 1.02em;
+}
+
+/* MathJax (SVG) */
+.markdown-body mjx-container[jax='SVG'][display='true'] {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.35rem 0;
+    margin: 0.75rem 0;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+
+.markdown-body mjx-container[jax='SVG'] {
+    max-width: 100%;
 }
 
 .markdown-body h1,

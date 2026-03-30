@@ -2,7 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
+import rehypeMathjax from 'rehype-mathjax/svg';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -80,7 +80,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuer
         <div className="markdown-body">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex, rehypeRaw]}
+                rehypePlugins={[rehypeRaw, rehypeMathjax]}
                 components={{
                     ...highlightComponents,
                     code({ className, children, ...props }) {
