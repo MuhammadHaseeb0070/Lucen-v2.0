@@ -261,7 +261,7 @@ const COMPARISON_DATA: ComparisonRow[] = [
     { feature: 'Delete any message pair', lucen: true, others: false },
     { feature: 'Import context across chats', lucen: true, others: false },
     { feature: 'Command Palette (Ctrl+K)', lucen: true, others: false },
-    { feature: 'Hand-crafted theme library', lucen: '4 themes', others: '1–2 modes' },
+    { feature: 'Hand-crafted theme library', lucen: '8 themes', others: '1–2 modes' },
     { feature: 'Artifacts with live preview', lucen: true, others: 'Limited' },
     { feature: 'Keyboard-first workflow', lucen: true, others: 'Partial' },
     { feature: 'Text selection quick-actions', lucen: true, others: false },
@@ -282,7 +282,7 @@ const LandingPage: React.FC = () => {
         if (preset) applyTheme(preset);
     };
 
-    const showcaseThemes = THEME_PRESETS.slice(0, 4);
+    const showcaseThemes = THEME_PRESETS;
 
     const handleLogout = async () => {
         await signOut();
@@ -397,8 +397,8 @@ const LandingPage: React.FC = () => {
                         />
                         <FeatureCard
                             icon={<Palette size={24} />}
-                            title="4 Curated Themes"
-                            description="Four hand-crafted themes tuned for readability. Switch instantly between Lucen ✨, Washi 🪷, Amber 🍂, and Linen 🪡—each designed to keep text crisp."
+                            title="8 Curated Themes"
+                            description="Eight hand-crafted themes tuned for readability. Switch instantly between Lucen ✨, Washi 🪷, Amber 🍂, Linen 🪡, Petal 🌸, Studio 💬, Verdigris 🏛️, and Terminal ⚡—each designed to keep text crisp."
                             mockup={null}
                         />
                         <FeatureCard
@@ -415,7 +415,7 @@ const LandingPage: React.FC = () => {
                     <div className="landing-themes-showcase">
                         <h2>Make it yours.</h2>
                         <p style={{ color: 'var(--text-secondary)', marginTop: '12px', fontSize: '1.1rem' }}>
-                            Switch between 4 curated themes instantly: Lucen ✨, Washi 🪷, Amber 🍂, and Linen 🪡. Preview the UI and typography live on this page.
+                            Switch between 8 curated themes instantly: Lucen ✨, Washi 🪷, Amber 🍂, Linen 🪡, Petal 🌸, Studio 💬, Verdigris 🏛️, and Terminal ⚡. Preview the UI and typography live on this page.
                         </p>
 
                         <div className="landing-themes-grid">
