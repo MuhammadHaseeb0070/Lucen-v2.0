@@ -114,8 +114,11 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode; vectorMode?: boole
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    const step = 0.05;
+    const clamp = (n: number) => Math.max(0.25, Math.min(5, n));
+    const quantize = (n: number) => Math.round(n / step) * step;
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setScale((s) => Math.max(0.25, Math.min(5, s + delta)));
+    setScale((s) => clamp(quantize(s + delta)));
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -163,7 +166,7 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode; vectorMode?: boole
         <div
           ref={innerRef}
           className={`artifact-panzoom-inner ${vectorMode ? 'artifact-panzoom-inner--vector' : ''}`}
-          style={{ transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})` }}
+          style={{ transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale3d(${scale}, ${scale}, 1)` }}
         >
           {children}
         </div>

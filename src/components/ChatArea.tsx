@@ -41,7 +41,9 @@ const ChatArea: React.FC = () => {
     const [highlightedPairId, setHighlightedPairId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [matchCount, setMatchCount] = useState(0);
     const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+    const [activeMatchMsgId, setActiveMatchMsgId] = useState<string | null>(null);
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const [isAutoScroll, setIsAutoScroll] = useState(true);
     const [prefillValue, setPrefillValue] = useState('');
@@ -328,9 +330,20 @@ const ChatArea: React.FC = () => {
         doStreamResponse(activeConversationId, assistantMsgId);
     };
 
+    const getHighlightedMatchElements = useCallback(() => {
+        const q = searchQuery.trim();
+        if (!q || q.length < 2) return [];
+        const container = messagesContainerRef.current;
+        if (!container) return [];
+        const qLower = q.toLowerCase();
+        const nodes = Array.from(container.querySelectorAll('mark.search-highlight'));
+        return nodes.filter((el) => (el.textContent || '').toLowerCase() === qLower);
+    }, [searchQuery]);
+
     const matchingIds = useMemo(() => {
-        if (!searchQuery.trim() || !activeConv) return new Set<string>();
-        const q = searchQuery.toLowerCase();
+        const qTrim = searchQuery.trim();
+        if (!activeConv || !qTrim || qTrim.length < 2) return new Set<string>();
+        const q = qTrim.toLowerCase();
         return new Set(
             activeConv.messages
                 .filter((m) => m.content.toLowerCase().includes(q))
@@ -338,26 +351,51 @@ const ChatArea: React.FC = () => {
         );
     }, [searchQuery, activeConv]);
 
-    const matchArray = useMemo(() => {
-        if (!activeConv) return [];
-        return activeConv.messages.filter((m) => matchingIds.has(m.id));
-    }, [activeConv, matchingIds]);
-
-
-
+    // Keeps `matchCount` and `activeMatchMsgId` in sync with the rendered <mark> elements.
     useEffect(() => {
-        if (matchArray.length === 0 || !messagesContainerRef.current) return;
-        const match = matchArray[activeMatchIndex];
-        if (!match) return;
-        const el = messagesContainerRef.current.querySelector(`[data-msg-id="${match.id}"]`);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, [activeMatchIndex, matchArray]);
+        if (!searchOpen) return;
+        const elements = getHighlightedMatchElements();
+        setMatchCount(elements.length);
 
-    const goNextMatch = () => setActiveMatchIndex((i) => (i + 1) % matchArray.length);
-    const goPrevMatch = () => setActiveMatchIndex((i) => (i - 1 + matchArray.length) % matchArray.length);
+        if (elements.length === 0) {
+            setActiveMatchMsgId(null);
+            if (activeMatchIndex !== 0) setActiveMatchIndex(0);
+            return;
+        }
+
+        if (activeMatchIndex >= elements.length) setActiveMatchIndex(0);
+
+        const el = elements[activeMatchIndex] || elements[0];
+        const msgId = el.closest('[data-msg-id]')?.getAttribute('data-msg-id') || null;
+        setActiveMatchMsgId(msgId);
+    }, [searchOpen, getHighlightedMatchElements, activeMatchIndex, activeConv?.messages]);
+
+    // Scroll to the exact highlighted substring (not just the whole message).
+    useEffect(() => {
+        if (!searchOpen) return;
+        const elements = getHighlightedMatchElements();
+        const el = elements[activeMatchIndex] || elements[0];
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [activeMatchIndex, searchOpen, getHighlightedMatchElements, activeConv?.messages]);
+
+    const goNextMatch = () => {
+        const elements = getHighlightedMatchElements();
+        if (elements.length === 0) return;
+        setActiveMatchIndex((i) => (i + 1) % elements.length);
+    };
+
+    const goPrevMatch = () => {
+        const elements = getHighlightedMatchElements();
+        if (elements.length === 0) return;
+        setActiveMatchIndex((i) => (i - 1 + elements.length) % elements.length);
+    };
 
     const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? goPrevMatch() : goNextMatch(); }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (e.shiftKey) goPrevMatch();
+            else goNextMatch();
+        }
         if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery(''); }
     };
 
@@ -367,6 +405,13 @@ const ChatArea: React.FC = () => {
         if (!activeConv) return null;
         const msgs = activeConv.messages;
         const elements: React.ReactNode[] = [];
+        let lastAssistantMsgId: string | null = null;
+        for (let j = msgs.length - 1; j >= 0; j--) {
+            if (msgs[j].role === 'assistant') {
+                lastAssistantMsgId = msgs[j].id;
+                break;
+            }
+        }
 
         for (let i = 0; i < msgs.length; i++) {
             const msg = msgs[i];
@@ -374,7 +419,7 @@ const ChatArea: React.FC = () => {
                 const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
                 const pairHighlighted = highlightedPairId === msg.id;
                 const isDimmed = searchQuery && !matchingIds.has(msg.id) && !(nextMsg && matchingIds.has(nextMsg.id));
-                const isActiveMatch = matchArray[activeMatchIndex]?.id === msg.id || matchArray[activeMatchIndex]?.id === nextMsg?.id;
+                const isActiveMatch = activeMatchMsgId === msg.id || activeMatchMsgId === nextMsg?.id;
                 const hasReasoning = nextMsg?.reasoning || nextMsg?.isReasoningStreaming;
                 const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -426,8 +471,11 @@ const ChatArea: React.FC = () => {
                                         message={nextMsg}
                                         onRetry={handleRetry}
                                         onContinue={handleContinue}
-                                        showRetry
+                                        showRetry={nextMsg.id === lastAssistantMsgId}
                                         searchQuery={searchQuery.trim() || undefined}
+                                        showDelete
+                                        onDelete={(ignoredMsgId: string) => { void ignoredMsgId; handleDelete(msg.id); }}
+                                        onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
                                     />
                                 </div>
                             </div>
@@ -437,7 +485,7 @@ const ChatArea: React.FC = () => {
                 if (nextMsg) i++;
             } else {
                 const isDimmed = searchQuery && !matchingIds.has(msg.id);
-                const isActiveMatch = matchArray[activeMatchIndex]?.id === msg.id;
+                const isActiveMatch = activeMatchMsgId === msg.id;
                 elements.push(
                     <div key={msg.id} className={`msg-exchange ${isActiveMatch ? 'msg-exchange--active-match' : ''} ${isDimmed ? 'msg-exchange--dimmed' : ''}`}>
                         <div className="msg-ai-row" data-msg-id={msg.id}>
@@ -450,8 +498,9 @@ const ChatArea: React.FC = () => {
                                     message={msg}
                                     onRetry={handleRetry}
                                     onContinue={handleContinue}
-                                    showRetry={msg.role === 'assistant'}
+                                    showRetry={msg.id === lastAssistantMsgId}
                                     searchQuery={searchQuery.trim() || undefined}
+                                    showDelete={false}
                                 />
                             </div>
                         </div>
@@ -491,9 +540,9 @@ const ChatArea: React.FC = () => {
                                     onChange={(e) => { setSearchQuery(e.target.value); setActiveMatchIndex(0); }}
                                     onKeyDown={handleSearchKeyDown}
                                 />
-                                {searchQuery && matchArray.length > 0 && <span className="chat-search-count">{activeMatchIndex + 1}/{matchArray.length}</span>}
-                                {searchQuery && matchArray.length === 0 && <span className="chat-search-count chat-search-no-match">No results</span>}
-                                {matchArray.length > 1 && (
+                                {searchQuery && matchCount > 0 && <span className="chat-search-count">{activeMatchIndex + 1}/{matchCount}</span>}
+                                {searchQuery && matchCount === 0 && <span className="chat-search-count chat-search-no-match">No results</span>}
+                                {matchCount > 1 && (
                                     <>
                                         <button className="chat-search-nav" onClick={goPrevMatch} title="Previous"><ChevronUp size={15} /></button>
                                         <button className="chat-search-nav" onClick={goNextMatch} title="Next"><ChevronDown size={15} /></button>

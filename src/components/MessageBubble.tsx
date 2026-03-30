@@ -208,6 +208,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             <RotateCcw size={13} />
                         </button>
                     )}
+                    {showDelete && onDelete && (
+                        <button
+                            className="msg-action-btn msg-action-danger"
+                            onClick={() => onDelete(message.id)}
+                            onMouseEnter={() => onDeleteHover?.(true)}
+                            onMouseLeave={() => onDeleteHover?.(false)}
+                            title="Delete this exchange"
+                        >
+                            <Trash2 size={13} />
+                        </button>
+                    )}
                 </div>
             )}
         </div>
