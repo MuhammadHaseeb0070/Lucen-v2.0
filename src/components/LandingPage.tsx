@@ -261,7 +261,7 @@ const COMPARISON_DATA: ComparisonRow[] = [
     { feature: 'Delete any message pair', lucen: true, others: false },
     { feature: 'Import context across chats', lucen: true, others: false },
     { feature: 'Command Palette (Ctrl+K)', lucen: true, others: false },
-    { feature: 'Hand-crafted theme library', lucen: '8 themes', others: '1–2 modes' },
+    { feature: 'Hand-crafted theme library', lucen: '4 themes', others: '1–2 modes' },
     { feature: 'Artifacts with live preview', lucen: true, others: 'Limited' },
     { feature: 'Keyboard-first workflow', lucen: true, others: 'Partial' },
     { feature: 'Text selection quick-actions', lucen: true, others: false },
@@ -331,10 +331,10 @@ const LandingPage: React.FC = () => {
                     </h1>
 
                     <p className="landing-lead">
-                        Lucen isn't just another chatbot, it's a complete AI workspace with
-                        Side Chat, message control, hand-crafted themes, keyboard shortcuts,
-                        and artifacts. Built for people who think AI conversations should be
-                        as powerful as their ideas.
+                        Lucen is an AI workspace built for control and clarity: Side Chat for fast follow-ups,
+                        message control (delete exchanges and redo the last response), instant in-chat search,
+                        and hand-crafted themes that keep text readable. Generate rich artifacts like HTML, SVG,
+                        and Mermaid diagrams with pan/zoom previews, then copy or download what you need.
                     </p>
 
                     <div className="landing-hero-actions">
@@ -363,10 +363,10 @@ const LandingPage: React.FC = () => {
                 {/* ─── Features Showcase ─── */}
                 <section className="landing-section">
                     <div className="landing-section-header">
-                        <h2>Features that others don't have</h2>
+                        <h2>AI workspace features built for real workflows</h2>
                         <p>
-                            Every feature exists because a real problem needed solving.
-                            No fluff. No gimmicks. Just a better way to talk to AI.
+                            No fluff—just the tools power users need: follow-up chat, message control,
+                            searchable highlights, and artifacts you can reuse.
                         </p>
                     </div>
 
@@ -374,37 +374,37 @@ const LandingPage: React.FC = () => {
                         <FeatureCard
                             icon={<MessageSquarePlus size={24} />}
                             title="Side Chat"
-                            description="A floating companion panel for quick follow-up questions. Import context from your main conversation instead of opening a new tab or cluttering your thread."
+                            description="Keep the conversation flowing with Side Chat. Ask targeted follow-ups while automatically reusing context from your main chat—without switching tabs or breaking your train of thought."
                             mockup={<SideChatMockup />}
                         />
                         <FeatureCard
                             icon={<Trash2 size={24} />}
                             title="Message Deletion"
-                            description="One wrong message can derail an entire conversation. Delete any exchange to keep your context clean and your AI focused on what matters."
+                            description="Delete any exchange (your message + its response) right next to the action buttons. Clean context means fewer distractions and more accurate future answers."
                             mockup={<DeletionMockup />}
                         />
                         <FeatureCard
                             icon={<Command size={24} />}
                             title="Command Palette"
-                            description="Hit Ctrl+K to instantly search, switch themes, jump to conversations, or trigger any action. Feels like a dev tool because it was built by one."
+                            description="Press Ctrl+K to search messages, switch themes, jump through your workspace, and trigger powerful actions instantly."
                             mockup={<CommandPaletteMockup />}
                         />
                         <FeatureCard
                             icon={<Code size={24} />}
                             title="Artifacts"
-                            description="AI-generated HTML, SVG, and diagrams render in a live preview workspace right next to your chat. Copy, download, or switch between code and preview."
+                            description="Preview AI-generated HTML, SVG, and Mermaid diagrams in a dedicated workspace. Pan/zoom vector diagrams smoothly, copy outputs, and download SVGs for perfect reuse."
                             mockup={<ArtifactsMockup />}
                         />
                         <FeatureCard
                             icon={<Palette size={24} />}
-                            title="8 Premium Themes"
-                            description="From warm Latte mornings to deep Observatory nights, every theme is hand-crafted for readability and aesthetics. Not just light vs dark."
+                            title="4 Curated Themes"
+                            description="Four hand-crafted themes tuned for readability. Switch instantly between Lucen ✨, Washi 🪷, Amber 🍂, and Linen 🪡—each designed to keep text crisp."
                             mockup={null}
                         />
                         <FeatureCard
                             icon={<Keyboard size={24} />}
                             title="Developer Shortcuts"
-                            description="Ctrl+N for new chat. Ctrl+B to toggle sidebar. Escape to halt-and-edit. Every keystroke is intentional to keep your hands on the keyboard."
+                            description="Keyboard-first workflow: Ctrl+N (new chat), Ctrl+B (toggle sidebar), Escape (halt-and-edit), Enter (send). Built to move fast without hunting for buttons."
                             mockup={<ShortcutsMockup />}
                         />
                     </div>
@@ -415,7 +415,7 @@ const LandingPage: React.FC = () => {
                     <div className="landing-themes-showcase">
                         <h2>Make it yours.</h2>
                         <p style={{ color: 'var(--text-secondary)', marginTop: '12px', fontSize: '1.1rem' }}>
-                            8 curated themes. Click below to experience live theme switching right here on this page.
+                            Switch between 4 curated themes instantly: Lucen ✨, Washi 🪷, Amber 🍂, and Linen 🪡. Preview the UI and typography live on this page.
                         </p>
 
                         <div className="landing-themes-grid">
@@ -436,8 +436,8 @@ const LandingPage: React.FC = () => {
                     <div className="landing-section-header">
                         <h2>Lucen vs. the rest</h2>
                         <p>
-                            We built the features that popular chatbots are missing.
-                            Here's what you get with Lucen that you won't find elsewhere.
+                            Most chatbots optimize for one thing: generating text. Lucen optimizes for your workflow:
+                            follow-ups, message control, searchable highlights, and reusable artifacts.
                         </p>
                     </div>
 
@@ -481,12 +481,103 @@ const LandingPage: React.FC = () => {
                     </div>
                 </section>
 
+                {/* ─── How it works ─── */}
+                <section className="landing-section">
+                    <div className="landing-section-header">
+                        <h2>Built to keep you in flow</h2>
+                        <p>
+                            Lucen turns AI chatting into an actual workspace: search precisely, control exchanges,
+                            and reuse diagrams and snippets without leaving your conversation.
+                        </p>
+                    </div>
+
+                    <div className="landing-feature-grid">
+                        <div className="landing-feature-card">
+                            <div className="landing-feature-icon">
+                                <Search size={24} />
+                            </div>
+                            <h3>Search that jumps to the match</h3>
+                            <p>
+                                Find a specific word or phrase and navigate directly to the highlighted substring—so you
+                                don&apos;t have to scroll through long responses.
+                            </p>
+                        </div>
+
+                        <div className="landing-feature-card">
+                            <div className="landing-feature-icon">
+                                <Trash2 size={24} />
+                            </div>
+                            <h3>Control exchanges, not just text</h3>
+                            <p>
+                                Delete any exchange to keep context clean. If the last answer isn&apos;t right, redo that
+                                final response using the same chat context.
+                            </p>
+                        </div>
+
+                        <div className="landing-feature-card">
+                            <div className="landing-feature-icon">
+                                <Code size={24} />
+                            </div>
+                            <h3>Artifacts you can zoom, copy, and download</h3>
+                            <p>
+                                Preview HTML, SVG, and Mermaid diagrams with pan/zoom controls. Copy code or download SVG
+                                output for reuse in your own projects.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ─── FAQ ─── */}
+                <section className="landing-section">
+                    <div className="landing-section-header">
+                        <h2>FAQ</h2>
+                        <p>Quick answers about Lucen&apos;s AI workspace features.</p>
+                    </div>
+
+                    <div style={{ maxWidth: 820, margin: '0 auto', padding: '0 10px', display: 'grid', gap: 16 }}>
+                        <div style={{ padding: 18, border: '1px solid var(--divider)', borderRadius: 16, background: 'var(--bg-surface)' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Can I delete an exchange?</h3>
+                            <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                                Yes. Delete any exchange (your message + the assistant response) directly from the chat actions.
+                            </p>
+                        </div>
+
+                        <div style={{ padding: 18, border: '1px solid var(--divider)', borderRadius: 16, background: 'var(--bg-surface)' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>When can I redo a response?</h3>
+                            <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                                Redo is available on the very last assistant response only, regenerated with the same context.
+                            </p>
+                        </div>
+
+                        <div style={{ padding: 18, border: '1px solid var(--divider)', borderRadius: 16, background: 'var(--bg-surface)' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Does search highlight and navigate?</h3>
+                            <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                                Yes. Matches are highlighted and the navigation scrolls to the exact highlighted substring.
+                            </p>
+                        </div>
+
+                        <div style={{ padding: 18, border: '1px solid var(--divider)', borderRadius: 16, background: 'var(--bg-surface)' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>What artifact types are supported?</h3>
+                            <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                                HTML, SVG, and Mermaid diagrams render in the artifacts workspace.
+                            </p>
+                        </div>
+
+                        <div style={{ padding: 18, border: '1px solid var(--divider)', borderRadius: 16, background: 'var(--bg-surface)' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Can I zoom and download diagrams?</h3>
+                            <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                                Yes. Use the pan/zoom controls in preview, and download SVG output for SVG + Mermaid diagrams.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
                 {/* ─── Final CTA ─── */}
                 <section className="landing-footer-cta">
                     <h2>Ready to take control of your AI conversations?</h2>
                     <p>
-                        Join thousands of users who switched to Lucen for a cleaner,
-                        faster, and more intentional AI experience.
+                        Try Lucen if you want an AI workspace with side chat, redo/delete message control,
+                        fast in-chat search, and artifact previews you can copy or download.
                     </p>
                     {user ? (
                         <Link className="landing-btn landing-btn--primary" to="/chat" style={{ padding: '16px 32px', fontSize: '1.1rem' }}>
