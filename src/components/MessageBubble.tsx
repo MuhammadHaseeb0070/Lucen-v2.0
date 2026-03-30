@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
+import ArtifactCard from './ArtifactCard';
 import { parseArtifacts } from '../lib/artifactParser';
+import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
-import { detectBlocks } from '../renderers/detectBlocks';
-import { renderBlocks } from '../renderers/BlockRenderer';
 
 interface MessageBubbleProps {
     message: Message;
@@ -36,9 +36,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    const blocks = useMemo(() => {
-        const text = disableArtifacts ? parseArtifacts(message.content, message.id).cleanContent : message.content;
-        return detectBlocks(text);
+    const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
+    const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
+
+    const { cleanContent, artifacts } = useMemo(() => {
+        // Even when we are not rendering artifacts (e.g. side chat),
+        // we still strip the tags so the user sees clean "basic chat" text.
+        if (disableArtifacts) {
+            const parsed = parseArtifacts(message.content, message.id);
+            return { cleanContent: parsed.cleanContent, artifacts: [] };
+        }
+        return parseArtifacts(message.content, message.id);
     }, [disableArtifacts, message.content, message.id]);
 
     const normalizedReasoning = useMemo(() => {
@@ -85,6 +93,43 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     }, [message.content]);
+
+    // Throttled artifact update during streaming to reduce store churn
+    const lastUpdateRef = useRef(0);
+    const openedRef = useRef(false);
+
+    useEffect(() => {
+        if (disableArtifacts) {
+            openedRef.current = false;
+            return;
+        }
+        if (artifacts.length === 0) {
+            openedRef.current = false;
+            return;
+        }
+        const first = artifacts[0];
+
+        if (first.isStreaming) {
+            const now = Date.now();
+            if (!openedRef.current) {
+                // First time seeing this artifact — open workspace
+                openedRef.current = true;
+                setActiveArtifact(first);
+                lastUpdateRef.current = now;
+            } else if (now - lastUpdateRef.current > 300) {
+                // Throttle: update content at most every 300ms during streaming
+                updateArtifactContent(first);
+                lastUpdateRef.current = now;
+            }
+        } else if (openedRef.current) {
+            // Streaming just finished — send final update and reset.
+            // Force isStreaming:false regardless of what the parser reports.
+            // This handles the truncation case where the closing </lucen_artifact>
+            // tag was never received, leaving the artifact in a partial state.
+            updateArtifactContent({ ...first, isStreaming: false });
+            openedRef.current = false;
+        }
+    }, [disableArtifacts, artifacts, setActiveArtifact, updateArtifactContent]);
 
     if (actionsOnly) {
         if (!message.content) return null;
@@ -133,7 +178,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 </div>
             ) : (
                 <>
-                    {blocks.map((block, i) => renderBlocks(block, i))}
+                    {cleanContent && <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />}
+                    {!disableArtifacts && artifacts.map((artifact) => (
+                        <ArtifactCard key={artifact.id} artifact={artifact} />
+                    ))}
                 </>
             )}
 
