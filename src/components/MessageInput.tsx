@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Send, Square, RotateCcw, Paperclip, X, FileText, Image as ImageIcon, Quote } from 'lucide-react';
+import { Send, Square, RotateCcw, Paperclip, X, FileText, Image as ImageIcon, Quote, Globe } from 'lucide-react';
 import { MAX_MESSAGE_LENGTH } from '../config/credits';
 import { processFiles, formatFileSize } from '../services/fileProcessor';
 import type { FileAttachment } from '../types';
@@ -23,6 +23,10 @@ interface MessageInputProps {
     initialValue?: string;
     /** Fired when input changes to allow parent to persist the draft */
     onInputChange?: (value: string) => void;
+    /** If true, request web search augmentation (online mode) */
+    webSearchEnabled?: boolean;
+    /** Toggle web search on/off */
+    onToggleWebSearch?: (enabled: boolean) => void;
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
@@ -39,6 +43,8 @@ const MessageInput: React.FC<MessageInputProps> = ({
     onPrefillConsumed,
     initialValue = '',
     onInputChange,
+    webSearchEnabled = false,
+    onToggleWebSearch,
 }) => {
     const [input, setInput] = useState(initialValue);
     const [quoteText, setQuoteText] = useState<string | null>(null);
@@ -62,11 +68,15 @@ const MessageInput: React.FC<MessageInputProps> = ({
             if (quoteMatch) {
                 const instruction = quoteMatch[1] + ":";
                 const text = quoteMatch[3];
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setInput(instruction);
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setQuoteText(text);
                 if (onInputChange) onInputChange(instruction);
             } else {
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setInput(prefillValue);
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setQuoteText(null);
                 if (onInputChange) onInputChange(prefillValue);
             }
@@ -85,6 +95,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
     // Accept files dropped from parent (drop zone)
     useEffect(() => {
         if (droppedFiles && droppedFiles.length > 0) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setAttachments((prev) => [...prev, ...droppedFiles]);
             onDroppedFilesConsumed?.();
             // Focus input after drop
@@ -255,6 +266,26 @@ const MessageInput: React.FC<MessageInputProps> = ({
                                 </span>
                             )}
                         </div>
+                        {onToggleWebSearch && (
+                            <div className="websearch-toggle-wrap">
+                                <button
+                                    type="button"
+                                    className={`websearch-toggle ${webSearchEnabled ? 'websearch-toggle--on' : ''}`}
+                                    onClick={() => onToggleWebSearch(!webSearchEnabled)}
+                                    disabled={disabled || processingFiles || isStreaming}
+                                    aria-pressed={webSearchEnabled}
+                                    title={webSearchEnabled ? 'Web search enabled (costs more credits)' : 'Enable web search (costs more credits)'}
+                                >
+                                    <Globe size={14} />
+                                    <span>Web</span>
+                                </button>
+                                {webSearchEnabled && (
+                                    <span className="websearch-cost-hint" title="Web search costs more credits">
+                                        Costs more credits
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         {isStreaming ? (
                             <button className="stop-btn" onClick={onStop} title="Stop generating">
                                 <Square size={16} />

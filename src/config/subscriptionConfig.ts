@@ -110,7 +110,7 @@ export const CREDIT_COSTS = {
   /** LC per image analyzed */
   PER_IMAGE: 2,
   /** LC per web search triggered */
-  PER_WEB_SEARCH: 10,
+  PER_WEB_SEARCH: 8,
   /** Max free-tier web searches before upgrade required */
   FREE_TIER_MAX_SEARCHES: 3,
 } as const;

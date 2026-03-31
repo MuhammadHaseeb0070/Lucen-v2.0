@@ -50,6 +50,7 @@ const ChatArea: React.FC = () => {
     const [prefillCounter, setPrefillCounter] = useState(0);
     const [isDragOver, setIsDragOver] = useState(false);
     const [droppedFiles, setDroppedFiles] = useState<FileAttachment[]>([]);
+    const [webSearchEnabled, setWebSearchEnabled] = useState(false);
     const dragCounterRef = useRef(0);
 
     const scrollToBottom = useCallback(() => {
@@ -168,7 +169,7 @@ const ChatArea: React.FC = () => {
                 useCreditsStore.getState().syncFromServer();
             },
             onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; useCreditsStore.getState().syncFromServer(); },
-        }, { signal: controller.signal });
+        }, { signal: controller.signal, webSearchEnabled });
     };
 
     // ─── Continue truncated response ───
@@ -186,6 +187,7 @@ const ChatArea: React.FC = () => {
             id: 'continue-instruction',
             role: 'user',
             content: 'Continue from where you left off. Do not repeat what you already said. Continue directly.',
+            // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(),
         });
 
@@ -210,7 +212,7 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
             },
-        }, { signal: controller.signal });
+        }, { signal: controller.signal, webSearchEnabled });
     };
 
     const handleSend = async (content: string, attachments?: FileAttachment[]) => {
@@ -219,6 +221,7 @@ const ChatArea: React.FC = () => {
         if (!convId) convId = createConversation();
 
         addMessage(convId, {
+            // eslint-disable-next-line react-hooks/purity
             id: uuidv4(), role: 'user', content, timestamp: Date.now(),
             attachments: attachments || undefined,
         });
@@ -226,6 +229,7 @@ const ChatArea: React.FC = () => {
         const assistantMsgId = uuidv4();
         addMessage(convId, {
             id: assistantMsgId, role: 'assistant', content: '', reasoning: '',
+            // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
         });
         await doStreamResponse(convId, assistantMsgId);
@@ -615,6 +619,8 @@ const ChatArea: React.FC = () => {
                 onInputChange={(val) => {
                     if (activeConversationId) setDraft(activeConversationId, val);
                 }}
+                webSearchEnabled={webSearchEnabled}
+                onToggleWebSearch={setWebSearchEnabled}
             />
         </div>
     );

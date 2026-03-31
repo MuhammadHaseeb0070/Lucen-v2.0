@@ -6,7 +6,16 @@ const WEB_PLUGIN_ID = 'web';
 const FREE_TIER_MAX_SEARCHES = 3;
 const CREDITS_PER_1K_TOKENS = 1;
 const CREDITS_PER_IMAGE = 2;
-const CREDITS_PER_WEB_SEARCH = 10;
+
+// Cost basis:
+// - Exa web plugin costs $4 / 1000 results (OpenRouter official docs)
+// - LucenCredits exchange: based on Regular plan ($10 → 4000 LC) ⇒ 400 LC / $1
+const LC_PER_USD = 400;
+const WEBSEARCH_USD_PER_1K_RESULTS = 4;
+
+const WEBSEARCH_DEFAULT_ENGINE = 'exa';
+const WEBSEARCH_DEFAULT_MAX_RESULTS = 5;
+const WEBSEARCH_MAX_RESULTS_CAP = 5;
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
     const base64 = token.split('.')[1];
@@ -62,9 +71,47 @@ function hasWebPlugin(plugins: unknown): boolean {
     return plugins.some((p) => p && typeof p === 'object' && (p as Record<string, unknown>).id === WEB_PLUGIN_ID);
 }
 
-function stripWebPlugin(plugins: unknown): unknown {
-    if (!Array.isArray(plugins)) return plugins;
-    return plugins.filter((p) => !(p && typeof p === 'object' && (p as Record<string, unknown>).id === WEB_PLUGIN_ID));
+function sanitizeDomainList(value: unknown, maxItems: number): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const out: string[] = [];
+    for (const item of value) {
+        if (typeof item !== 'string') continue;
+        const trimmed = item.trim();
+        if (!trimmed) continue;
+        out.push(trimmed);
+        if (out.length >= maxItems) break;
+    }
+    return out.length > 0 ? out : undefined;
+}
+
+function sanitizeWebPlugins(plugins: unknown): Array<Record<string, unknown>> | undefined {
+    if (!Array.isArray(plugins)) return undefined;
+    const raw = plugins.find((p) => p && typeof p === 'object' && (p as Record<string, unknown>).id === WEB_PLUGIN_ID) as Record<string, unknown> | undefined;
+    if (!raw) return undefined;
+
+    const maxResultsRaw = raw.max_results;
+    const maxResultsNum = typeof maxResultsRaw === 'number' && Number.isFinite(maxResultsRaw)
+        ? Math.floor(maxResultsRaw)
+        : WEBSEARCH_DEFAULT_MAX_RESULTS;
+    const max_results = Math.min(Math.max(1, maxResultsNum), WEBSEARCH_MAX_RESULTS_CAP);
+
+    // Keep accounting deterministic by forcing Exa unless you explicitly want otherwise.
+    const engine = WEBSEARCH_DEFAULT_ENGINE;
+
+    const include_domains = sanitizeDomainList(raw.include_domains, 10);
+    const exclude_domains = sanitizeDomainList(raw.exclude_domains, 10);
+
+    const plugin: Record<string, unknown> = { id: WEB_PLUGIN_ID, engine, max_results };
+    if (include_domains) plugin.include_domains = include_domains;
+    if (exclude_domains) plugin.exclude_domains = exclude_domains;
+
+    return [plugin];
+}
+
+function computeWebSearchCredits(maxResults: number): number {
+    // $4 / 1000 results, then converted to LC via LC_PER_USD
+    const usd = (Math.max(0, maxResults) / 1000) * WEBSEARCH_USD_PER_1K_RESULTS;
+    return usd * LC_PER_USD;
 }
 
 Deno.serve(async (req: Request) => {
@@ -160,6 +207,27 @@ Deno.serve(async (req: Request) => {
 
         const imageCount = countImagesInMessages(messages);
         const requestedWebSearch = hasWebPlugin(plugins);
+        const sanitizedWebPlugins = requestedWebSearch ? sanitizeWebPlugins(plugins) : undefined;
+        const webSearchMaxResults =
+            (sanitizedWebPlugins && sanitizedWebPlugins[0] && typeof sanitizedWebPlugins[0].max_results === 'number')
+                ? (sanitizedWebPlugins[0].max_results as number)
+                : (requestedWebSearch ? WEBSEARCH_DEFAULT_MAX_RESULTS : 0);
+        const webSearchEngine =
+            (sanitizedWebPlugins && sanitizedWebPlugins[0] && typeof sanitizedWebPlugins[0].engine === 'string')
+                ? (sanitizedWebPlugins[0].engine as string)
+                : (requestedWebSearch ? WEBSEARCH_DEFAULT_ENGINE : '');
+
+        let effectiveModel = model as string;
+        if (requestedWebSearch) {
+            const onlineModel = Deno.env.get('OPENROUTER_ONLINE_MODEL');
+            if (!onlineModel) {
+                return new Response(
+                    JSON.stringify({ error: 'Server not configured for web search (missing OPENROUTER_ONLINE_MODEL)' }),
+                    { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+                );
+            }
+            effectiveModel = onlineModel;
+        }
 
         // ─── Pre-flight: fetch subscription + balance before OpenRouter ───
         await supabaseAdmin.rpc('ensure_user_credits', {
@@ -182,7 +250,9 @@ Deno.serve(async (req: Request) => {
 
         const subscriptionStatus = (creditsRow.subscription_status || 'free') as string;
         const remainingCredits = typeof creditsRow.remaining_credits === 'number' ? creditsRow.remaining_credits : 0;
-        const freeSearchesUsed = typeof (creditsRow as any).free_searches_used === 'number' ? (creditsRow as any).free_searches_used : 0;
+        const freeSearchesUsed = typeof (creditsRow as Record<string, unknown>).free_searches_used === 'number'
+            ? ((creditsRow as Record<string, unknown>).free_searches_used as number)
+            : 0;
 
         if (remainingCredits <= 0) {
             return new Response(
@@ -192,7 +262,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // ─── Tier 0 (free) constraints ───
-        let effectivePlugins: unknown = plugins;
+        const effectivePlugins: unknown = sanitizedWebPlugins;
         if (subscriptionStatus === 'free') {
             // Vision override: force all images to low detail.
             forceImageDetailLow(messages);
@@ -234,7 +304,7 @@ Deno.serve(async (req: Request) => {
                 'X-Title': 'Lucen',
             },
             body: JSON.stringify({
-                model,
+                model: effectiveModel,
                 messages,
                 ...(effectivePlugins ? { plugins: effectivePlugins } : {}),
                 stream: shouldStream,
@@ -265,7 +335,7 @@ Deno.serve(async (req: Request) => {
 
             const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
             const imageCost = imageCount * CREDITS_PER_IMAGE;
-            const searchCost = requestedWebSearch ? CREDITS_PER_WEB_SEARCH : 0;
+            const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
             const totalCost = textCost + imageCost + searchCost;
 
             try {
@@ -287,6 +357,14 @@ Deno.serve(async (req: Request) => {
                     completion_tokens: completionTokens,
                     reasoning_tokens: reasoningTokens,
                     total_credits_deducted: totalCost,
+                    model_id: effectiveModel,
+                    web_search_enabled: requestedWebSearch,
+                    web_search_engine: requestedWebSearch ? webSearchEngine : null,
+                    web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
+                    web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
+                    text_credits: textCost,
+                    image_credits: imageCost,
+                    web_search_credits: searchCost,
                 });
             } catch (dbErr) {
                 console.error('Failed to deduct credits or log usage:', dbErr);
@@ -347,7 +425,7 @@ Deno.serve(async (req: Request) => {
 
                 const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
                 const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const searchCost = requestedWebSearch ? CREDITS_PER_WEB_SEARCH : 0;
+                const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
                 const totalCost = textCost + imageCost + searchCost;
 
                 try {
@@ -369,6 +447,14 @@ Deno.serve(async (req: Request) => {
                         completion_tokens: completionTokens,
                         reasoning_tokens: reasoningTokens,
                         total_credits_deducted: totalCost,
+                        model_id: effectiveModel,
+                        web_search_enabled: requestedWebSearch,
+                        web_search_engine: requestedWebSearch ? webSearchEngine : null,
+                        web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
+                        web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
+                        text_credits: textCost,
+                        image_credits: imageCost,
+                        web_search_credits: searchCost,
                     });
 
                     console.log(`Deducted ${totalCost.toFixed(4)} credits for ${totalTokensNum} tokens (User: ${user.id})`);

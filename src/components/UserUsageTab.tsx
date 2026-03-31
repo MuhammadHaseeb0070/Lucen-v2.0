@@ -16,6 +16,14 @@ interface UsageLog {
     image_tokens: number;
     file_tokens: number;
     total_credits_deducted: number;
+    model_id?: string | null;
+    web_search_enabled?: boolean | null;
+    web_search_engine?: string | null;
+    web_search_max_results?: number | null;
+    web_search_results_billed?: number | null;
+    text_credits?: number | null;
+    image_credits?: number | null;
+    web_search_credits?: number | null;
     created_at: string;
 }
 
@@ -48,9 +56,9 @@ const UserUsageTab: React.FC = () => {
 
                 if (error) throw error;
                 setLogs(data as UsageLog[] || []);
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error('Failed to fetch usage logs:', err);
-                setError(err.message);
+                setError(err instanceof Error ? err.message : 'Failed to fetch usage logs');
             } finally {
                 setIsLoading(false);
             }
@@ -93,7 +101,7 @@ const UserUsageTab: React.FC = () => {
             <div className="usage-logs-section">
                 <div className="usage-logs-header">
                     <h2>Last 10 Requests</h2>
-                    <span>Input / Output / Reasoning tokens</span>
+                    <span>Tokens + {LC.unit} breakdown (Text / Image / Web)</span>
                 </div>
 
                 {isLoading ? (
@@ -109,10 +117,14 @@ const UserUsageTab: React.FC = () => {
                                 <tr>
                                     <th>Timestamp</th>
                                     <th>Request ID</th>
+                                    <th>Model</th>
                                     <th>Input</th>
                                     <th>Output</th>
                                     <th>Reasoning</th>
-                                    <th>Credits</th>
+                                    <th>Text {LC.unit}</th>
+                                    <th>Image {LC.unit}</th>
+                                    <th>Web {LC.unit}</th>
+                                    <th>Total {LC.unit}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -122,12 +134,22 @@ const UserUsageTab: React.FC = () => {
                                         <td className="usage-table__id">
                                             {(log.message_id || log.id).substring(0, 8)}
                                         </td>
+                                        <td className="usage-table__model" title={String(log.model_id || '')}>
+                                            {String(log.model_id || '—').split('/').pop()}
+                                        </td>
                                         <td>{toNumber(log.prompt_tokens).toLocaleString()}</td>
                                         <td>{toNumber(log.completion_tokens).toLocaleString()}</td>
                                         <td className={toNumber(log.reasoning_tokens) > 0 ? 'usage-table__reasoning' : ''}>
                                             {toNumber(log.reasoning_tokens).toLocaleString()}
                                         </td>
-                                        <td className="usage-table__credits">-{toNumber(log.total_credits_deducted).toFixed(4)}</td>
+                                        <td className="usage-table__credits">-{toNumber(log.text_credits).toFixed(4)}</td>
+                                        <td className="usage-table__credits">-{toNumber(log.image_credits).toFixed(4)}</td>
+                                        <td className="usage-table__credits">
+                                            {toNumber(log.web_search_credits) > 0 ? `-${toNumber(log.web_search_credits).toFixed(4)}` : '—'}
+                                        </td>
+                                        <td className="usage-table__credits usage-table__credits--total">
+                                            -{toNumber(log.total_credits_deducted).toFixed(4)}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

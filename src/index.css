@@ -2083,6 +2083,62 @@ h4 {
     padding-bottom: 1px;
 }
 
+.websearch-toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.websearch-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--r-full);
+    border: 1px solid var(--divider);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+    user-select: none;
+    white-space: nowrap;
+}
+
+.websearch-toggle:hover:not(:disabled) {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.websearch-toggle--on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.websearch-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.websearch-cost-hint {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--divider);
+    padding: 3px 8px;
+    border-radius: var(--r-full);
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .websearch-cost-hint {
+        display: none;
+    }
+}
+
 .char-count {
     font-size: 0.68rem;
     color: var(--text-tertiary);

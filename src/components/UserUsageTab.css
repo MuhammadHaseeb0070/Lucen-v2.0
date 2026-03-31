@@ -91,7 +91,7 @@
 .usage-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 760px;
+    min-width: 980px;
 }
 
 .usage-table th,
@@ -121,6 +121,17 @@
 
 .usage-table__credits {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.usage-table__credits--total {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.usage-table__model {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .usage-table__reasoning {

@@ -22,6 +22,7 @@ interface StreamOptions {
     systemPromptOverride?: string;
     signal?: AbortSignal;
     isSideChat?: boolean;
+    webSearchEnabled?: boolean;
 }
 
 /**
@@ -225,6 +226,7 @@ export async function streamChat(
         callbacks,
         outputBudget,
         isReasoningEnabled,
+        options.webSearchEnabled,
         options.signal
     );
 }
@@ -239,6 +241,7 @@ async function streamViaEdgeFunction(
     callbacks: StreamCallbacks,
     outputBudget: number,
     isReasoningEnabled: boolean,
+    webSearchEnabled?: boolean,
     signal?: AbortSignal
 ): Promise<void> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -250,13 +253,17 @@ async function streamViaEdgeFunction(
         console.error('[OpenRouter] VITE_SUPABASE_ANON_KEY is missing. Edge Function call will likely fail.');
     }
 
-    const requestPayload = {
+    const requestPayload: Record<string, unknown> = {
         messages: apiMessages,
         model: model.id,
         max_tokens: outputBudget,
         is_reasoning: isReasoning,
         template_mode: templateMode,
     };
+
+    if (webSearchEnabled) {
+        requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5 }];
+    }
 
     // Debug: confirm this code path executed before we hit the Edge function.
     // eslint-disable-next-line no-console
@@ -277,12 +284,20 @@ async function streamViaEdgeFunction(
         // Redact multimodal payload (image data URLs) so logs stay usable.
         const safePayload = JSON.parse(JSON.stringify(requestPayload)) as typeof requestPayload;
         try {
-            for (const m of safePayload.messages as any[]) {
-                if (Array.isArray(m?.content)) {
-                    for (const part of m.content) {
-                        if (part?.type === 'image_url' && part?.image_url?.url && typeof part.image_url.url === 'string') {
-                            const url = part.image_url.url as string;
-                            part.image_url.url = `[redacted-dataurl len=${url.length}]`;
+            const msgs = (safePayload as unknown as { messages?: unknown }).messages;
+            if (Array.isArray(msgs)) {
+                for (const m of msgs) {
+                    if (!m || typeof m !== 'object') continue;
+                    const content = (m as { content?: unknown }).content;
+                    if (!Array.isArray(content)) continue;
+                    for (const part of content) {
+                        if (!part || typeof part !== 'object') continue;
+                        const p = part as { type?: unknown; image_url?: unknown };
+                        if (p.type !== 'image_url' || !p.image_url || typeof p.image_url !== 'object') continue;
+                        const img = p.image_url as { url?: unknown };
+                        if (typeof img.url === 'string' && img.url) {
+                            const url = img.url;
+                            img.url = `[redacted-dataurl len=${url.length}]`;
                         }
                     }
                 }
@@ -337,7 +352,7 @@ async function streamViaEdgeFunction(
         return;
     }
 
-    await processStream(response, callbacks, signal);
+    await processStream(response, callbacks);
 }
 
 /**
@@ -345,8 +360,7 @@ async function streamViaEdgeFunction(
  */
 async function processStream(
     response: Response,
-    callbacks: StreamCallbacks,
-    _signal?: AbortSignal
+    callbacks: StreamCallbacks
 ): Promise<void> {
     const reader = response.body?.getReader();
     if (!reader) {
