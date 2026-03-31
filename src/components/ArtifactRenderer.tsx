@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
 import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 
@@ -369,10 +369,47 @@ const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content
   </div>
 );
 
+// ── File Renderer ──
+// Renders raw file contents with a download button and uses the artifact title
+// (or filename) as the download name.
+const FileRenderer: React.FC<RendererProps> = ({ content, title }) => {
+  const filename = (title || 'download.txt').trim();
+
+  const handleDownload = () => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="artifact-file-preview">
+      <div className="artifact-file-header">
+        <div className="artifact-file-title">{filename}</div>
+        <button className="artifact-file-download" onClick={handleDownload} title="Download file">
+          <Download size={14} />
+          <span>Download</span>
+        </button>
+      </div>
+      <CodeFallback content={content} language="text" />
+    </div>
+  );
+};
+
 // ── Registry ──
 
-const RENDERERS: Record<string, React.FC<RendererProps>> = { html: HtmlRenderer, svg: SvgRenderer, mermaid: MermaidRenderer };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid' };
+const RENDERERS: Record<string, React.FC<RendererProps>> = {
+  html: HtmlRenderer,
+  svg: SvgRenderer,
+  mermaid: MermaidRenderer,
+  file: FileRenderer,
+};
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text' };
 
 interface ArtifactRendererProps {
   content: string;

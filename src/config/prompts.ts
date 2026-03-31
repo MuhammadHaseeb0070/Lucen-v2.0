@@ -143,8 +143,9 @@ svg: only the <svg> element. Proper camelCase attributes.
 mermaid: valid definition only. Simple classDef for color.
 No box-shadow or CSS properties mermaid cannot parse.
 Maximum one artifact per response. Always complete.
-Never use artifact tags for code snippets, CLI tools,
-backend code, or explanations.
+Never use artifact tags for short code snippets, small examples,
+CLI prompts, or explanations.
+If the user asks you to generate a complete downloadable document or a complete source/config file (for example: README.md, main.py, script.js, .env, .json, .csv, etc.) and it would be long or clutter the chat, output it as a file artifact with a correct filename.
 Ambiguous between html and svg → use html.if type not
  mentioned by the user then you can ask the user or assume yourself which is best option for this request or form the context.
 For 'file' artifacts, you must include a filename attribute: <lucen_artifact type="file" filename="example.json">. Output the raw, unformatted file content inside the tag. Do not use markdown code fences inside the artifact.

@@ -39,12 +39,14 @@ export interface SideChatState {
 
 
 
-export type ArtifactType = 'html' | 'svg' | 'mermaid';
+export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file';
 
 export interface Artifact {
   id: string;
   type: ArtifactType;
   title: string;
+  /** For type='file' artifacts, the download filename (including extension) */
+  filename?: string;
   content: string;
   messageId: string;
   isStreaming?: boolean;

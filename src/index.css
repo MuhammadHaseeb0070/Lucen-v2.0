@@ -3962,6 +3962,50 @@ h4 {
     overflow: hidden;
 }
 
+.artifact-file-preview {
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    background: var(--bg-base);
+}
+
+.artifact-file-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--divider);
+}
+
+.artifact-file-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.artifact-file-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--divider);
+    border-radius: var(--r-sm);
+    padding: 6px 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+    white-space: nowrap;
+}
+
+.artifact-file-download:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
 .artifact-render-error {
     display: flex;
     flex-direction: column;
