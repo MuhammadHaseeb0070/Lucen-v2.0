@@ -96,7 +96,6 @@ export interface DbMessage {
     reasoning?: string;
     is_truncated: boolean;
     attachments?: Record<string, unknown>[];
-    web_search?: Record<string, unknown>;
     created_at: string;
 }
 
@@ -136,7 +135,6 @@ export async function saveMessage(
             is_truncated: message.isTruncated || false,
             // Save attachment metadata only (no file content)
             attachments: message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) || null,
-            web_search: message.webSearch || null,
         });
 
     if (error) {
@@ -149,7 +147,7 @@ export async function saveMessage(
 /** Update an existing message (e.g., after streaming completes) */
 export async function updateMessageInDb(
     messageId: string,
-    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'webSearch'>>
+    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated'>>
 ): Promise<boolean> {
     if (!hasActiveSessionSync() || !supabase) return false;
 
@@ -157,7 +155,6 @@ export async function updateMessageInDb(
     if (updates.content !== undefined) dbUpdates.content = updates.content;
     if (updates.reasoning !== undefined) dbUpdates.reasoning = updates.reasoning;
     if (updates.isTruncated !== undefined) dbUpdates.is_truncated = updates.isTruncated;
-    if (updates.webSearch !== undefined) dbUpdates.web_search = updates.webSearch;
 
     const { error } = await supabase
         .from('messages')
@@ -288,6 +285,5 @@ function dbToMessage(row: DbMessage): Message {
             mimeType: a.mimeType as string,
             size: a.size as number,
         })),
-        webSearch: row.web_search as Message['webSearch'],
     };
 }

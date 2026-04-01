@@ -30,43 +30,6 @@ function getReasoningTokens(usage: Record<string, unknown> | undefined): number 
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function extractWebSearchMetadata(choice: any): { used: boolean; links: { title: string; url: string; snippet?: string }[] } {
-    const metadata = { used: false, links: [] as { title: string; url: string; snippet?: string }[] };
-
-    // 1. Check for plugins field (OpenRouter specific)
-    if (Array.isArray(choice?.plugins)) {
-        for (const plugin of choice.plugins) {
-            if (plugin.id === WEB_PLUGIN_ID || plugin.id === 'exa') {
-                metadata.used = true;
-                if (Array.isArray(plugin.output?.results)) {
-                    for (const res of plugin.output.results) {
-                        if (res.url) {
-                            metadata.links.push({
-                                title: res.title || res.url,
-                                url: res.url,
-                                snippet: res.snippet
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Check for tool_calls (standard OpenAI)
-    if (Array.isArray(choice?.message?.tool_calls || choice?.delta?.tool_calls)) {
-        const toolCalls = choice?.message?.tool_calls || choice?.delta?.tool_calls;
-        for (const tc of toolCalls) {
-            const name = tc.function?.name || '';
-            if (name.includes('web') || name.includes('search') || name.includes('exa')) {
-                metadata.used = true;
-            }
-        }
-    }
-
-    return metadata;
-}
-
 function countImagesInMessages(messages: unknown): number {
     if (!Array.isArray(messages)) return 0;
     let count = 0;
@@ -317,7 +280,13 @@ Deno.serve(async (req: Request) => {
             }
         }
 
+        // If we want to silently strip the plugin instead of blocking:
+        // effectivePlugins = subscriptionStatus === 'free' ? stripWebPlugin(effectivePlugins) : effectivePlugins;
+
         // ─── Server-side token cap ───
+        // Never trust the client value blindly. Cap at a safe server maximum.
+        // The client computes a dynamic budget based on actual input size;
+        // here we simply enforce an upper bound to prevent abuse.
         const SERVER_MAX_TOKENS_CAP = 32768;
         const resolvedMaxTokens = Math.min(
             Math.max(512, Number(max_tokens) || 16384),
@@ -366,21 +335,16 @@ Deno.serve(async (req: Request) => {
 
             const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
             const imageCost = imageCount * CREDITS_PER_IMAGE;
-            
-            const searchMetadata = extractWebSearchMetadata(json.choices?.[0]);
-            const searchWasDone = searchMetadata.used;
-            const searchCost = searchWasDone ? computeWebSearchCredits(webSearchMaxResults) : 0;
+            const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
             const totalCost = textCost + imageCost + searchCost;
 
             try {
-                const shouldCountFreeSearch = subscriptionStatus === 'free' && searchWasDone;
-                
                 await supabaseAdmin.rpc('deduct_user_credits', {
                     p_user_id: user.id,
                     p_amount: totalCost,
                 });
 
-                if (shouldCountFreeSearch) {
+                if (subscriptionStatus === 'free' && requestedWebSearch) {
                     await supabaseAdmin
                         .from('user_credits')
                         .update({ free_searches_used: freeSearchesUsed + 1 })
@@ -397,20 +361,11 @@ Deno.serve(async (req: Request) => {
                     web_search_enabled: requestedWebSearch,
                     web_search_engine: requestedWebSearch ? webSearchEngine : null,
                     web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
-                    web_search_results_billed: searchWasDone ? webSearchMaxResults : 0,
+                    web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
                     text_credits: textCost,
                     image_credits: imageCost,
                     web_search_credits: searchCost,
                 });
-
-                if (searchWasDone || searchMetadata.links.length > 0) {
-                    json.lucen_metadata = {
-                        webSearch: {
-                            used: searchWasDone,
-                            links: searchMetadata.links
-                        }
-                    };
-                }
             } catch (dbErr) {
                 console.error('Failed to deduct credits or log usage:', dbErr);
             }
@@ -430,8 +385,6 @@ Deno.serve(async (req: Request) => {
         let completionTokens = 0;
         let reasoningTokens = 0;
         let totalTokens = 0;
-        let searchWasDone = false;
-        let collectedLinks: { title: string; url: string; snippet?: string }[] = [];
 
         (async () => {
             try {
@@ -458,54 +411,30 @@ Deno.serve(async (req: Request) => {
                                 reasoningTokens = getReasoningTokens(parsed.usage as Record<string, unknown>);
                                 totalTokens = parsed.usage.total_tokens || (promptTokens + completionTokens);
                             }
-
-                            const choice = parsed.choices?.[0];
-                            if (choice) {
-                                const meta = extractWebSearchMetadata(choice);
-                                if (meta.used) searchWasDone = true;
-                                if (meta.links.length > 0) {
-                                    for (const link of meta.links) {
-                                        if (!collectedLinks.some(l => l.url === link.url)) {
-                                            collectedLinks.push(link);
-                                        }
-                                    }
-                                }
-                            }
                         } catch { /* ignore partial JSON */ }
                     }
                 }
             } catch (e) {
                 console.error('Stream error:', e);
             } finally {
+                await writer.close();
+
                 const totalTokensNum = typeof totalTokens === 'number' && Number.isFinite(totalTokens) && totalTokens > 0
                     ? totalTokens
                     : (promptTokens + completionTokens);
 
                 const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
                 const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const searchCost = searchWasDone ? computeWebSearchCredits(webSearchMaxResults) : 0;
+                const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
                 const totalCost = textCost + imageCost + searchCost;
 
                 try {
-                    if (searchWasDone || collectedLinks.length > 0) {
-                        const metaChunk = JSON.stringify({
-                            lucen_metadata: {
-                                webSearch: {
-                                    used: searchWasDone,
-                                    links: collectedLinks
-                                }
-                            }
-                        });
-                        await writer.write(new TextEncoder().encode(`data: ${metaChunk}\n\n`));
-                    }
-
-                    await writer.close();
                     await supabaseAdmin.rpc('deduct_user_credits', {
                         p_user_id: user.id,
                         p_amount: totalCost,
                     });
 
-                    if (subscriptionStatus === 'free' && searchWasDone) {
+                    if (subscriptionStatus === 'free' && requestedWebSearch) {
                         await supabaseAdmin
                             .from('user_credits')
                             .update({ free_searches_used: freeSearchesUsed + 1 })
@@ -522,13 +451,13 @@ Deno.serve(async (req: Request) => {
                         web_search_enabled: requestedWebSearch,
                         web_search_engine: requestedWebSearch ? webSearchEngine : null,
                         web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
-                        web_search_results_billed: searchWasDone ? webSearchMaxResults : 0,
+                        web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
                         text_credits: textCost,
                         image_credits: imageCost,
                         web_search_credits: searchCost,
                     });
 
-                    console.log(`Deducted ${totalCost.toFixed(4)} credits for ${totalTokensNum} tokens (User: ${user.id}, searchWasDone: ${searchWasDone})`);
+                    console.log(`Deducted ${totalCost.toFixed(4)} credits for ${totalTokensNum} tokens (User: ${user.id})`);
                 } catch (dbErr) {
                     console.error('Failed to deduct credits or log usage:', dbErr);
                 }
