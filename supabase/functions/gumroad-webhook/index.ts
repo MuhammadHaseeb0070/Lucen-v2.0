@@ -172,6 +172,17 @@ function getSupabaseAdmin() {
   return createClient(supabaseUrl, serviceKey);
 }
 
+/** Fallback: if custom_fields are missing, try to find user by saved subscription_id */
+async function findUserIdBySubscriptionId(subscriptionId: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("user_credits")
+    .select("user_id")
+    .eq("payment_subscription_id", subscriptionId)
+    .maybeSingle();
+  return data?.user_id ?? null;
+}
+
 /** Check if this event was already processed (idempotency) */
 async function isEventProcessed(eventId: string): Promise<boolean> {
   const supabase = getSupabaseAdmin();
@@ -351,14 +362,20 @@ serve(async (req: Request) => {
   ).toString().toLowerCase();
 
   // ── Extract user ID ──
-  const userId = extractUserId(payload);
+  const subscriptionId = extractSubscriptionId(payload);
+  let userId = extractUserId(payload);
+  
+  if (!userId && subscriptionId) {
+    console.log(`gumroad-webhook: user_id missing in payload, attempting lookup via subscription_id: ${subscriptionId}`);
+    userId = await findUserIdBySubscriptionId(subscriptionId);
+  }
+
   if (!userId) {
-    console.error("gumroad-webhook: missing user_id in custom_fields. Payload:", JSON.stringify(payload).slice(0, 500));
+    console.error("gumroad-webhook: missing user_id in custom_fields and no matching subscription. Payload:", JSON.stringify(payload).slice(0, 500));
     // Acknowledge receipt to prevent Gumroad from retrying
     return jsonResponse({ received: true, error: "no_user_id" }, { status: 200 });
   }
 
-  const subscriptionId = extractSubscriptionId(payload);
   const eventId = extractEventId(payload);
 
   // ── Idempotency check ──
