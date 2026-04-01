@@ -509,36 +509,35 @@ serve(async (req: Request) => {
         console.log(`gumroad-webhook: subscription_updated for user ${userId}`);
         const tierInfo = getTierInfo(payload);
         if (tierInfo) {
-          // Check if plan actually changed
           const supabase = getSupabaseAdmin();
-          const { data: currentRow } = await supabase
+          
+          // Secure Fulfillment Strategy:
+          // Never grant LC instantly on a tier change ping because the user
+          // has not necessarily been charged the new amount yet.
+          // Wait for the next 'sale' ping (recurring charge) to safely grant LC.
+          
+          await supabase.rpc("update_subscription_meta", {
+            p_user_id: userId,
+            p_plan: tierInfo.plan,
+            p_subscription_id: subscriptionId ?? null,
+            p_customer_portal_url: null,
+            p_renews_at: null,
+          });
+
+          await supabase
             .from("user_credits")
-            .select("subscription_plan")
-            .eq("user_id", userId)
-            .maybeSingle();
+            .update({ payment_provider: "gumroad" })
+            .eq("user_id", userId);
 
-          const currentPlan = currentRow?.subscription_plan ?? "free";
-
-          if (currentPlan !== tierInfo.plan) {
-            // Plan changed — grant new tier credits
-            const newBalance = await grantPaymentCredits({
-              userId,
-              creditsToAdd: tierInfo.credits,
-              plan: tierInfo.plan,
-              subscriptionId,
-            });
-            await recordEvent({
-              eventId,
-              eventName: resourceName,
-              userId,
-              variantId: tierInfo.plan,
-              creditsGranted: tierInfo.credits,
-            });
-            console.log(`gumroad-webhook: plan change → ${tierInfo.plan}, granted ${tierInfo.credits} LC. Balance: ${newBalance}`);
-          } else {
-            // Same plan — metadata only
-            await recordEvent({ eventId, eventName: resourceName, userId, creditsGranted: 0 });
-          }
+          await recordEvent({ 
+            eventId, 
+            eventName: resourceName, 
+            userId,
+            variantId: tierInfo.plan,
+            creditsGranted: 0 
+          });
+          
+          console.log(`gumroad-webhook: SECURE metadata update for tier change → ${tierInfo.plan} for user ${userId}. Credits will be granted on next charge.`);
         } else {
           await recordEvent({ eventId, eventName: resourceName, userId });
         }
