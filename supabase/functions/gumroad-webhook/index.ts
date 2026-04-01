@@ -85,8 +85,13 @@ function extractUserId(payload: any): string | null {
     payload?.custom_fields?.user_id,
     payload?.custom_fields?.User_ID,
     payload?.custom_fields?.["User ID"],
+    // Gumroad form-urlencoded bracket format
+    payload?.["custom_fields[user_id]"],
+    payload?.["custom_fields[User_ID]"],
+    payload?.["custom_fields[User ID]"],
     // URL params can also come through
     payload?.url_params?.user_id,
+    payload?.["url_params[user_id]"],
   ];
   for (const c of candidates) {
     const s = asString(c);
@@ -109,12 +114,14 @@ function getTierInfo(payload: any): { credits: number; plan: string } | null {
 
   // Gumroad sends variant/tier info in several possible fields
   const variantId = asString(payload?.variants?.Tier) ??
+                    asString(payload?.["variants[Tier]"]) ??
                     asString(payload?.variant) ??
                     asString(payload?.tier_id) ??
                     asString(payload?.option_id);
   
   const variantName = (
     payload?.variants?.Tier ??
+    payload?.["variants[Tier]"] ??
     payload?.variant_name ??
     payload?.tier_name ??
     payload?.option_name ??
