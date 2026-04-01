@@ -168,6 +168,11 @@ const ChatArea: React.FC = () => {
                 // Sync credit balance from server after deduction
                 useCreditsStore.getState().syncFromServer();
             },
+            onMetadata: (metadata) => {
+                if (metadata.webSearch) {
+                    updateMessage(convId, assistantMsgId, { webSearch: metadata.webSearch });
+                }
+            },
             onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; useCreditsStore.getState().syncFromServer(); },
         }, { signal: controller.signal, webSearchEnabled });
     };
@@ -204,6 +209,11 @@ const ChatArea: React.FC = () => {
                     isTruncated: truncated || false,
                 });
                 abortRef.current = null;
+            },
+            onMetadata: (metadata) => {
+                if (metadata.webSearch) {
+                    updateMessage(convId, assistantMsgId, { webSearch: metadata.webSearch });
+                }
             },
             onError: (error) => {
                 updateMessage(convId, assistantMsgId, {
@@ -469,6 +479,7 @@ const ChatArea: React.FC = () => {
                                 <div className="msg-ai-content">
                                     <div className="msg-ai-header">
                                         <span className="msg-ai-name">Lucen AI</span>
+                                        {nextMsg.webSearch?.used && <span className="msg-reasoning-badge" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', borderColor: 'var(--accent)' }}>WEB</span>}
                                         {hasReasoning && <span className="msg-reasoning-badge">Reasoning</span>}
                                     </div>
                                     <MessageBubble

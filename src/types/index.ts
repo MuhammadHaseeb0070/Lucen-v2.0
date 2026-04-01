@@ -18,6 +18,10 @@ export interface Message {
   isReasoningStreaming?: boolean;
   isTruncated?: boolean;
   attachments?: FileAttachment[];
+  webSearch?: {
+    used: boolean;
+    links?: { title: string; url: string; snippet?: string }[];
+  };
 }
 
 export interface Conversation {

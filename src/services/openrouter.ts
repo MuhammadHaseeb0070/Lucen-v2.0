@@ -16,6 +16,7 @@ interface StreamCallbacks {
     onReasoning: (reasoning: string) => void;
     onDone: (truncated?: boolean) => void;
     onError: (error: string) => void;
+    onMetadata?: (metadata: any) => void;
 }
 
 interface StreamOptions {
@@ -453,6 +454,13 @@ async function processStream(
                     }
 
                     const parsed = JSON.parse(data);
+
+                    // Handle custom metadata from Edge Function
+                    if (parsed.lucen_metadata) {
+                        callbacks.onMetadata?.(parsed.lucen_metadata);
+                        continue;
+                    }
+
                     const choice = parsed.choices?.[0];
                     if (!choice) continue;
 

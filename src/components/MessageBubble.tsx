@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Globe, ExternalLink } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import { parseArtifacts } from '../lib/artifactParser';
@@ -172,6 +172,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         </div>
                     )}
 
+            {message.webSearch?.used && (
+                <div className="web-search-badge">
+                    <Globe size={13} />
+                    <span>WEB SEARCH</span>
+                </div>
+            )}
+
             {message.isStreaming && !message.content && !message.reasoning ? (
                 <div className="streaming-indicator">
                     <span className="dot" /><span className="dot" /><span className="dot" />
@@ -219,6 +226,31 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             <Trash2 size={13} />
                         </button>
                     )}
+                </div>
+            )}
+
+            {message.webSearch?.links && message.webSearch.links.length > 0 && !message.isStreaming && (
+                <div className="msg-sources">
+                    <div className="sources-header">
+                        <Globe size={12} />
+                        <span>Sources</span>
+                    </div>
+                    <div className="sources-list">
+                        {message.webSearch.links.slice(0, 5).map((link, idx) => (
+                            <a 
+                                key={`${link.url}-${idx}`} 
+                                href={link.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="source-item"
+                                title={link.title}
+                            >
+                                <span className="source-index">{idx + 1}</span>
+                                <span className="source-title">{link.title}</span>
+                                <ExternalLink size={10} className="source-icon" />
+                            </a>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

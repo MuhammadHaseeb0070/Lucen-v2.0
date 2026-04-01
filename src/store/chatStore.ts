@@ -198,6 +198,7 @@ export const useChatStore = create<ChatStore>()(
                                 content: updates.content ?? msg.content,
                                 reasoning: updates.reasoning ?? msg.reasoning,
                                 isTruncated: updates.isTruncated ?? msg.isTruncated,
+                                webSearch: updates.webSearch ?? msg.webSearch,
                             }).catch(console.error);
                         });
                     }
