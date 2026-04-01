@@ -181,7 +181,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
             id: 'open-plans',
             label: 'Plans & credits',
             category: 'Billing',
-            keywords: ['upgrade', 'pricing', 'subscription', 'credits', 'lemon', 'pay', 'plan', 'tier'],
+            keywords: ['upgrade', 'pricing', 'subscription', 'credits', 'lemon', 'gumroad', 'pay', 'plan', 'tier'],
             icon: <Sparkles size={16} />,
             action: () => { setBillingOpen(true); onClose(); },
         });

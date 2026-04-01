@@ -73,7 +73,7 @@ export const useCreditsStore = create<CreditsStore>()(
                 if (!hasActiveSessionSync()) return;
 
                 // Graduated delays cover webhook processing latency.
-                // Lemon Squeezy webhooks can take several seconds to arrive and be processed.
+                // Payment webhooks can take several seconds to arrive and be processed.
                 // We sync immediately, then retry at 2.5s, 5s, and 10s.
                 const delays = [0, 2500, 5000, 10000];
 

@@ -326,7 +326,7 @@ function syncDataOnLogin() {
     setTimeout(() => {
         useChatStore.getState().loadFromSupabase();
 
-        // Detect post-checkout redirect (Lemon Squeezy sends user back with this param).
+        // Detect post-checkout redirect (payment provider sends user back with this param).
         const url = new URL(window.location.href);
         const isPostCheckout = url.searchParams.has('subscription_updated');
 

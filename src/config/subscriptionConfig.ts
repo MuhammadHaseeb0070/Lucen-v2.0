@@ -6,7 +6,17 @@
 // ⚠️  FRONTEND-SAFE: No API keys or secrets.
 //     Server-side credit costs live in chat-proxy (edge fn).
 //     This file controls UI display, plan metadata, and FAQ.
+//
+// Payment provider toggle: set VITE_PAYMENT_PROVIDER to
+// "gumroad" or "lemonsqueezy" (default).
 // ============================================================
+
+import { getPaymentProvider } from '../services/checkout';
+
+/** Human-readable name for the active payment provider (for UI text) */
+export function paymentProviderName(): string {
+  return getPaymentProvider() === 'gumroad' ? 'Gumroad' : 'Lemon Squeezy';
+}
 
 // ─── LC (LucenCredits) Branding ─────────────────────────────
 export const LC = {
@@ -27,6 +37,10 @@ export interface PlanDefinition {
   name: string;
   /** Lemon Squeezy variant ID — loaded from env vars */
   variantId?: string;
+  /** Gumroad product URL — loaded from env vars */
+  gumroadProductUrl?: string;
+  /** Gumroad tier name (matches the option name on the Gumroad product) */
+  gumroadTierName?: string;
   priceUsd: number;
   /** LC granted each billing cycle */
   creditsProvided: number;
@@ -60,6 +74,8 @@ export const PLANS: Record<Uppercase<PlanId>, PlanDefinition> = {
     id: 'regular',
     name: 'Regular',
     variantId: import.meta.env.VITE_LS_VARIANT_REGULAR,
+    gumroadProductUrl: import.meta.env.VITE_GUMROAD_PRODUCT_URL,
+    gumroadTierName: 'Regular',
     priceUsd: 10,
     creditsProvided: 4_000,
     tagline: 'For daily power users who need consistent capacity.',
@@ -77,6 +93,8 @@ export const PLANS: Record<Uppercase<PlanId>, PlanDefinition> = {
     id: 'pro',
     name: 'Pro',
     variantId: import.meta.env.VITE_LS_VARIANT_PRO,
+    gumroadProductUrl: import.meta.env.VITE_GUMROAD_PRODUCT_URL,
+    gumroadTierName: 'Pro',
     priceUsd: 20,
     creditsProvided: 10_000,
     tagline: 'Maximum capacity for professionals and heavy workflows.',
@@ -197,7 +215,7 @@ export const SUBSCRIPTION_FAQ: FaqItem[] = [
   {
     question: 'Is my payment secure?',
     answer:
-      'All payments are handled by Lemon Squeezy, a trusted payment processor. Lucen never sees or stores your card details. You can manage your billing, update payment methods, or cancel directly from Lemon Squeezy\'s customer portal.',
+      'All payments are handled by our trusted payment partner. Lucen never sees or stores your card details. You can manage your billing, update payment methods, or cancel anytime.',
   },
   {
     question: 'Can I get a refund?',

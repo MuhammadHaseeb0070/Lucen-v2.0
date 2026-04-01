@@ -10,7 +10,8 @@ import {
 } from '../config/subscriptionConfig';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
-import { startLemonCheckout } from '../services/checkout';
+import { startCheckout, getPaymentProvider } from '../services/checkout';
+import { paymentProviderName } from '../config/subscriptionConfig';
 
 // ─── FAQ Accordion Item ───
 const FaqItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
@@ -167,7 +168,7 @@ const PricingModal: React.FC = () => {
 
     const statusLine = useMemo(() => {
         if (subscriptionStatus === 'past_due') {
-            return 'Your payment needs attention. Please update your billing info in Lemon Squeezy.';
+            return `Your payment needs attention. Please update your billing info in ${paymentProviderName()}.`;
         }
         if (subscriptionStatus === 'active') {
             const renewText = renewsAt ? ` Renews on ${new Date(renewsAt).toLocaleDateString()}.` : '';
@@ -181,14 +182,32 @@ const PricingModal: React.FC = () => {
     const onCheckout = async (tier: 'regular' | 'pro') => {
         setError(null);
         const plan = PLAN_LIST.find((p) => p.id === tier);
-        if (!plan?.variantId) {
-            setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
-            return;
+        const provider = getPaymentProvider();
+
+        // Validate that the required env var is set for the active provider
+        if (provider === 'gumroad') {
+            if (!plan?.gumroadProductUrl) {
+                setError('Missing environment variable: VITE_GUMROAD_PRODUCT_URL');
+                return;
+            }
+        } else {
+            if (!plan?.variantId) {
+                setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
+                return;
+            }
         }
+
         setLoadingTier(tier);
         try {
             const redirectUrl = `${window.location.origin}/chat?subscription_updated=1`;
-            await startLemonCheckout(plan.variantId, redirectUrl);
+            await startCheckout(
+                {
+                    variantId: plan?.variantId,
+                    gumroadProductUrl: plan?.gumroadProductUrl,
+                    gumroadTierName: plan?.gumroadTierName,
+                },
+                redirectUrl,
+            );
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Checkout failed');
             setLoadingTier(null);
@@ -339,9 +358,8 @@ const PricingModal: React.FC = () => {
 
                     {/* ── Footer Note ── */}
                     <p className="lc-modal__footer-note">
-                        All payments are processed securely by Lemon Squeezy. You can manage your
-                        billing, update payment methods, or cancel anytime from your Lemon Squeezy
-                        customer portal.
+                        All payments are processed securely by {paymentProviderName()}. You can manage your
+                        billing, update payment methods, or cancel anytime.
                     </p>
                 </div>
             </div>
