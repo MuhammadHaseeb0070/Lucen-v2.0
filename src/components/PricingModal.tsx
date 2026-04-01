@@ -270,7 +270,7 @@ const PricingModal: React.FC = () => {
                                 )}
                             </div>
                             
-                            {customerPortalUrl && (
+                            {customerPortalUrl ? (
                                 <a
                                     href={customerPortalUrl}
                                     target="_blank"
@@ -279,7 +279,17 @@ const PricingModal: React.FC = () => {
                                 >
                                     Manage Subscription <ExternalLink size={14} />
                                 </a>
-                            )}
+                            ) : (getPaymentProvider() === 'gumroad' && subscriptionPlan !== 'free') ? (
+                                <a
+                                    href="https://app.gumroad.com/library"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="lc-manage-link"
+                                    title="Go to your Gumroad Library to manage billing or cancel"
+                                >
+                                    Manage on Gumroad <ExternalLink size={14} />
+                                </a>
+                            ) : null}
                         </div>
                         <CreditBar
                             current={creditsLoading ? 0 : remainingCredits}
