@@ -89,7 +89,7 @@ const UserUsageTab: React.FC = () => {
                     </div>
                 </div>
 
-                {customerPortalUrl ? (
+                {(customerPortalUrl && getPaymentProvider() === 'lemonsqueezy') ? (
                     <a href={customerPortalUrl} target="_blank" rel="noopener noreferrer" className="usage-portal-link">
                         <div className="usage-portal-link__icon">
                             <Database size={16} />

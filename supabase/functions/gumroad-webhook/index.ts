@@ -546,6 +546,8 @@ serve(async (req: Request) => {
 
       case "refund": {
         console.log(`gumroad-webhook: refund for user ${userId}`);
+        const supabase = getSupabaseAdmin();
+        await supabase.rpc('invalidate_user_ledgers', { p_user_id: userId });
         await setFreeStatus({ userId, subscriptionId });
         await recordEvent({ eventId, eventName: resourceName, userId });
         return jsonResponse({ received: true }, { status: 200 });

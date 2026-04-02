@@ -270,7 +270,7 @@ const PricingModal: React.FC = () => {
                                 )}
                             </div>
                             
-                            {customerPortalUrl ? (
+                            {(customerPortalUrl && getPaymentProvider() === 'lemonsqueezy') ? (
                                 <a
                                     href={customerPortalUrl}
                                     target="_blank"
