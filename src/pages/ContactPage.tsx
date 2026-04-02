@@ -10,7 +10,10 @@ const ContactPage: React.FC = () => {
             </div>
 
             <div style={{ maxWidth: '600px', margin: '3rem auto', background: 'var(--bg-surface)', border: '1px solid var(--divider)', borderRadius: '16px', padding: '2rem' }}>
-                <form style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <form 
+                    style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }} 
+                    onSubmit={(e) => { e.preventDefault(); alert("Thanks for your message! This is a demo form."); }}
+                >
                     <div style={{ display: 'flex', gap: '1.5rem' }}>
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>First Name</label>
@@ -18,7 +21,7 @@ const ContactPage: React.FC = () => {
                                 type="text" 
                                 placeholder="Jane"
                                 style={{ background: 'var(--bg-base)', border: '1px solid var(--divider)', padding: '12px', borderRadius: '8px', color: 'var(--text-primary)' }}
-                                disabled
+                                required
                             />
                         </div>
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -27,7 +30,7 @@ const ContactPage: React.FC = () => {
                                 type="text" 
                                 placeholder="Doe"
                                 style={{ background: 'var(--bg-base)', border: '1px solid var(--divider)', padding: '12px', borderRadius: '8px', color: 'var(--text-primary)' }}
-                                disabled
+                                required
                             />
                         </div>
                     </div>
@@ -38,7 +41,7 @@ const ContactPage: React.FC = () => {
                             type="email" 
                             placeholder="jane@example.com"
                             style={{ background: 'var(--bg-base)', border: '1px solid var(--divider)', padding: '12px', borderRadius: '8px', color: 'var(--text-primary)' }}
-                            disabled
+                            required
                         />
                     </div>
 
@@ -48,15 +51,15 @@ const ContactPage: React.FC = () => {
                             rows={5}
                             placeholder="How can we help you?"
                             style={{ background: 'var(--bg-base)', border: '1px solid var(--divider)', padding: '12px', borderRadius: '8px', color: 'var(--text-primary)', resize: 'vertical' }}
-                            disabled
+                            required
                         />
                     </div>
 
-                    <button className="landing-btn landing-btn--primary" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }} disabled>
+                    <button type="submit" className="landing-btn landing-btn--primary" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>
                         Send Message
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-tertiary)', marginTop: '0.5rem' }}>
-                        This form is currently a mockup. Please email support directly.
+                        Please note: Email support directly for faster responses.
                     </p>
                 </form>
             </div>
