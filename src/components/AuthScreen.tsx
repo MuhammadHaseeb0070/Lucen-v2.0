@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import Logo from './Logo';
@@ -8,9 +8,12 @@ type AuthMode = 'signin' | 'signup' | 'forgot_password';
 
 function AuthScreen() {
     const navigate = useNavigate();
-    const { signIn, signUp, resetPasswordForEmail, error, isLoading, clearError } = useAuthStore();
+    const location = useLocation();
+    const { signIn, signUp, resetPasswordForEmail, error, isLoading, clearError, user } = useAuthStore();
     const [searchParams] = useSearchParams();
     const initialMode = ((): AuthMode => {
+        if (location.pathname.includes('/signup')) return 'signup';
+        if (location.pathname.includes('/login')) return 'signin';
         const mode = searchParams.get('mode');
         if (mode === 'signup' || mode === 'forgot_password') return mode;
         if (mode === 'login') return 'signin';
@@ -33,6 +36,12 @@ function AuthScreen() {
     useEffect(() => {
         setMode(initialMode);
     }, [initialMode]);
+
+    useEffect(() => {
+        if (user) {
+            navigate('/chat', { replace: true });
+        }
+    }, [user, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
