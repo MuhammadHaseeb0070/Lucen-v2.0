@@ -46,8 +46,9 @@ export async function startGumroadCheckout(
     url.searchParams.set('user_id', user.id);
     // Pre-fill email for convenience
     url.searchParams.set('email', user.email);
-    // Pre-select the tier/option
-    url.searchParams.set('option', tierName);
+    // Pre-select the tier (Gumroad officially uses tier or variant for this)
+    url.searchParams.set('tier', tierName);
+    url.searchParams.set('variant', tierName);
     // Skip the product page, go straight to checkout
     url.searchParams.set('wanted', 'true');
 

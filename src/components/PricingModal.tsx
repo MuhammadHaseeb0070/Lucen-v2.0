@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     X, ExternalLink, Sparkles, Check, ChevronDown, Zap,
     HelpCircle, CreditCard, Shield, Star,
@@ -165,6 +165,14 @@ const PricingModal: React.FC = () => {
     const currentPlan = useMemo(() =>
         PLAN_LIST.find((p) => p.id === subscriptionPlan) ?? PLAN_LIST[0],
     [subscriptionPlan]);
+
+    useEffect(() => {
+        const handlePageShow = (e: PageTransitionEvent) => {
+            if (e.persisted) setLoadingTier(null);
+        };
+        window.addEventListener('pageshow', handlePageShow);
+        return () => window.removeEventListener('pageshow', handlePageShow);
+    }, []);
 
     const statusLine = useMemo(() => {
         if (subscriptionStatus === 'past_due') {
