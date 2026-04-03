@@ -3107,7 +3107,7 @@ h4 {
    ═══════════════════════════════════════════ */
 .settings-modal {
     width: 92%;
-    max-width: 680px;
+    max-width: 850px;
     max-height: 80vh;
     background: var(--bg-surface);
     border-radius: var(--r-lg);
