@@ -1714,47 +1714,71 @@ h4 {
    ═══════════════════════════════════════════ */
 .selection-menu {
     position: fixed;
-    z-index: 9999;
+    z-index: 10000; /* Above all panels and modest overlays */
     display: flex;
     flex-direction: column;
     background: var(--bg-surface);
     border: 1px solid var(--divider);
     border-radius: var(--r-md);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
-    animation: selMenuIn 150ms var(--ease);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.08);
+    animation: selMenuIn 200ms var(--ease);
     user-select: none;
     overflow: hidden;
+    min-width: 140px;
+    pointer-events: auto;
+    filter: none; /* Reset potential drop-shadow from redundant styles */
 }
 
 @keyframes selMenuIn {
     from {
         opacity: 0;
-        transform: translateY(6px) scale(0.97);
+        transform: translateY(8px) scale(0.96);
     }
-
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
     }
 }
 
-.selection-menu__actions {
+.selection-menu-content {
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+}
+
+.selection-menu-actions {
     display: flex;
     align-items: center;
-    padding: 4px;
+    padding: 5px;
     gap: 2px;
 }
 
-.selection-menu__btn {
+/* Vertical layout */
+.selection-menu--vertical .selection-menu-actions {
+    flex-direction: column;
+    padding: 6px;
+    gap: 1px;
+    width: 100%;
+    min-width: 180px;
+}
+
+.selection-menu--vertical .selection-action-btn {
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: var(--r-sm);
+}
+
+.selection-action-btn {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 7px 11px;
+    gap: 6px;
+    padding: 7px 12px;
     background: transparent;
     border: none;
     border-radius: var(--r-sm);
     color: var(--text-secondary);
-    font-size: 0.76rem;
+    font-size: 0.78rem;
     font-weight: 550;
     cursor: pointer;
     font-family: var(--font);
@@ -1762,33 +1786,43 @@ h4 {
     transition: all var(--dur-fast) var(--ease);
 }
 
-.selection-menu__btn:hover {
+.selection-action-btn:hover {
     background: var(--bg-surface-hover);
     color: var(--text-primary);
 }
 
-.selection-menu__btn--accent {
-    color: var(--accent);
-    font-weight: 600;
+.selection-action-btn.copied {
+    color: var(--success) !important;
+    background: var(--success-soft) !important;
 }
 
-.selection-menu__btn--accent:hover {
-    background: var(--accent-soft);
-    color: var(--accent);
-}
-
-.selection-menu__arrow {
+.mobile-action-dest-icon {
+    margin-left: auto;
     opacity: 0.5;
+    color: var(--accent);
 }
 
-.selection-menu__hint {
-    padding: 3px 10px 5px;
-    font-size: 0.62rem;
+.selection-menu-hint {
+    padding: 5px 12px 6px;
+    font-size: 0.65rem;
     color: var(--text-tertiary);
     text-align: center;
     border-top: 1px solid var(--divider);
     background: var(--bg-muted);
 }
+
+.selection-menu--vertical .selection-menu-hint {
+    display: none; /* Hide shortcut hint in vertical mode to keep it compact */
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+    .selection-action-btn {
+        padding: 10px 14px;
+        font-size: 0.85rem;
+    }
+}
+
 
 /* ═══════════════════════════════════════════
    TEMPLATE FORMS
@@ -6565,69 +6599,6 @@ h4 {
     color: var(--danger);
 }
 
-/* -------------------------------------------
-   PREFILL SELECTION MENU
-   ------------------------------------------- */
-.selection-menu {
-    position: absolute;
-    z-index: 1000;
-    pointer-events: auto;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-    animation: menuPopIn var(--dur-fast) var(--ease);
-}
-
-@keyframes menuPopIn {
-    from {
-        opacity: 0;
-        transform: translateY(6px) scale(0.98);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-.selection-menu-content {
-    background: var(--bg-surface);
-    border: 1px solid var(--divider);
-    border-radius: var(--r-md);
-    padding: 6px;
-    display: flex;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.selection-menu-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.selection-action-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
-    background: transparent;
-    border: none;
-    border-radius: var(--r-sm);
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all var(--dur-fast) var(--ease);
-}
-
-.selection-action-btn:hover {
-    background: var(--bg-surface-hover);
-    color: var(--text-primary);
-}
-
-.selection-action-btn.copied {
-    color: var(--success, #10b981);
-    background: rgba(16, 185, 129, 0.1);
-}
 
 /* ═══════════════════════════════════════════
    LUCEN SUBSCRIPTION MANAGEMENT MODAL

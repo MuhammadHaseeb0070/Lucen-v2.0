@@ -486,6 +486,7 @@ const SideChatPanel: React.FC = () => {
                         const userMsg = createMessage('user', content);
                         addMessage(userMsg);
                     }}
+                    isSideChat={true}
                 />
 
                 {/* Input */}
