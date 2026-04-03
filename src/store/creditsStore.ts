@@ -4,6 +4,7 @@ import { FREE_CREDITS, formatLC } from '../config/subscriptionConfig';
 import type { PlanId } from '../config/subscriptionConfig';
 import { hasActiveSessionSync } from '../lib/supabase';
 import * as db from '../services/database';
+import type { ActiveLedger } from '../services/database';
 
 interface CreditsStore {
     remainingCredits: number;
@@ -15,6 +16,7 @@ interface CreditsStore {
     customerPortalUrl: string | null;
     renewsAt: string | null;
     billingCycleUsage: number;
+    ledgers: ActiveLedger[];
     isSynced: boolean;
     isLoading: boolean;
 
@@ -35,6 +37,7 @@ export const useCreditsStore = create<CreditsStore>()(
             customerPortalUrl: null,
             renewsAt: null,
             billingCycleUsage: 0,
+            ledgers: [],
             isSynced: false,
             isLoading: false,
 
@@ -63,6 +66,7 @@ export const useCreditsStore = create<CreditsStore>()(
                         subscriptionPlan: result.subscriptionPlan,
                         customerPortalUrl: result.customerPortalUrl,
                         renewsAt: result.renewsAt,
+                        ledgers: result.ledgers,
                         isSynced: true,
                     });
                 }
@@ -93,6 +97,7 @@ export const useCreditsStore = create<CreditsStore>()(
                             subscriptionPlan: result.subscriptionPlan,
                             customerPortalUrl: result.customerPortalUrl,
                             renewsAt: result.renewsAt,
+                            ledgers: result.ledgers,
                             isSynced: true,
                         });
 

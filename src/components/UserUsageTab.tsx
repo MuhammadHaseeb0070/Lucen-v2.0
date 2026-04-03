@@ -29,7 +29,7 @@ interface UsageLog {
 
 const UserUsageTab: React.FC = () => {
     const { user } = useAuthStore();
-    const { billingCycleUsage, isLoading: creditsLoading, customerPortalUrl, subscriptionPlan } = useCreditsStore();
+    const { billingCycleUsage, isLoading: creditsLoading, customerPortalUrl, subscriptionPlan, ledgers } = useCreditsStore();
     const [logs, setLogs] = useState<UsageLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -97,6 +97,36 @@ const UserUsageTab: React.FC = () => {
                     </a>
                 )}
             </div>
+
+            {ledgers && ledgers.length > 0 && (
+                <div className="usage-ledgers-section">
+                    <div className="usage-logs-header">
+                        <h2>Active Credit Quotas</h2>
+                        <span>Consuming in priority order (oldest parsing first)</span>
+                    </div>
+                    <div className="usage-ledgers-list">
+                        {ledgers.map((ledger, index) => (
+                            <div key={ledger.id} className="usage-ledger-card">
+                                <div className="usage-ledger-card__header">
+                                    <strong>Priority {index + 1}: {planLabel(ledger.plan_name as any)} Quota {ledger.subscription_id ? `(Sub #${ledger.subscription_id})` : ''}</strong>
+                                    <span className="usage-ledger-card__expires">
+                                        Expires: {new Date(ledger.expires_at).toLocaleDateString()}
+                                    </span>
+                                </div>
+                                <div className="usage-ledger-card__progress">
+                                    <div 
+                                        className="usage-ledger-card__progress-fill" 
+                                        style={{ width: `${(ledger.remaining_amount / ledger.initial_amount) * 100}%` }}
+                                    ></div>
+                                </div>
+                                <p className="usage-ledger-card__text">
+                                    {formatLC(ledger.remaining_amount)} / {formatLC(ledger.initial_amount)} {LC.unit} left
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="usage-logs-section">
                 <div className="usage-logs-header">

@@ -83,8 +83,22 @@ Deno.serve(async (req: Request) => {
                     );
                 }
 
+                // Fetch the active ledgers
+                const { data: ledgersData, error: ledgersError } = await supabaseAdmin
+                    .from('credit_ledgers')
+                    .select('id, initial_amount, remaining_amount, valid_from, expires_at, subscription_id, plan_name')
+                    .eq('user_id', user.id)
+                    .gt('remaining_amount', 0)
+                    .gt('expires_at', new Date().toISOString())
+                    .order('expires_at', { ascending: true });
+
+                const responseData = {
+                    ...data,
+                    ledgers: ledgersError ? [] : ledgersData,
+                };
+
                 return new Response(
-                    JSON.stringify(data),
+                    JSON.stringify(responseData),
                     { headers: { ...cors, 'Content-Type': 'application/json' } }
                 );
             }

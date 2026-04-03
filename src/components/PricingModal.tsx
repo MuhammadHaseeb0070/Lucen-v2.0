@@ -126,11 +126,11 @@ const PlanCard: React.FC<{
                         type="button"
                         className={`lc-plan__cta ${isFeatured ? 'lc-plan__cta--primary' : ''}`}
                         onClick={onCheckout}
-                        disabled={disabled || isCurrent}
+                        disabled={disabled}
                     >
                         <ExternalLink size={14} />
                         {isCurrent
-                            ? 'Your Current Plan'
+                            ? `Add Another ${plan.name} Package`
                             : isLoading
                               ? 'Opening Checkout…'
                               : `Upgrade to ${plan.name}`}
@@ -246,6 +246,16 @@ const PricingModal: React.FC = () => {
                         <div className="lc-explainer__text">
                             <strong>What is {LC.unit}?</strong>
                             <p>{LC.description}</p>
+                        </div>
+                    </div>
+
+                    <div className="lc-explainer lc-explainer--stacking">
+                        <div className="lc-explainer__icon">
+                            <Sparkles size={18} />
+                        </div>
+                        <div className="lc-explainer__text">
+                            <strong>Stackable Subscriptions</strong>
+                            <p>Purchasing an additional package will NOT replace your existing credits. Instead, they will <strong>stack</strong> as a new quota. We consume your oldest credits first so nothing goes to waste!</p>
                         </div>
                     </div>
 

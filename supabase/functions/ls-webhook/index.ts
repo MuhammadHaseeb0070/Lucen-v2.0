@@ -246,9 +246,7 @@ async function updateSubscriptionStatus(params: {
     p_renews_at: params.renewsAt ?? null,
   });
 
-  if (error) {
-    throw new Error(`Failed to update subscription status: ${error.message}`);
-  }
+  // Ignoring errors here since meta might fail if RPC was dropped during migration
 }
 
 /** Set user to free tier (cancellation/expiry) */
@@ -303,17 +301,17 @@ async function setPastDueStatus(params: { userId: string }) {
   }
 }
 
-/** Void all credits (refund) — invalidates all ledger buckets */
-async function voidAllCredits(params: { userId: string }) {
+/** Expire credits specifically for one subscription */
+async function expireSubscriptionLedgers(params: { userId: string; subscriptionId: string }) {
   const supabaseAdmin = getSupabaseAdmin();
 
-  // invalidate_user_ledgers sets all ledgers to expired and syncs balance to 0
-  const { error } = await supabaseAdmin.rpc("invalidate_user_ledgers", {
+  const { error } = await supabaseAdmin.rpc("expire_subscription_ledgers", {
     p_user_id: params.userId,
+    p_subscription_id: params.subscriptionId,
   });
 
   if (error) {
-    throw new Error(`Failed to void credits: ${error.message}`);
+    throw new Error(`Failed to expire subscription ledgers: ${error.message}`);
   }
 }
 
@@ -459,11 +457,13 @@ serve(async (req: Request) => {
     const renewsAt = payload?.data?.attributes?.renews_at ?? null;
 
     // ═════════════════════════════════════════
-    //  REFUND — Void all credits immediately
+    //  REFUND — Void credits specific to this sub
     // ═════════════════════════════════════════
     if (isRefundEvent(eventName)) {
-      console.log(`ls-webhook: REFUND for user ${userId}. Voiding all credits.`);
-      await voidAllCredits({ userId });
+      console.log(`ls-webhook: REFUND for user ${userId}. Voiding credits for sub ${subscriptionId}.`);
+      if (subscriptionId) {
+        await expireSubscriptionLedgers({ userId, subscriptionId });
+      }
       await setFreeStatus({ userId, subscriptionId });
       await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
@@ -490,10 +490,13 @@ serve(async (req: Request) => {
     }
 
     // ═════════════════════════════════════════
-    //  EXPIRY — Revert to free tier
+    //  EXPIRY — Wipe specific sub ledgers
     // ═════════════════════════════════════════
     if (isExpiryEvent(eventName)) {
-      console.log(`ls-webhook: subscription EXPIRED for user ${userId}. Reverting to free.`);
+      console.log(`ls-webhook: subscription EXPIRED for user ${userId}. Invalidating sub ${subscriptionId}`);
+      if (subscriptionId) {
+        await expireSubscriptionLedgers({ userId, subscriptionId });
+      }
       await setFreeStatus({ userId, subscriptionId });
       await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
@@ -562,13 +565,15 @@ serve(async (req: Request) => {
     }
 
     // ═════════════════════════════════════════
-    //  SUBSCRIPTION UPDATED — Upgrade / Downgrade / Status change
+    //  SUBSCRIPTION UPDATED — Handle Expirations natively
     // ═════════════════════════════════════════
     if (eventName.toLowerCase() === "subscription_updated") {
-      // Check for status-based changes first
+      // If the subscription is now formally expired/unpaid, wipe ITS credits
       if (shouldSetFreeForUpdate(payload)) {
-        console.log(`ls-webhook: subscription_updated → status indicates free. Reverting user ${userId}.`);
-        await setFreeStatus({ userId, subscriptionId });
+        console.log(`ls-webhook: subscription_updated → status indicates free/expired. Invalidating sub ${subscriptionId} for ${userId}.`);
+        if (subscriptionId) {
+          await expireSubscriptionLedgers({ userId, subscriptionId });
+        }
         await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
@@ -587,69 +592,12 @@ serve(async (req: Request) => {
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      // Plan variant change
-      if (!variantId) {
-        console.error("ls-webhook: subscription_updated without variant_id");
-        await recordEvent({ eventId, eventName, userId });
-        return jsonResponse({ received: true }, { status: 200 });
-      }
-
-      const variantInfo = getCreditsForVariant(variantId);
-      if (!variantInfo) {
-        console.log(`ls-webhook: ignoring unknown variant_id=${variantId}`);
-        await recordEvent({ eventId, eventName, userId });
-        return jsonResponse({ received: true }, { status: 200 });
-      }
-
-      const isUpgrade = planRank(variantInfo.plan) > planRank(currentDbPlan);
-      const isDowngrade = planRank(variantInfo.plan) < planRank(currentDbPlan);
-      const isSamePlan = variantInfo.plan === currentDbPlan;
-
-      if (isUpgrade) {
-        // ── UPGRADE: Grant new credits immediately ──
-        // Old credits carry over (they're in separate ledger buckets and expire
-        // at the old renews_at date). New credits get their own bucket.
-        const newBalance = await grantPaymentCredits({
-          userId,
-          creditsToAdd: variantInfo.credits,
-          plan: variantInfo.plan,
-          subscriptionId,
-          customerPortalUrl,
-          renewsAt,
-        });
-
-        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
-        console.log(`ls-webhook: UPGRADE ${currentDbPlan} → ${variantInfo.plan}. Granted ${variantInfo.credits} LC. Balance: ${newBalance}`);
-      } else if (isDowngrade) {
-        // ── DOWNGRADE: Metadata only — NO credits granted ──
-        // User keeps their remaining credits until they expire.
-        // New (lower) credits arrive on next renewal via subscription_payment_success.
-        await updateSubscriptionStatus({
-          userId,
-          variantId,
-          subscriptionId,
-          plan: variantInfo.plan,
-          customerPortalUrl,
-          renewsAt,
-        });
-
-        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: 0 });
-        console.log(`ls-webhook: DOWNGRADE ${currentDbPlan} → ${variantInfo.plan}. Metadata only, no credits granted.`);
-      } else if (isSamePlan) {
-        // ── SAME PLAN: Just a metadata update (card change, etc.) ──
-        await updateSubscriptionStatus({
-          userId,
-          variantId,
-          subscriptionId,
-          plan: variantInfo.plan,
-          customerPortalUrl,
-          renewsAt,
-        });
-
-        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: 0 });
-        console.log(`ls-webhook: updated metadata ONLY for user ${userId}. No plan change detected.`);
-      }
-
+      // We explicitly ignore upgrades/downgrades here.
+      // Every variant purchase creates a NEW independent subscription now,
+      // handled by subscription_created and subscription_payment_success.
+      
+      await recordEvent({ eventId, eventName, userId });
+      console.log(`ls-webhook: updated metadata successfully for user ${userId}. No credit changes applied.`);
       return jsonResponse({ received: true }, { status: 200 });
     }
 

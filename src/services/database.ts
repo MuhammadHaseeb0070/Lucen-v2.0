@@ -196,6 +196,16 @@ export async function deleteMessagePair(
 //  CREDITS
 // ═══════════════════════════════════════════
 
+export interface ActiveLedger {
+    id: string;
+    subscription_id: string | null;
+    plan_name: string;
+    initial_amount: number;
+    remaining_amount: number;
+    valid_from: string;
+    expires_at: string;
+}
+
 /** Fetch credit balance and subscription fields from server */
 export async function fetchCredits(): Promise<{
     remaining: number;
@@ -205,6 +215,7 @@ export async function fetchCredits(): Promise<{
     subscriptionPlan: 'free' | 'regular' | 'pro';
     customerPortalUrl: string | null;
     renewsAt: string | null;
+    ledgers: ActiveLedger[];
 } | null> {
     if (!hasActiveSessionSync() || !supabase) return null;
     if (!(await ensureFreshSession())) return null;
@@ -231,6 +242,7 @@ export async function fetchCredits(): Promise<{
         subscriptionPlan,
         customerPortalUrl: (data as { lemon_squeezy_customer_portal_url?: string }).lemon_squeezy_customer_portal_url || null,
         renewsAt: (data as { subscription_renews_at?: string }).subscription_renews_at || null,
+        ledgers: (data as any).ledgers || [],
     };
 }
 
