@@ -1765,25 +1765,32 @@ h4 {
 .selection-menu--vertical .selection-action-btn {
     width: 100%;
     justify-content: space-between;
-    padding: 8px 12px;
+    padding: 8px 14px;
     border-radius: var(--r-sm);
 }
 
 .selection-action-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 12px;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 14px;
     background: transparent;
     border: none;
     border-radius: var(--r-sm);
     color: var(--text-secondary);
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     font-weight: 550;
     cursor: pointer;
     font-family: var(--font);
     white-space: nowrap;
     transition: all var(--dur-fast) var(--ease);
+}
+
+.selection-action-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .selection-action-btn:hover {
@@ -1796,10 +1803,26 @@ h4 {
     background: var(--success-soft) !important;
 }
 
-.mobile-action-dest-icon {
-    margin-left: auto;
+.selection-action-indicator {
+    display: flex;
+    align-items: center;
     opacity: 0.5;
     color: var(--accent);
+    transition: opacity var(--dur-fast);
+}
+
+.selection-action-btn:hover .selection-action-indicator {
+    opacity: 1;
+}
+
+.msg-action-btn--active {
+    color: var(--accent) !important;
+    background: var(--bg-accent-soft) !important;
+    opacity: 1 !important;
+}
+
+.msg-action-btn--active:hover {
+    background: var(--bg-accent-hover) !important;
 }
 
 .selection-menu-hint {

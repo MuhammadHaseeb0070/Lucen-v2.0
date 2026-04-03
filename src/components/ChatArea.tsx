@@ -6,6 +6,7 @@ import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useCreditsStore } from '../store/creditsStore';
+import { useSideChatStore } from '../store/sideChatStore';
 import Logo from './Logo';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
@@ -13,7 +14,8 @@ import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
 import { highlightText } from '../lib/searchHighlight';
-import type { FileAttachment } from '../types';
+import type { FileAttachment, Message } from '../types';
+import { useUIStore } from '../store/uiStore';
 
 const ChatArea: React.FC = () => {
     const {
@@ -30,6 +32,14 @@ const ChatArea: React.FC = () => {
     } = useChatStore();
 
     const { hasEnoughCredits } = useCreditsStore();
+    const { 
+        injectedContext, 
+        toggleInjectedMessage, 
+        removeInjectedMessage
+    } = useSideChatStore();
+
+    const { setSideChatOpen } = useUIStore();
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
@@ -323,7 +333,26 @@ const ChatArea: React.FC = () => {
     const handleDelete = (msgId: string) => {
         if (!activeConversationId) return;
         setHighlightedPairId(null);
+        
+        // Find the partner message so we can remove both from side chat context
+        const conv = useChatStore.getState().conversations.find(c => c.id === activeConversationId);
+        const idx = conv?.messages.findIndex(m => m.id === msgId);
+        if (conv && idx !== undefined && idx !== -1) {
+            removeInjectedMessage(msgId);
+            const partnerMsg = conv.messages[idx + 1] || conv.messages[idx - 1];
+            if (partnerMsg) removeInjectedMessage(partnerMsg.id);
+        }
+
         deleteMessagePair(activeConversationId, msgId);
+    };
+
+    const handleToggleLink = (message: Message) => {
+        const wasExisting = injectedContext.some(m => m.id === message.id);
+        toggleInjectedMessage(message);
+        // If we just added it, ensure side chat is open to see the context indicator
+        if (!wasExisting) {
+            setSideChatOpen(true);
+        }
     };
 
     const handleRetry = (assistantMsgId: string) => {
@@ -458,6 +487,8 @@ const ChatArea: React.FC = () => {
                             <MessageBubble
                                 message={msg}
                                 onDelete={handleDelete}
+                                onToggleLink={handleToggleLink}
+                                isLinked={injectedContext.some(m => m.id === msg.id)}
                                 showDelete
                                 onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
                                 actionsOnly
@@ -475,6 +506,8 @@ const ChatArea: React.FC = () => {
                                         message={nextMsg}
                                         onRetry={handleRetry}
                                         onContinue={handleContinue}
+                                        onToggleLink={handleToggleLink}
+                                        isLinked={injectedContext.some(m => m.id === nextMsg.id)}
                                         showRetry={nextMsg.id === lastAssistantMsgId}
                                         searchQuery={searchQuery.trim() || undefined}
                                         showDelete
@@ -502,6 +535,8 @@ const ChatArea: React.FC = () => {
                                     message={msg}
                                     onRetry={handleRetry}
                                     onContinue={handleContinue}
+                                    onToggleLink={handleToggleLink}
+                                    isLinked={injectedContext.some(m => m.id === msg.id)}
                                     showRetry={msg.id === lastAssistantMsgId}
                                     searchQuery={searchQuery.trim() || undefined}
                                     showDelete={false}

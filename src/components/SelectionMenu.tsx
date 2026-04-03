@@ -221,7 +221,7 @@ const SelectionMenu: React.FC<SelectionMenuProps> = ({ containerRef, onPrefill, 
                             onClick={(e) => handleAction(action, e)}
                             title={action.isCopy ? 'Copy to clipboard' : hintText}
                         >
-                            <div className="flex items-center gap-2">
+                            <div className="selection-action-main">
                                 {action.isCopy && copied ? null : <action.icon size={14} />}
                                 <span>{action.isCopy && copied ? 'Copied!' : action.label}</span>
                             </div>

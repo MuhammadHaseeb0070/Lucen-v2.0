@@ -15,6 +15,8 @@ interface SideChatStore {
     injectMainChatContext: (messages: Message[]) => void;
     clearContext: () => void;
     toggleContextEnabled: () => void;
+    toggleInjectedMessage: (message: Message) => void;
+    removeInjectedMessage: (msgId: string) => void;
     getApiMessages: () => { role: string; content: string }[];
     getContextBlock: () => string;
     setPendingMessage: (msg: string) => void;
@@ -55,6 +57,28 @@ export const useSideChatStore = create<SideChatStore>()(
 
             toggleContextEnabled: () => {
                 set((state) => ({ isContextEnabled: !state.isContextEnabled }));
+            },
+
+            toggleInjectedMessage: (message) => {
+                set((state) => {
+                    const exists = state.injectedContext.some((m) => m.id === message.id);
+                    const nextContext = exists
+                        ? state.injectedContext.filter((m) => m.id !== message.id)
+                        : [...state.injectedContext, message];
+                    
+                    return {
+                        injectedContext: nextContext,
+                        // Auto-enable context if we just added something, 
+                        // but don't auto-disable if we removed one (user might want it enabled for others)
+                        isContextEnabled: !exists ? true : state.isContextEnabled
+                    };
+                });
+            },
+
+            removeInjectedMessage: (msgId) => {
+                set((state) => ({
+                    injectedContext: state.injectedContext.filter((m) => m.id !== msgId)
+                }));
             },
 
             getApiMessages: () => {

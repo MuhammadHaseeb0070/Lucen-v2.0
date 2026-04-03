@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import { parseArtifacts } from '../lib/artifactParser';
@@ -11,9 +11,11 @@ interface MessageBubbleProps {
     onDelete?: (msgId: string) => void;
     onRetry?: (msgId: string) => void;
     onContinue?: (msgId: string) => void;
+    onToggleLink?: (message: Message) => void;
     onDeleteHover?: (hovering: boolean) => void;
     showDelete?: boolean;
     showRetry?: boolean;
+    isLinked?: boolean;
     actionsOnly?: boolean;
     searchQuery?: string;
     disableReasoning?: boolean;
@@ -25,9 +27,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     onDelete,
     onRetry,
     onContinue,
+    onToggleLink,
     onDeleteHover,
     showDelete = false,
     showRetry = false,
+    isLinked = false,
     actionsOnly = false,
     searchQuery,
     disableReasoning = false,
@@ -138,6 +142,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 <button className="msg-action-btn" onClick={handleCopy} title="Copy">
                     {copied ? <Check size={13} /> : <Copy size={13} />}
                 </button>
+                {onToggleLink && (
+                    <button 
+                        className={`msg-action-btn ${isLinked ? 'msg-action-btn--active' : ''}`} 
+                        onClick={() => onToggleLink(message)}
+                        title={isLinked ? "Remove from Side Chat context" : "Add to Side Chat context"}
+                    >
+                        <Link2 size={13} />
+                    </button>
+                )}
                 {showDelete && onDelete && (
                     <button
                         className="msg-action-btn msg-action-danger"
@@ -203,6 +216,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     <button className="msg-action-btn" onClick={handleCopy} title="Copy response">
                         {copied ? <Check size={13} /> : <Copy size={13} />}
                     </button>
+                    {onToggleLink && (
+                        <button 
+                            className={`msg-action-btn ${isLinked ? 'msg-action-btn--active' : ''}`} 
+                            onClick={() => onToggleLink(message)}
+                            title={isLinked ? "Remove from Side Chat context" : "Add to Side Chat context"}
+                        >
+                            <Link2 size={13} />
+                        </button>
+                    )}
                     {showRetry && onRetry && (
                         <button className="msg-action-btn" onClick={() => onRetry(message.id)} title="Regenerate response">
                             <RotateCcw size={13} />
