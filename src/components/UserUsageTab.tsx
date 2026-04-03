@@ -4,7 +4,6 @@ import { useAuthStore } from '../store/authStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { planLabel, LC, formatLC } from '../config/subscriptionConfig';
 import { Database } from 'lucide-react';
-import { getPaymentProvider } from '../services/checkout';
 import './UserUsageTab.css';
 
 interface UsageLog {
@@ -89,21 +88,14 @@ const UserUsageTab: React.FC = () => {
                     </div>
                 </div>
 
-                {(customerPortalUrl && getPaymentProvider() === 'lemonsqueezy') ? (
+                {customerPortalUrl && subscriptionPlan !== 'free' && (
                     <a href={customerPortalUrl} target="_blank" rel="noopener noreferrer" className="usage-portal-link">
                         <div className="usage-portal-link__icon">
                             <Database size={16} />
                         </div>
                         <span>View Billing History & Invoices →</span>
                     </a>
-                ) : (getPaymentProvider() === 'gumroad' && subscriptionPlan !== 'free') ? (
-                    <a href="https://app.gumroad.com/library" target="_blank" rel="noopener noreferrer" className="usage-portal-link">
-                        <div className="usage-portal-link__icon">
-                            <Database size={16} />
-                        </div>
-                        <span>View Gumroad Purchases →</span>
-                    </a>
-                ) : null}
+                )}
             </div>
 
             <div className="usage-logs-section">

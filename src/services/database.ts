@@ -229,7 +229,7 @@ export async function fetchCredits(): Promise<{
         billingCycleUsage: data.billing_cycle_usage ?? 0,
         subscriptionStatus: String((data as { subscription_status?: string }).subscription_status || 'free'),
         subscriptionPlan,
-        customerPortalUrl: (data as { payment_customer_portal_url?: string; lemon_squeezy_customer_portal_url?: string }).payment_customer_portal_url || (data as { lemon_squeezy_customer_portal_url?: string }).lemon_squeezy_customer_portal_url || null,
+        customerPortalUrl: (data as { lemon_squeezy_customer_portal_url?: string }).lemon_squeezy_customer_portal_url || null,
         renewsAt: (data as { subscription_renews_at?: string }).subscription_renews_at || null,
     };
 }

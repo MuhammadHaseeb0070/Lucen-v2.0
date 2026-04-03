@@ -61,7 +61,7 @@ Deno.serve(async (req: Request) => {
             case 'get-balance': {
                 const { data, error } = await supabaseAdmin
                     .from('user_credits')
-                    .select('remaining_credits, total_used, billing_cycle_usage, subscription_status, subscription_plan, lemon_squeezy_subscription_id, lemon_squeezy_customer_portal_url, payment_subscription_id, payment_customer_portal_url, subscription_renews_at')
+                    .select('remaining_credits, total_used, billing_cycle_usage, subscription_status, subscription_plan, lemon_squeezy_subscription_id, lemon_squeezy_customer_portal_url, subscription_renews_at')
                     .eq('user_id', user.id)
                     .single();
 

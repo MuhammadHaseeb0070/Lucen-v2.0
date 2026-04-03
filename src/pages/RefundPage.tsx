@@ -46,7 +46,7 @@ const RefundPage: React.FC = () => {
                         </p>
                         <ul style={{ marginLeft: '1.5rem', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                             <li>The email address associated with your Lucen account</li>
-                            <li>The receipt or order number provided by Gumroad (our payment processor)</li>
+                            <li>The receipt or order number provided by Lemon Squeezy (our payment processor)</li>
                             <li>A brief explanation of why you are requesting a refund</li>
                         </ul>
                     </section>

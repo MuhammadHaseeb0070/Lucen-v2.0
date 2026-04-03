@@ -6,12 +6,11 @@ import {
 import Logo from './Logo';
 import {
     PLAN_LIST, planLabel, formatLC, LC, SUBSCRIPTION_FAQ,
-    CREDIT_COSTS, type PlanDefinition,
+    CREDIT_COSTS, PAYMENT_PROVIDER_NAME, type PlanDefinition,
 } from '../config/subscriptionConfig';
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
-import { startCheckout, getPaymentProvider } from '../services/checkout';
-import { paymentProviderName } from '../config/subscriptionConfig';
+import { startCheckout } from '../services/checkout';
 
 // ─── FAQ Accordion Item ───
 const FaqItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
@@ -176,7 +175,7 @@ const PricingModal: React.FC = () => {
 
     const statusLine = useMemo(() => {
         if (subscriptionStatus === 'past_due') {
-            return `Your payment needs attention. Please update your billing info in ${paymentProviderName()}.`;
+            return `Your payment needs attention. Please update your billing info in ${PAYMENT_PROVIDER_NAME}.`;
         }
         if (subscriptionStatus === 'active') {
             const renewText = renewsAt ? ` Renews on ${new Date(renewsAt).toLocaleDateString()}.` : '';
@@ -190,32 +189,16 @@ const PricingModal: React.FC = () => {
     const onCheckout = async (tier: 'regular' | 'pro') => {
         setError(null);
         const plan = PLAN_LIST.find((p) => p.id === tier);
-        const provider = getPaymentProvider();
 
-        // Validate that the required env var is set for the active provider
-        if (provider === 'gumroad') {
-            if (!plan?.gumroadProductUrl) {
-                setError('Missing environment variable: VITE_GUMROAD_PRODUCT_URL');
-                return;
-            }
-        } else {
-            if (!plan?.variantId) {
-                setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
-                return;
-            }
+        if (!plan?.variantId) {
+            setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
+            return;
         }
 
         setLoadingTier(tier);
         try {
             const redirectUrl = `${window.location.origin}/chat?subscription_updated=1`;
-            await startCheckout(
-                {
-                    variantId: plan?.variantId,
-                    gumroadProductUrl: plan?.gumroadProductUrl,
-                    gumroadTierName: plan?.gumroadTierName,
-                },
-                redirectUrl,
-            );
+            await startCheckout(plan.variantId, redirectUrl);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Checkout failed');
             setLoadingTier(null);
@@ -278,7 +261,7 @@ const PricingModal: React.FC = () => {
                                 )}
                             </div>
                             
-                            {(customerPortalUrl && getPaymentProvider() === 'lemonsqueezy') ? (
+                            {customerPortalUrl && subscriptionPlan !== 'free' && (
                                 <a
                                     href={customerPortalUrl}
                                     target="_blank"
@@ -287,17 +270,7 @@ const PricingModal: React.FC = () => {
                                 >
                                     Manage Subscription <ExternalLink size={14} />
                                 </a>
-                            ) : (getPaymentProvider() === 'gumroad' && subscriptionPlan !== 'free') ? (
-                                <a
-                                    href="https://app.gumroad.com/library"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="lc-manage-link"
-                                    title="Go to your Gumroad Library to manage billing or cancel"
-                                >
-                                    Manage on Gumroad <ExternalLink size={14} />
-                                </a>
-                            ) : null}
+                            )}
                         </div>
                         <CreditBar
                             current={creditsLoading ? 0 : remainingCredits}
@@ -376,7 +349,7 @@ const PricingModal: React.FC = () => {
 
                     {/* ── Footer Note ── */}
                     <p className="lc-modal__footer-note">
-                        All payments are processed securely by {paymentProviderName()}. You can manage your
+                        All payments are processed securely by {PAYMENT_PROVIDER_NAME}. You can manage your
                         billing, update payment methods, or cancel anytime.
                     </p>
                 </div>

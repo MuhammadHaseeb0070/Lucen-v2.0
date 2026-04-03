@@ -14,10 +14,8 @@ SET session_replication_role = 'replica';
 -- 2. Truncate (empty) all application data tables
 TRUNCATE TABLE public.usage_logs CASCADE;
 TRUNCATE TABLE public.webhook_events CASCADE;
+TRUNCATE TABLE public.credit_ledgers CASCADE;
 TRUNCATE TABLE public.user_credits CASCADE;
-
--- If we create the new credit_ledgers table (from our new plan), wipe it too:
--- TRUNCATE TABLE public.credit_ledgers CASCADE;
 
 -- 3. Wipe all Authentication Users
 -- This forces you to sign up again like a brand new user.
