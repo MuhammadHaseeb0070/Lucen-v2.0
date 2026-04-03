@@ -67,6 +67,12 @@ function timingSafeEqualHex(aHex: string, bHex: string): boolean {
   return out === 0;
 }
 
+/** Mask a string for safe logging (e.g. "sk-abc...xyz") */
+function maskSecret(s: string): string {
+  if (!s || s.length < 8) return "***";
+  return `${s.slice(0, 4)}...${s.slice(-4)}`;
+}
+
 async function hmacSha256Hex(secret: string, rawBody: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -392,7 +398,11 @@ serve(async (req: Request) => {
   try {
     const computed = await hmacSha256Hex(secret, rawBody);
     if (!timingSafeEqualHex(computed, signature)) {
-      console.error("ls-webhook: HMAC signature mismatch — potential tampering");
+      console.error(`ls-webhook: HMAC signature mismatch.
+        Secret (masked): ${maskSecret(secret)}
+        Received: ${signature}
+        Computed: ${computed}
+        Payload head: ${rawBody.slice(0, 100)}...`);
       return jsonResponse({ error: "Invalid signature" }, { status: 401 });
     }
   } catch (err) {
@@ -638,8 +648,43 @@ serve(async (req: Request) => {
       return jsonResponse({ received: true }, { status: 200 });
     }
 
+    // ═════════════════════════════════════════
+    //  EXPIRATION / DELETION — Instant removal
+    // ═════════════════════════════════════════
+    if (isExpiryEvent(eventName)) {
+       console.log(`ls-webhook: explicit ${eventName} event for ${userId}. Invalidating sub ${subscriptionId}.`);
+       if (subscriptionId) {
+         await expireSubscriptionLedgers({ userId, subscriptionId });
+       }
+       await recordEvent({ eventId, eventName, userId });
+       return jsonResponse({ received: true }, { status: 200 });
+    }
+
+    if (isCancellationEvent(eventName)) {
+      console.log(`ls-webhook: explicit cancellation for user ${userId}. Status set to cancelled.`);
+      await setCancelledStatus({ userId });
+      await recordEvent({ eventId, eventName, userId });
+      return jsonResponse({ received: true }, { status: 200 });
+    }
+
+    if (isPaymentFailedEvent(eventName)) {
+      console.log(`ls-webhook: payment failure for user ${userId}. Marking past_due.`);
+      await setPastDueStatus({ userId });
+      await recordEvent({ eventId, eventName, userId });
+      return jsonResponse({ received: true }, { status: 200 });
+    }
+
+    if (isRefundEvent(eventName)) {
+      console.log(`ls-webhook: refund event ${eventName} for user ${userId}. Targetting sub ${subscriptionId}.`);
+      if (subscriptionId) {
+        await expireSubscriptionLedgers({ userId, subscriptionId });
+      }
+      await recordEvent({ eventId, eventName, userId });
+      return jsonResponse({ received: true }, { status: 200 });
+    }
+
     // ── Unhandled event types (acknowledge to prevent retries) ──
-    console.log(`ls-webhook: unhandled event ${eventName}`);
+    console.log(`ls-webhook: unhandled or standard-ignore event ${eventName}`);
     await recordEvent({ eventId, eventName, userId });
     return jsonResponse({ received: true }, { status: 200 });
   } catch (err) {
