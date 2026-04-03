@@ -69,61 +69,105 @@ const UserUsageTab: React.FC = () => {
 
     const toNumber = (value: number | null | undefined): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 
+    // Calculate combined totals from all active ledgers
+    const totalRemaining = (ledgers || []).reduce((sum, l) => sum + toNumber(l.remaining_amount), 0);
+    const totalInitial = (ledgers || []).reduce((sum, l) => sum + toNumber(l.initial_amount), 0);
+    const overallProgress = totalInitial > 0 ? (totalRemaining / totalInitial) * 100 : 0;
+
     return (
         <div className="settings-tab-body usage-tab">
             <p className="settings-desc usage-tab__desc">
-                You are on the <strong>{planLabel(subscriptionPlan)}</strong> plan. Track your {LC.unit} usage and the last 10 requests below.
+                You are on the <strong>{planLabel(subscriptionPlan)}</strong> plan. Track your {LC.unit} usage and active quotas below.
             </p>
 
             <div className="usage-summary-grid">
-                <div className="usage-credit-card">
+                <div className="usage-credit-card usage-credit-card--total">
                     <div className="usage-credit-card__icon">
-                        <Database size={20} />
+                        <Database size={22} />
                     </div>
                     <div className="usage-credit-card__content">
-                        <span className="usage-credit-card__label">Current Cycle Usage</span>
-                        <p className="usage-credit-card__value">
-                            {creditsLoading ? '...' : `${formatLC(billingCycleUsage)} ${LC.unit}`}
-                        </p>
+                        <span className="usage-credit-card__label">Total Combined Balance</span>
+                        <div className="usage-credit-card__balance-wrap">
+                            <p className="usage-credit-card__value">
+                                {creditsLoading ? '...' : `${formatLC(totalRemaining)} / ${formatLC(totalInitial)} ${LC.unit}`}
+                            </p>
+                            <div className="usage-overall-progress">
+                                <div 
+                                    className="usage-overall-progress-fill" 
+                                    style={{ width: `${overallProgress}%` }}
+                                ></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {customerPortalUrl && subscriptionPlan !== 'free' && (
-                    <a href={customerPortalUrl} target="_blank" rel="noopener noreferrer" className="usage-portal-link">
-                        <div className="usage-portal-link__icon">
+                <div className="usage-secondary-grid">
+                    <div className="usage-credit-card usage-credit-card--mini">
+                        <div className="usage-credit-card__icon">
                             <Database size={16} />
                         </div>
-                        <span>View Billing History & Invoices →</span>
-                    </a>
-                )}
+                        <div className="usage-credit-card__content">
+                            <span className="usage-credit-card__label">Cycle Usage</span>
+                            <p className="usage-credit-card__value">
+                                {creditsLoading ? '...' : `${formatLC(billingCycleUsage)} ${LC.unit}`}
+                            </p>
+                        </div>
+                    </div>
+
+                    {customerPortalUrl && subscriptionPlan !== 'free' && (
+                        <a href={customerPortalUrl} target="_blank" rel="noopener noreferrer" className="usage-portal-link">
+                            <span>Manage Subscriptions →</span>
+                        </a>
+                    )}
+                </div>
             </div>
 
             {ledgers && ledgers.length > 0 && (
                 <div className="usage-ledgers-section">
-                    <div className="usage-logs-header">
+                    <div className="usage-section-header">
                         <h2>Active Credit Quotas</h2>
-                        <span>Consuming in priority order (oldest parsing first)</span>
+                        <p>Credits are consumed from the oldest quota first (FIFO) to ensure no tokens are wasted.</p>
                     </div>
                     <div className="usage-ledgers-list">
-                        {ledgers.map((ledger, index) => (
-                            <div key={ledger.id} className="usage-ledger-card">
-                                <div className="usage-ledger-card__header">
-                                    <strong>Priority {index + 1}: {planLabel(ledger.plan_name as any)} Quota {ledger.subscription_id ? `(Sub #${ledger.subscription_id})` : ''}</strong>
-                                    <span className="usage-ledger-card__expires">
-                                        Expires: {new Date(ledger.expires_at).toLocaleDateString()}
-                                    </span>
+                        {ledgers.map((ledger, index) => {
+                            const isCurrent = index === 0;
+                            const progress = (ledger.remaining_amount / ledger.initial_amount) * 100;
+                            
+                            return (
+                                <div key={ledger.id} className={`usage-ledger-card ${isCurrent ? 'usage-ledger-card--active' : ''}`}>
+                                    <div className="usage-ledger-card__main">
+                                        <div className="usage-ledger-card__info">
+                                            <div className="usage-ledger-card__title">
+                                                <span className={`usage-priority-badge ${isCurrent ? 'usage-priority-badge--active' : ''}`}>
+                                                    {isCurrent ? 'Currently Using' : `Priority #${index + 1}`}
+                                                </span>
+                                                <strong>{planLabel(ledger.plan_name as any)} Package</strong>
+                                            </div>
+                                            <p className="usage-ledger-card__subtext">
+                                                {ledger.subscription_id ? `Subscription ID: ${ledger.subscription_id}` : 'Bonus Package'}
+                                            </p>
+                                        </div>
+                                        <div className="usage-ledger-card__stats">
+                                            <span className="usage-ledger-card__amount">
+                                                {formatLC(ledger.remaining_amount)} / {formatLC(ledger.initial_amount)} {LC.unit}
+                                            </span>
+                                            <span className="usage-ledger-card__expiry">
+                                                Ends {new Date(ledger.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="usage-ledger-card__progress-wrap">
+                                        <div className="usage-ledger-card__progress-bar">
+                                            <div 
+                                                className="usage-ledger-card__progress-fill" 
+                                                style={{ width: `${progress}%` }}
+                                            ></div>
+                                        </div>
+                                        <span className="usage-ledger-card__percentage">{Math.round(progress)}%</span>
+                                    </div>
                                 </div>
-                                <div className="usage-ledger-card__progress">
-                                    <div 
-                                        className="usage-ledger-card__progress-fill" 
-                                        style={{ width: `${(ledger.remaining_amount / ledger.initial_amount) * 100}%` }}
-                                    ></div>
-                                </div>
-                                <p className="usage-ledger-card__text">
-                                    {formatLC(ledger.remaining_amount)} / {formatLC(ledger.initial_amount)} {LC.unit} left
-                                </p>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -131,7 +175,7 @@ const UserUsageTab: React.FC = () => {
             <div className="usage-logs-section">
                 <div className="usage-logs-header">
                     <h2>Last 10 Requests</h2>
-                    <span>Tokens + {LC.unit} breakdown (Text / Image / Web)</span>
+                    <span>Usage breakdown (Text / Image / Web)</span>
                 </div>
 
                 {isLoading ? (
@@ -139,7 +183,7 @@ const UserUsageTab: React.FC = () => {
                 ) : error ? (
                     <div className="usage-logs-state usage-logs-state--error">Error: {error}</div>
                 ) : logs.length === 0 ? (
-                    <div className="usage-logs-state">No requests found yet. Start chatting to generate usage logs.</div>
+                    <div className="usage-logs-state">No requests found. Start chatting to see your usage.</div>
                 ) : (
                     <div className="usage-table-wrap">
                         <table className="usage-table">

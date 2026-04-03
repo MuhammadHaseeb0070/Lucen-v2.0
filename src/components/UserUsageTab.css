@@ -1,221 +1,309 @@
-.usage-tab {
-    padding: 0 16px 16px;
-}
-
-.usage-tab__desc {
-    margin-bottom: 14px;
-}
-
 .usage-credit-card {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px;
+    gap: 16px;
+    padding: 20px;
     border: 1px solid var(--divider);
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--bg-surface);
-    margin-bottom: 18px;
+    transition: all 0.2s ease;
+}
+
+.usage-credit-card--total {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(16, 185, 129, 0.05) 100%);
+}
+
+.usage-credit-card--mini {
+    padding: 14px;
 }
 
 .usage-credit-card__icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #10b981;
-    background: rgba(16, 185, 129, 0.14);
+    background: rgba(16, 185, 129, 0.1);
     flex-shrink: 0;
 }
 
+.usage-credit-card--mini .usage-credit-card__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-tertiary);
+}
+
 .usage-credit-card__content {
+    flex: 1;
     min-width: 0;
 }
 
 .usage-credit-card__label {
     display: block;
-    font-size: 12px;
-    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.8px;
+    margin-bottom: 4px;
 }
 
 .usage-credit-card__value {
-    margin: 4px 0 0;
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--accent);
+    margin: 0;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.2;
 }
 
+.usage-credit-card--total .usage-credit-card__value {
+    color: #10b981;
+}
+
+.usage-credit-card--mini .usage-credit-card__value {
+    font-size: 18px;
+}
+
+.usage-credit-card__balance-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.usage-overall-progress {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    max-width: 300px;
+}
+
+.usage-overall-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+    border-radius: 4px;
+}
+
+/* Secondary Grid & Portal Link */
+.usage-secondary-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.usage-portal-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--divider);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.usage-portal-link:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    border-color: var(--text-tertiary);
+}
+
+/* Ledgers Section */
+.usage-ledgers-section {
+    margin-bottom: 32px;
+}
+
+.usage-section-header {
+    margin-bottom: 16px;
+}
+
+.usage-section-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 4px 0;
+}
+
+.usage-section-header p {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    margin: 0;
+}
+
+.usage-ledgers-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.usage-ledger-card {
+    padding: 20px;
+    border: 1px solid var(--divider);
+    border-radius: 16px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.usage-ledger-card--active {
+    border-color: #10b981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.05);
+    background: linear-gradient(to bottom right, var(--bg-surface), rgba(16, 185, 129, 0.02));
+}
+
+.usage-ledger-card__main {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.usage-ledger-card__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.usage-ledger-card__title strong {
+    font-size: 16px;
+    color: var(--text-primary);
+    text-transform: capitalize;
+}
+
+.usage-priority-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-tertiary);
+}
+
+.usage-priority-badge--active {
+    background: #10b981;
+    color: white;
+    animation: badge-pulse 2s infinite ease-in-out;
+}
+
+@keyframes badge-pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.8; }
+    100% { opacity: 1; }
+}
+
+.usage-ledger-card__subtext {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.usage-ledger-card__stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+}
+
+.usage-ledger-card__amount {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.usage-ledger-card__expiry {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+}
+
+.usage-ledger-card__progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.usage-ledger-card__progress-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.usage-ledger-card__progress-fill {
+    height: 100%;
+    background: var(--text-secondary);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.usage-ledger-card--active .usage-ledger-card__progress-fill {
+    background: #10b981;
+}
+
+.usage-ledger-card__percentage {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 32px;
+    text-align: right;
+}
+
+/* Logs Section */
 .usage-logs-section {
     border: 1px solid var(--divider);
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--bg-surface);
     overflow: hidden;
 }
 
 .usage-logs-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--divider);
+    background: rgba(255, 255, 255, 0.02);
 }
 
-.usage-logs-header h2 {
-    margin: 0;
-    font-size: 16px;
+/* Responsive Grid */
+.usage-summary-grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 16px;
+    margin: 24px 0 32px 0;
 }
 
-.usage-logs-header span {
-    font-size: 12px;
-    color: var(--text-tertiary);
-}
-
-.usage-logs-state {
-    padding: 20px 14px;
-    color: var(--text-secondary);
-}
-
-.usage-logs-state--error {
-    color: var(--danger);
-}
-
-.usage-table-wrap {
-    width: 100%;
-    overflow-x: auto;
-}
-
-.usage-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 980px;
-}
-
-.usage-table th,
-.usage-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--divider);
-    text-align: left;
-    font-size: 13px;
-    white-space: nowrap;
-}
-
-.usage-table th {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-tertiary);
-}
-
-.usage-table tr:last-child td {
-    border-bottom: none;
-}
-
-.usage-table__id {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    color: var(--accent);
-}
-
-.usage-table__credits {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-}
-
-.usage-table__credits--total {
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.usage-table__model {
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.usage-table__reasoning {
-    color: var(--accent);
-    font-weight: 600;
-}
-
-@media (max-width: 768px) {
-    .usage-tab {
-        padding: 0 10px 12px;
+@media (max-width: 900px) {
+    .usage-summary-grid {
+        grid-template-columns: 1fr;
     }
-
-    .usage-credit-card {
-        padding: 12px;
-    }
-
-    .usage-credit-card__value {
-        font-size: 19px;
-    }
-
-    .usage-logs-header {
+    
+    .usage-ledger-card__main {
         flex-direction: column;
+        gap: 12px;
+    }
+    
+    .usage-ledger-card__stats {
         align-items: flex-start;
+        text-align: left;
     }
 }
 
-.usage-summary-grid { display: grid; gap: 16px; grid-template-columns: 1fr; margin-bottom: 24px; } @media (min-width: 640px) { .usage-summary-grid { grid-template-columns: 1fr 1fr; } }
-.usage-portal-link { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 24px; border-radius: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text-secondary); text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: all 0.2s ease; cursor: pointer; } .usage-portal-link:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.15); color: var(--text-primary); } .usage-portal-link__icon { color: var(--accent-blue, #3b82f6); display: flex; }
-
-.usage-ledgers-section {
-    border: 1px solid var(--divider);
-    border-radius: 12px;
-    background: var(--bg-surface);
-    overflow: hidden;
-    margin-bottom: 24px;
-}
-
-.usage-ledgers-list {
-    display: flex;
-    flex-direction: column;
-}
-
-.usage-ledger-card {
-    padding: 16px;
-    border-bottom: 1px solid var(--divider);
-}
-
-.usage-ledger-card:last-child {
-    border-bottom: none;
-}
-
-.usage-ledger-card__header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    font-size: 14px;
-}
-
-.usage-ledger-card__header strong {
-    color: var(--text-primary);
-}
-
-.usage-ledger-card__expires {
-    color: var(--text-tertiary);
-    font-size: 12px;
-}
-
-.usage-ledger-card__progress {
-    height: 6px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 8px;
-}
-
-.usage-ledger-card__progress-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 4px;
-}
-
-.usage-ledger-card__text {
-    margin: 0;
-    font-size: 13px;
-    color: var(--text-secondary);
+@media (max-width: 480px) {
+    .usage-credit-card__value {
+        font-size: 20px;
+    }
+    
+    .usage-ledger-card {
+        padding: 16px;
+    }
 }
