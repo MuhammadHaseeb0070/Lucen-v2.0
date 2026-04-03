@@ -20,6 +20,8 @@ ALTER TABLE public.user_credits
 
 
 -- ─── 2. Recreate grant_subscription_credits (Lemon-only, ledger-based) ───
+DROP FUNCTION IF EXISTS public.grant_subscription_credits(uuid, double precision, text, text, text, timestamp with time zone);
+
 CREATE OR REPLACE FUNCTION grant_subscription_credits(
     p_user_id          UUID,
     p_credits_to_add   NUMERIC,
