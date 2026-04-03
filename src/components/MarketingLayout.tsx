@@ -5,8 +5,12 @@ import Logo from './Logo';
 import { useAuthStore } from '../store/authStore';
 
 const MarketingLayout: React.FC = () => {
-    const { user, signOut } = useAuthStore();
+    const { user, signOut, initialize } = useAuthStore();
     const location = useLocation();
+
+    React.useEffect(() => {
+        initialize();
+    }, [initialize]);
 
     const handleLogout = async () => {
         await signOut();
