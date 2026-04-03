@@ -327,7 +327,230 @@ export const THEME_PRESETS: ThemePreset[] = [
             aiBubbleBg: '#161616',
             aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
         },
+    }, {
+        id: 'ocean',
+        name: 'Ocean',
+        emoji: '🌊',
+        category: 'cool',
+        isDark: false,
+        colors: {
+            bgBase: '#F2F7FF',
+            bgSurface: '#FFFFFF',
+            bgSurfaceHover: '#EEF5FF',
+            bgMuted: '#E3ECFA',
+            bgInset: '#D9E4F6',
+
+            textPrimary: '#0E1A2B',
+            textSecondary: '#3E556D',
+            textTertiary: '#6E7E93',
+
+            accent: '#0EA5E9',
+            accentSoft: 'rgba(14, 165, 233, 0.1)',
+            accentText: '#FFFFFF',
+
+            danger: '#EF4444',
+            success: '#22C55E',
+            warning: '#F59E0B',
+
+            divider: 'rgba(0, 0, 0, 0.06)',
+            shadow: 'rgba(0, 0, 0, 0.05)',
+
+            userBubbleBg: '#0EA5E9',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#FFFFFF',
+            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+        },
     },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 10. FOREST - Soft greens, calm focus (light).
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
+        id: 'forest',
+        name: 'Forest',
+        emoji: '🌿',
+        category: 'focus',
+        isDark: false,
+        colors: {
+            bgBase: '#F4F7F2',
+            bgSurface: '#FFFFFF',
+            bgSurfaceHover: '#EDF4E8',
+            bgMuted: '#E3E9DA',
+            bgInset: '#D4DEC7',
+
+            textPrimary: '#132015',
+            textSecondary: '#435A43',
+            textTertiary: '#6B7D67',
+
+            accent: '#16A34A',
+            accentSoft: 'rgba(22, 163, 74, 0.1)',
+            accentText: '#FFFFFF',
+
+            danger: '#DC2626',
+            success: '#15803D',
+            warning: '#D97706',
+
+            divider: 'rgba(0, 0, 0, 0.06)',
+            shadow: 'rgba(0, 0, 0, 0.05)',
+
+            userBubbleBg: '#16A34A',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#FFFFFF',
+            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+        },
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 11. INDIGO - Editorial cool tone with strong accent clarity (light).
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
+        id: 'indigo',
+        name: 'Indigo',
+        emoji: '🟦',
+        category: 'curated',
+        isDark: false,
+        colors: {
+            bgBase: '#F5F7FF',
+            bgSurface: '#FFFFFF',
+            bgSurfaceHover: '#EEF1FF',
+            bgMuted: '#E6EAFB',
+            bgInset: '#DCE2FA',
+
+            textPrimary: '#0F172A',
+            textSecondary: '#374151',
+            textTertiary: '#6B7280',
+
+            accent: '#4F46E5',
+            accentSoft: 'rgba(79, 70, 229, 0.1)',
+            accentText: '#FFFFFF',
+
+            danger: '#EF4444',
+            success: '#22C55E',
+            warning: '#F59E0B',
+
+            divider: 'rgba(0, 0, 0, 0.06)',
+            shadow: 'rgba(0, 0, 0, 0.05)',
+
+            userBubbleBg: '#4F46E5',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#FFFFFF',
+            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+        },
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 12. AURORA - Calm dark cyan glow (dark).
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
+        id: 'aurora',
+        name: 'Aurora',
+        emoji: '🟢',
+        category: 'focus',
+        isDark: true,
+        colors: {
+            bgBase: '#061317',
+            bgSurface: '#0A1D23',
+            bgSurfaceHover: '#0F2B33',
+            bgMuted: '#08171B',
+            bgInset: '#040B0E',
+
+            textPrimary: '#E6FBFF',
+            textSecondary: '#7FB0B9',
+            textTertiary: '#4C6E77',
+
+            accent: '#22D3EE',
+            accentSoft: 'rgba(34, 211, 238, 0.12)',
+            accentText: '#061317',
+
+            danger: '#FF5C5C',
+            success: '#34D399',
+            warning: '#FBBF24',
+
+            divider: 'rgba(255, 255, 255, 0.08)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+
+            userBubbleBg: '#22D3EE',
+            userBubbleText: '#061317',
+            aiBubbleBg: '#0A1D23',
+            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+        },
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 13. MIDNIGHT - Neutral dark with violet clarity (dark).
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
+        id: 'midnight',
+        name: 'Midnight',
+        emoji: '🌙',
+        category: 'curated',
+        isDark: true,
+        colors: {
+            bgBase: '#0B0B12',
+            bgSurface: '#141424',
+            bgSurfaceHover: '#1B1B31',
+            bgMuted: '#10101E',
+            bgInset: '#07070C',
+
+            textPrimary: '#EEEAFB',
+            textSecondary: '#A7A0BF',
+            textTertiary: '#6B658A',
+
+            accent: '#A78BFA',
+            accentSoft: 'rgba(167, 139, 250, 0.12)',
+            accentText: '#0B0B12',
+
+            danger: '#FB7185',
+            success: '#34D399',
+            warning: '#FBBF24',
+
+            divider: 'rgba(255, 255, 255, 0.08)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+
+            userBubbleBg: '#A78BFA',
+            userBubbleText: '#0B0B12',
+            aiBubbleBg: '#141424',
+            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+        },
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 14. SUNSET - Warm dark for cozy long reads (dark).
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
+        id: 'sunset',
+        name: 'Sunset',
+        emoji: '🔥',
+        category: 'warm',
+        isDark: true,
+        colors: {
+            bgBase: '#120A07',
+            bgSurface: '#1C110D',
+            bgSurfaceHover: '#241713',
+            bgMuted: '#160F0B',
+            bgInset: '#0B0503',
+
+            textPrimary: '#FFF3EC',
+            textSecondary: '#DDAF8F',
+            textTertiary: '#A67B62',
+
+            accent: '#F97316',
+            accentSoft: 'rgba(249, 115, 22, 0.12)',
+            accentText: '#120A07',
+
+            danger: '#FB7185',
+            success: '#34D399',
+            warning: '#FBBF24',
+
+            divider: 'rgba(255, 255, 255, 0.08)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+
+            userBubbleBg: '#F97316',
+            userBubbleText: '#120A07',
+            aiBubbleBg: '#1C110D',
+            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+        },
+    }
 
 ];
 
