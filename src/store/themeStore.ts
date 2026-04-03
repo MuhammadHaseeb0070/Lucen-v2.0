@@ -33,7 +33,6 @@ export interface ThemePreset {
     colors: ThemeColors;
 }
 
-
 export const THEME_PRESETS: ThemePreset[] = [
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -71,7 +70,6 @@ export const THEME_PRESETS: ThemePreset[] = [
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 2. WASHI — Japanese washi paper + sumi-e ink. Kept exactly as-is.
-    //    Who it's for: users who want warmth and calm without being "beige".
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'washi',
@@ -104,11 +102,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 3. AMBER — Claude.ai's exact aesthetic: warm cream + terracotta.
-    //    Who it's for: Claude.ai users, warm-light users, Birch replacement.
-    //    Why better than Birch: Birch was Scandinavian-neutral. Amber is
-    //    specifically Claude's palette — cream that reads as intentional, not beige.
-    //    The terracotta accent is Claude's actual UI orange, not guessed.
+    // 3. AMBER — Upgraded (contrast pattern aligned to Lucen roles).
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'amber',
@@ -117,35 +111,37 @@ export const THEME_PRESETS: ThemePreset[] = [
         category: 'warm',
         isDark: false,
         colors: {
-            bgBase: '#F7F4EE',
-            bgSurface: '#FFFDF9',
-            bgSurfaceHover: '#F0EDE6',
-            bgMuted: '#EAE5DC',
-            bgInset: '#DDD7CC',
-            textPrimary: '#1C1714',
-            textSecondary: '#6A5E54',
-            textTertiary: '#9E9088',
+            bgBase: '#F6F2EA',
+            bgSurface: '#FFFCF7',
+            bgSurfaceHover: '#F1ECE2',
+            bgMuted: '#EDE5DB',
+            bgInset: '#DDD4C7',
+
+            textPrimary: '#1F1712',
+            textSecondary: '#6B5E54',
+            textTertiary: '#9C8E84',
+
             accent: '#CC6B3D',
-            accentSoft: 'rgba(204, 107, 61, 0.08)',
+            accentSoft: 'rgba(204, 107, 61, 0.1)',
             accentText: '#FFFFFF',
-            danger: '#B03028',
-            success: '#3A6840',
+
+            danger: '#C93B34',
+            success: '#2F7A4B',
             warning: '#9A6018',
-            divider: 'rgba(28, 23, 20, 0.07)',
-            shadow: 'rgba(28, 23, 20, 0.03)',
+
+            divider: 'rgba(0, 0, 0, 0.06)',
+            shadow: 'rgba(0, 0, 0, 0.05)',
+
             userBubbleBg: '#CC6B3D',
             userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFDF9',
-            aiBubbleBorder: 'rgba(28, 23, 20, 0.07)',
+
+            aiBubbleBg: '#FFFCF7',
+            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
         },
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 4. LINEN — Near-monochrome minimalist light.
-    //    Who it's for: pure minimalists, productivity-focused users, anyone who
-    //    finds any color distracting. Backgrounds are warm near-white with zero
-    //    color cast. Accent is a deep warm charcoal — the "colour" is almost
-    //    the absence of colour. Like ink on a blank sheet.
+    // 4. LINEN — Upgraded (neutral ladder tuned for easier long reading).
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'linen',
@@ -157,33 +153,34 @@ export const THEME_PRESETS: ThemePreset[] = [
             bgBase: '#F5F5F3',
             bgSurface: '#FFFFFF',
             bgSurfaceHover: '#EEEEEC',
-            bgMuted: '#E5E5E3',
+            bgMuted: '#E6E6E3',
             bgInset: '#D8D8D6',
+
             textPrimary: '#1A1A1A',
-            textSecondary: '#666666',
-            textTertiary: '#999999',
+            textSecondary: '#5F5F5F',
+            textTertiary: '#8E8E8E',
+
             accent: '#2A2826',
             accentSoft: 'rgba(42, 40, 38, 0.07)',
-            accentText: '#F5F5F3',
+            accentText: '#FFFFFF',
+
             danger: '#C03030',
             success: '#2E6840',
             warning: '#8A6018',
+
             divider: 'rgba(26, 26, 26, 0.07)',
             shadow: 'rgba(26, 26, 26, 0.03)',
+
             userBubbleBg: '#2A2826',
-            userBubbleText: '#F5F5F3',
+            userBubbleText: '#FFFFFF',
+
             aiBubbleBg: '#FFFFFF',
             aiBubbleBorder: 'rgba(26, 26, 26, 0.07)',
         },
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 5. PETAL — Dusty rose-mauve editorial soft light.
-    //    Who it's for: users who want soft / pastel tones but without anything
-    //    that reads as "girly pink UI". The key: bgBase is barely-lavender (not
-    //    pink), accent is a specific dusty rose-mauve (not purple, not bubblegum).
-    //    This is the combination you'd find in a well-designed editorial magazine
-    //    or a high-end beauty brand's desktop interface.
+    // 5. PETAL — Upgraded (mauve tones kept, text ladder tightened).
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'petal',
@@ -192,35 +189,37 @@ export const THEME_PRESETS: ThemePreset[] = [
         category: 'warm',
         isDark: false,
         colors: {
-            bgBase: '#F6F3FA',
+            bgBase: '#F6F2FB',
             bgSurface: '#FEFCFF',
             bgSurfaceHover: '#EFE9F7',
             bgMuted: '#E8E0F2',
-            bgInset: '#DDD4EC',
+            bgInset: '#DCD4EC',
+
             textPrimary: '#1E1628',
-            textSecondary: '#6B5E80',
-            textTertiary: '#A090B8',
+            textSecondary: '#5F5472',
+            textTertiary: '#907BA3',
+
             accent: '#A0709A',
-            accentSoft: 'rgba(160, 112, 154, 0.08)',
+            accentSoft: 'rgba(160, 112, 154, 0.1)',
             accentText: '#FFFFFF',
+
             danger: '#B03040',
             success: '#3A6848',
             warning: '#8A5E18',
-            divider: 'rgba(30, 22, 40, 0.07)',
-            shadow: 'rgba(30, 22, 40, 0.03)',
+
+            divider: 'rgba(0, 0, 0, 0.06)',
+            shadow: 'rgba(0, 0, 0, 0.05)',
+
             userBubbleBg: '#A0709A',
             userBubbleText: '#FFFFFF',
+
             aiBubbleBg: '#FEFCFF',
-            aiBubbleBorder: 'rgba(30, 22, 40, 0.07)',
+            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
         },
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 6. STUDIO — ChatGPT's neutral dark. For users migrating from ChatGPT.
-    //    Who it's for: ChatGPT users who want familiarity, minimal-dark users.
-    //    The backgrounds are ChatGPT's exact grays (#212121, #2F2F2F). No color
-    //    cast, no hue shift. Completely neutral. Green accent is ChatGPT's own.
-    //    A user switching from ChatGPT will feel at home in under 10 seconds.
+    // 6. STUDIO — ChatGPT's neutral dark. Kept exactly as-is.
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'studio',
@@ -253,8 +252,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 7. VERDIGRIS — Aged copper patina. Kept exactly as-is.
-    //    Who it's for: dark-mode users who want character, not just "dark".
+    // 7. VERDIGRIS — Upgraded (neutral divider, text ladder tightened).
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'verdigris',
@@ -268,33 +266,32 @@ export const THEME_PRESETS: ThemePreset[] = [
             bgSurfaceHover: '#242E2A',
             bgMuted: '#1A2220',
             bgInset: '#0D1210',
-            textPrimary: '#D4DED8',
-            textSecondary: '#7A9890',
-            textTertiary: '#4E6860',
+
+            textPrimary: '#D7E0DB',
+            textSecondary: '#7FA39A',
+            textTertiary: '#4F6B63',
+
             accent: '#5BA89A',
             accentSoft: 'rgba(91, 168, 154, 0.1)',
-            accentText: '#0D1210',
+            accentText: '#FFFFFF',
+
             danger: '#D05858',
             success: '#5AAA7A',
             warning: '#C8A840',
-            divider: 'rgba(91, 168, 154, 0.12)',
+
+            divider: 'rgba(255, 255, 255, 0.08)',
             shadow: 'rgba(0, 0, 0, 0.5)',
+
             userBubbleBg: '#5BA89A',
-            userBubbleText: '#0D1210',
+            userBubbleText: '#FFFFFF',
+
             aiBubbleBg: '#1C2320',
-            aiBubbleBorder: 'rgba(91, 168, 154, 0.12)',
+            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
         },
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 8. TERMINAL — Electric chartreuse on near-black. The one neon theme.
-    //    Who it's for: tech users, developers, creative agency users who want
-    //    energy. The key discipline: backgrounds are PURE neutral near-black with
-    //    ZERO color cast. The neon is contained entirely to the accent.
-    //    This is how real creative agencies use neon — one electric hit, nothing
-    //    else. Every other color in this theme defers completely to the accent.
-    //    Chartreuse (#C8FF00) was chosen over cyan/green because it's unexpected —
-    //    it reads as "designed" rather than "default dark mode with a neon color".
+    // 8. TERMINAL — Upgraded (divider neutral like Studio to reduce glare).
     // ═══════════════════════════════════════════════════════════════════════════
     {
         id: 'terminal',
@@ -308,26 +305,31 @@ export const THEME_PRESETS: ThemePreset[] = [
             bgSurfaceHover: '#202020',
             bgMuted: '#141414',
             bgInset: '#080808',
+
             textPrimary: '#F0F0F0',
-            textSecondary: '#888888',
-            textTertiary: '#555555',
+            textSecondary: '#9B9B9B',
+            textTertiary: '#686868',
+
             accent: '#C8FF00',
-            accentSoft: 'rgba(200, 255, 0, 0.08)',
+            accentSoft: 'rgba(200, 255, 0, 0.1)',
             accentText: '#0E0E0E',
+
             danger: '#FF5555',
             success: '#55DD88',
             warning: '#FFCC44',
-            divider: 'rgba(200, 255, 0, 0.1)',
-            shadow: 'rgba(0, 0, 0, 0.6)',
+
+            divider: 'rgba(255, 255, 255, 0.08)',
+            shadow: 'rgba(0, 0, 0, 0.5)',
+
             userBubbleBg: '#C8FF00',
             userBubbleText: '#0E0E0E',
+
             aiBubbleBg: '#161616',
-            aiBubbleBorder: 'rgba(200, 255, 0, 0.1)',
+            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
         },
     },
 
 ];
-
 
 // ─── Theme Store ───
 interface ThemeStore {
