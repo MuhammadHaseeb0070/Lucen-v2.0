@@ -138,33 +138,21 @@ function readAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 // ═══════════════════════════════════════════
 //  TOKEN OPTIMIZATION
 // ═══════════════════════════════════════════
-/**
- * Smart truncation: keeps the beginning and end of content,
- * adds a summary note in the middle showing what was truncated.
- * This preserves context better than chopping off the tail.
- */
 function smartTruncate(text: string, maxChars: number, label: string): string {
     if (text.length <= maxChars) return text;
-
-    const headRatio = 0.7; // keep 70% from start, 30% from end
+    const headRatio = 0.7;
     const headLen = Math.floor(maxChars * headRatio);
-    const tailLen = maxChars - headLen - 200; // reserve space for truncation notice
-
+    const tailLen = maxChars - headLen - 200;
     const head = text.slice(0, headLen);
     const tail = tailLen > 0 ? text.slice(-tailLen) : '';
     const skipped = text.length - headLen - Math.max(tailLen, 0);
-
     return `${head}\n\n[... ${formatFileSize(skipped)} of ${label} omitted for token efficiency ...]\n\n${tail}`;
 }
 
-/**
- * Compress whitespace while preserving structure.
- * Removes excessive blank lines, trims trailing spaces.
- */
 function compressWhitespace(text: string): string {
     return text
-        .replace(/[ \t]+$/gm, '')           // trim trailing whitespace per line
-        .replace(/\n{4,}/g, '\n\n\n')        // collapse 4+ newlines to 3
+        .replace(/[ \t]+$/gm, '')
+        .replace(/\n{4,}/g, '\n\n\n')
         .trim();
 }
 
@@ -185,15 +173,12 @@ function getAttachmentType(ftype: InternalFileType): FileAttachment['type'] {
 // ═══════════════════════════════════════════
 //  EXTRACTORS
 // ═══════════════════════════════════════════
-
-/** PDF → text via pdf.js */
 async function extractPdfText(file: File): Promise<string> {
     try {
         const buffer = await readAsArrayBuffer(file);
         const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
         const totalPages = Math.min(pdf.numPages, MAX_PDF_PAGES);
         const pages: string[] = [];
-
         for (let i = 1; i <= totalPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
@@ -204,12 +189,10 @@ async function extractPdfText(file: File): Promise<string> {
                 pages.push(`── Page ${i} ──\n${pageText.trim()}`);
             }
         }
-
         let result = pages.join('\n\n');
         if (pdf.numPages > MAX_PDF_PAGES) {
             result += `\n\n[... showing ${MAX_PDF_PAGES} of ${pdf.numPages} pages]`;
         }
-
         return compressWhitespace(result) || '[No extractable text found — PDF may be scanned/image-based]';
     } catch (err) {
         console.warn('PDF extraction failed:', err);
@@ -217,59 +200,41 @@ async function extractPdfText(file: File): Promise<string> {
     }
 }
 
-/** DOCX → text via mammoth */
 async function extractDocxText(file: File): Promise<string> {
     try {
         const buffer = await readAsArrayBuffer(file);
         const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-        const text = compressWhitespace(result.value);
-        return text || '[No text found in document]';
+        return compressWhitespace(result.value) || '[No text found in document]';
     } catch (err) {
         console.warn('DOCX extraction failed:', err);
         return '[Failed to extract text from Word document]';
     }
 }
 
-/** XLSX/XLS → structured text via SheetJS */
 async function extractExcelText(file: File): Promise<string> {
     try {
         const buffer = await readAsArrayBuffer(file);
         const workbook = XLSX.read(buffer, { type: 'array' });
         const sheets: string[] = [];
-
         const sheetNames = workbook.SheetNames.slice(0, MAX_EXCEL_SHEETS);
         for (const name of sheetNames) {
             const sheet = workbook.Sheets[name];
             const jsonData = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
-
             if (jsonData.length === 0) continue;
-
-            // Header row
             const header = jsonData[0] as string[];
             const dataRows = jsonData.slice(1, MAX_EXCEL_ROWS + 1);
             const totalRows = jsonData.length - 1;
-
-            // Format as markdown table for better LLM comprehension
             let table = `── Sheet: "${name}" (${totalRows} rows × ${header.length} cols) ──\n`;
             table += '| ' + header.map(h => String(h || '(empty)')).join(' | ') + ' |\n';
             table += '| ' + header.map(() => '---').join(' | ') + ' |\n';
-
             for (const row of dataRows) {
                 const cells = (row as string[]).map(cell => String(cell ?? ''));
                 table += '| ' + cells.join(' | ') + ' |\n';
             }
-
-            if (totalRows > MAX_EXCEL_ROWS) {
-                table += `\n[... showing ${MAX_EXCEL_ROWS} of ${totalRows} rows]`;
-            }
-
+            if (totalRows > MAX_EXCEL_ROWS) table += `\n[... showing ${MAX_EXCEL_ROWS} of ${totalRows} rows]`;
             sheets.push(table);
         }
-
-        if (workbook.SheetNames.length > MAX_EXCEL_SHEETS) {
-            sheets.push(`\n[... showing ${MAX_EXCEL_SHEETS} of ${workbook.SheetNames.length} sheets]`);
-        }
-
+        if (workbook.SheetNames.length > MAX_EXCEL_SHEETS) sheets.push(`\n[... showing ${MAX_EXCEL_SHEETS} of ${workbook.SheetNames.length} sheets]`);
         return sheets.join('\n\n') || '[No data found in spreadsheet]';
     } catch (err) {
         console.warn('Excel extraction failed:', err);
@@ -277,50 +242,30 @@ async function extractExcelText(file: File): Promise<string> {
     }
 }
 
-/** PPTX → text via JSZip (reads XML slides) */
 async function extractPptxText(file: File): Promise<string> {
     try {
         const buffer = await readAsArrayBuffer(file);
         const zip = await JSZip.loadAsync(buffer);
         const slides: string[] = [];
-        let slideNum = 0;
-
-        // PPTX stores slides in ppt/slides/slide1.xml, slide2.xml, etc.
         const slideEntries: [string, JSZip.JSZipObject][] = [];
         zip.folder('ppt/slides')?.forEach((path, entry) => {
-            if (path.match(/^slide\d+\.xml$/)) {
-                slideEntries.push([path, entry]);
-            }
+            if (path.match(/^slide\d+\.xml$/)) slideEntries.push([path, entry]);
         });
-
-        // Sort by slide number
         slideEntries.sort((a, b) => {
             const numA = parseInt(a[0].match(/\d+/)?.[0] || '0');
             const numB = parseInt(b[0].match(/\d+/)?.[0] || '0');
             return numA - numB;
         });
-
         for (const [, entry] of slideEntries.slice(0, MAX_PPTX_SLIDES)) {
-            slideNum++;
             const xml = await entry.async('text');
-            // Extract text from XML tags: <a:t>text</a:t>
             const textMatches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g);
             if (textMatches) {
-                const slideText = textMatches
-                    .map(m => m.replace(/<[^>]+>/g, ''))
-                    .join(' ')
-                    .trim();
-                if (slideText) {
-                    slides.push(`── Slide ${slideNum} ──\n${slideText}`);
-                }
+                const slideText = textMatches.map(m => m.replace(/<[^>]+>/g, '')).join(' ').trim();
+                if (slideText) slides.push(slideText);
             }
         }
-
         let result = slides.join('\n\n');
-        if (slideEntries.length > MAX_PPTX_SLIDES) {
-            result += `\n\n[... showing ${MAX_PPTX_SLIDES} of ${slideEntries.length} slides]`;
-        }
-
+        if (slideEntries.length > MAX_PPTX_SLIDES) result += `\n\n[... showing ${MAX_PPTX_SLIDES} of ${slideEntries.length} slides]`;
         return compressWhitespace(result) || '[No text found in presentation]';
     } catch (err) {
         console.warn('PPTX extraction failed:', err);
@@ -331,257 +276,112 @@ async function extractPptxText(file: File): Promise<string> {
 // ═══════════════════════════════════════════
 //  MAIN PROCESSOR
 // ═══════════════════════════════════════════
-
-/**
- * Process a single file into a FileAttachment.
- * Each format has a dedicated extractor with proper parsing.
- * Token optimization: smart truncation + whitespace compression.
- */
 export async function processFile(file: File): Promise<FileAttachment> {
     const fileType = getFileType(file);
-
-    // ─── Images ───
     if (fileType === 'image') {
-        if (file.size > MAX_IMAGE_SIZE) {
-            throw new Error(`Image "${file.name}" is too large (${formatFileSize(file.size)}). Max is ${formatFileSize(MAX_IMAGE_SIZE)}.`);
-        }
+        if (file.size > MAX_IMAGE_SIZE) throw new Error(`Image too large. Max ${formatFileSize(MAX_IMAGE_SIZE)}`);
         const dataUrl = await readAsDataURL(file);
-        return {
-            id: uuidv4(),
-            name: file.name,
-            type: 'image',
-            mimeType: file.type,
-            size: file.size,
-            dataUrl,
-        };
+        return { id: uuidv4(), name: file.name, type: 'image', mimeType: file.type, size: file.size, dataUrl };
     }
-
-    // ─── PDF ───
     if (fileType === 'pdf') {
         let text = await extractPdfText(file);
-        text = smartTruncate(text, MAX_TEXT_CHARS, file.name);
-        return {
-            id: uuidv4(),
-            name: file.name,
-            type: 'pdf',
-            mimeType: file.type,
-            size: file.size,
-            textContent: text,
-        };
+        return { id: uuidv4(), name: file.name, type: 'pdf', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
     }
-
-    // ─── Word (DOCX) ───
     if (fileType === 'docx') {
         let text = await extractDocxText(file);
-        text = smartTruncate(text, MAX_TEXT_CHARS, file.name);
-        return {
-            id: uuidv4(),
-            name: file.name,
-            type: 'text',
-            mimeType: file.type,
-            size: file.size,
-            textContent: text,
-        };
+        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
     }
-
-    // ─── Excel (XLSX/XLS) ───
     if (fileType === 'xlsx') {
         let text = await extractExcelText(file);
-        text = smartTruncate(text, MAX_TEXT_CHARS, file.name);
-        return {
-            id: uuidv4(),
-            name: file.name,
-            type: 'csv', // reuse csv type for spreadsheet display
-            mimeType: file.type,
-            size: file.size,
-            textContent: text,
-        };
+        return { id: uuidv4(), name: file.name, type: 'csv', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
     }
-
-    // ─── PowerPoint (PPTX) ───
     if (fileType === 'pptx') {
         let text = await extractPptxText(file);
-        text = smartTruncate(text, MAX_TEXT_CHARS, file.name);
-        return {
-            id: uuidv4(),
-            name: file.name,
-            type: 'text',
-            mimeType: file.type,
-            size: file.size,
-            textContent: text,
-        };
+        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
     }
-
-    // ─── Text / Code / CSV ───
-    let text: string;
-    if (file.size > MAX_TEXT_CHARS * 4) {
-        // For very large text files, only read a portion
-        const blob = file.slice(0, MAX_TEXT_CHARS * 4);
-        text = await readAsText(new File([blob], file.name, { type: file.type }));
-    } else {
-        text = await readAsText(file);
-    }
-
-    text = compressWhitespace(text);
-    text = smartTruncate(text, MAX_TEXT_CHARS, file.name);
-
-    return {
-        id: uuidv4(),
-        name: file.name,
-        type: getAttachmentType(fileType),
-        mimeType: file.type || 'text/plain',
-        size: file.size,
-        textContent: text,
-    };
+    let text = await readAsText(file);
+    return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type || 'text/plain', size: file.size, textContent: smartTruncate(compressWhitespace(text), MAX_TEXT_CHARS, file.name) };
 }
 
-/**
- * Helper to convert data URL to Uint8Array for Supabase Storage uploads.
- */
+// ═══════════════════════════════════════════
+//  ENRICHMENT & STORAGE
+// ═══════════════════════════════════════════
+const IMAGE_DESCRIPTION_PROMPT = "Describe this image in complete detail. If it contains text, code, tables, data, or UI — reproduce it exactly. Be exhaustive.";
+
 function dataUrlToUint8Array(dataUrl: string): Uint8Array {
     const base64 = dataUrl.split(',')[1];
     if (!base64) return new Uint8Array(0);
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
 }
 
-/**
- * Permanent reference prompt for image description.
- */
-const IMAGE_DESCRIPTION_PROMPT = "Describe this image in complete detail. If it contains text, code, tables, data, or UI — reproduce it exactly. Be exhaustive. This is a permanent reference.";
-
-/**
- * Enrich a single attachment with AI descriptions and storage paths.
- */
 async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachment> {
     if (!isSupabaseEnabled() || !supabase) return attachment;
 
-    // ─── Task 1: Image AI Description & Storage ───
     if (attachment.type === 'image' && attachment.dataUrl) {
+        console.log(`[FileProcessor] Processing image: ${attachment.name}`);
+        
+        // 1. AI Description
         try {
-            // 1. Generate AI Description
             await ensureFreshSession();
             const { data: aiResponse, error: aiError } = await supabase.functions.invoke('chat-proxy', {
                 body: {
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: IMAGE_DESCRIPTION_PROMPT },
-                            { type: 'image_url', image_url: { url: attachment.dataUrl } }
-                        ]
-                    }],
-                    model: 'google/gemini-2.0-flash-001', // Standard fast multimodal model
+                    messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_DESCRIPTION_PROMPT }, { type: 'image_url', image_url: { url: attachment.dataUrl } }] }],
+                    model: 'google/gemini-2.0-flash-001',
                     stream: false
                 }
             });
-
             if (!aiError && aiResponse?.choices?.[0]?.message?.content) {
-                // @ts-ignore: aiDescription is part of the new system schema
+                // @ts-ignore
                 attachment.aiDescription = aiResponse.choices[0].message.content;
             }
+        } catch (err) { console.warn('[FileProcessor] AI Enrichment failed:', err); }
 
-            // 2. Storage Upload (Required for persistence across reloads)
-            // We use Supabase Storage for all files if enabled to ensure a permanent path.
-            if (attachment.dataUrl) {
-                const bytes = dataUrlToUint8Array(attachment.dataUrl);
-                const path = `${Date.now()}-${attachment.name}`;
-                const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('attachments')
-                    .upload(path, bytes, { contentType: attachment.mimeType });
-
-                if (!uploadError && uploadData) {
-                    // @ts-ignore: storagePath is part of the new system schema
-                    attachment.storagePath = uploadData.path;
-                }
-            }
-        } catch (err) {
-            console.error('[FileEnrichment] Image processing failed:', err);
-        }
-    } else if (attachment.textContent) {
-        // ─── Task 1.1: Non-image Storage (PDF/Docs/Text) ───
+        // 2. Storage Upload
         try {
-            await ensureFreshSession();
-            // Optional: Upload large text extracts to storage if desired, 
-            // but for now we focus on ensuring the file itself has a path if it originated from a file.
-            // (Note: processFile already handles extracting text, but we don't have the original bytes here 
-            // unless we store them. However, for PDFs/Docs, textContent is usually enough for the AI.)
-            // If the user wants the actual file in the bucket:
-            // Since we don't have the original blob here, we'd need to change processFile to include it.
-            // But let's stay focused on the image issue first as it's the most visible "broken" part.
-        } catch (err) {
-            console.error('[FileEnrichment] File upload failed:', err);
-        }
+            console.log(`[FileProcessor] Uploading ${attachment.name} to 'attachments' bucket...`);
+            const bytes = dataUrlToUint8Array(attachment.dataUrl!);
+            const path = `${Date.now()}-${attachment.name}`;
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('attachments')
+                .upload(path, bytes, { contentType: attachment.mimeType, cacheControl: '3600', upsert: false });
+
+            if (uploadError) {
+                console.error(`[FileProcessor] Storage upload FAILED:`, uploadError);
+            } else if (uploadData) {
+                // @ts-ignore
+                attachment.storagePath = uploadData.path;
+                console.log(`[FileProcessor] Upload SUCCESS: ${uploadData.path}`);
+            }
+        } catch (err) { console.error('[FileProcessor] Storage exception:', err); }
     }
 
-    // ─── Task 2: Token Estimation (Rough: characters / 4) ───
-    const contentToCount = attachment.textContent || 
-                          // @ts-ignore
-                          attachment.aiDescription || 
-                          '';
+    // Token Estimation
+    const contentToCount = attachment.textContent || (attachment as any).aiDescription || '';
     if (contentToCount) {
-        // @ts-ignore: tokenEstimate is part of the new system schema
-        attachment.tokenEstimate = Math.ceil(contentToCount.length / 4);
+        (attachment as any).tokenEstimate = Math.ceil(contentToCount.length / 4);
     }
 
     return attachment;
 }
 
-/**
- * Process multiple files from a drop or file input.
- * Filters unsupported types, caps at MAX_FILES.
- * Performs enrichment (AI descriptions, storage) before returning.
- */
-export async function processFiles(files: FileList | File[]): Promise<{
-    attachments: FileAttachment[];
-    errors: string[];
-}> {
+export async function processFiles(files: FileList | File[]): Promise<{ attachments: FileAttachment[]; errors: string[]; }> {
     const fileArray = Array.from(files);
     const errors: string[] = [];
-    const attachments: FileAttachment[] = [];
+    const accepted = fileArray.filter(isAcceptedFile).slice(0, MAX_FILES);
+    if (fileArray.length > MAX_FILES) errors.push(`Only the first ${MAX_FILES} files were attached.`);
 
-    const accepted = fileArray.filter((f) => {
-        if (!isAcceptedFile(f)) {
-            errors.push(`"${f.name}" is not a supported file type.`);
-            return false;
-        }
-        return true;
-    }).slice(0, MAX_FILES);
-
-    if (fileArray.length > MAX_FILES) {
-        errors.push(`Only the first ${MAX_FILES} files were attached.`);
+    const processed = await Promise.allSettled(accepted.map(processFile));
+    const toEnrich: FileAttachment[] = [];
+    for (const res of processed) {
+        if (res.status === 'fulfilled') toEnrich.push(res.value);
+        else errors.push(res.reason?.message || 'Processing failed');
     }
 
-    // Process in parallel for speed
-    const processResults = await Promise.allSettled(accepted.map(processFile));
-    const processedAttachments: FileAttachment[] = [];
-
-    for (const result of processResults) {
-        if (result.status === 'fulfilled') {
-            processedAttachments.push(result.value);
-        } else {
-            errors.push(result.reason?.message || 'Failed to process a file.');
-        }
-    }
-
-    // After processFiles completes: enrich with descriptions/storage
-    const enrichResults = await Promise.allSettled(processedAttachments.map(enrichAttachment));
-    for (const result of enrichResults) {
-        if (result.status === 'fulfilled') {
-            attachments.push(result.value);
-        } else {
-            // Keep the processed attachment even if enrichment fails
-            // (Wait, the user said "Implement the following system in full", 
-            // but didn't say enrichment failures should block the upload.)
-            // We'll push the raw attachment if enrichment failed.
-            // But usually the map above handles it.
-        }
-    }
-
-    return { attachments, errors };
+    const enriched = await Promise.all(toEnrich.map(enrichAttachment));
+    return { attachments: enriched, errors };
 }
 
 export { formatFileSize, isAcceptedFile, MAX_FILES };
