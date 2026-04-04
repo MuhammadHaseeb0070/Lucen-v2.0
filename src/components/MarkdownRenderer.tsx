@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/light-async';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check } from 'lucide-react';
 import { highlightChildren } from '../lib/searchHighlight';
@@ -14,10 +14,10 @@ interface MarkdownRendererProps {
     searchQuery?: string;
 }
 
-const CodeBlock: React.FC<{
+const CodeBlock = React.memo<{
     language: string;
     value: string;
-}> = ({ language, value }) => {
+}>(({ language, value }) => {
     const [copied, setCopied] = React.useState(false);
 
     const handleCopy = async () => {
@@ -50,33 +50,37 @@ const CodeBlock: React.FC<{
             </SyntaxHighlighter>
         </div>
     );
-};
+});
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuery }) => {
-    const createHighlightComponent = (Tag: 'p' | 'li' | 'td' | 'th' | 'strong' | 'em' | 'span') => {
-        const Component = Tag;
-        return function HighlightWrapper(
-            props: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }
-        ) {
-            const { children, ...rest } = props;
-            const highlighted = searchQuery ? highlightChildren(children, searchQuery) : children;
-            return <Component {...rest}>{highlighted}</Component>;
+CodeBlock.displayName = 'CodeBlock';
+
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ content, searchQuery }) => {
+    const highlightComponents = useMemo(() => {
+        if (!searchQuery) return undefined;
+
+        const createHighlightComponent = (Tag: 'p' | 'li' | 'td' | 'th' | 'strong' | 'em' | 'span') => {
+            const Component = Tag;
+            return function HighlightWrapper(
+                props: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }
+            ) {
+                const { children, ...rest } = props;
+                const highlighted = highlightChildren(children, searchQuery);
+                return <Component {...rest}>{highlighted}</Component>;
+            };
         };
-    };
 
-    const highlightComponents = searchQuery
-        ? {
-              p: createHighlightComponent('p'),
-              li: createHighlightComponent('li'),
-              td: createHighlightComponent('td'),
-              th: createHighlightComponent('th'),
-              strong: createHighlightComponent('strong'),
-              em: createHighlightComponent('em'),
-              span: createHighlightComponent('span'),
-          }
-        : undefined;
+        return {
+            p: createHighlightComponent('p'),
+            li: createHighlightComponent('li'),
+            td: createHighlightComponent('td'),
+            th: createHighlightComponent('th'),
+            strong: createHighlightComponent('strong'),
+            em: createHighlightComponent('em'),
+            span: createHighlightComponent('span'),
+        };
+    }, [searchQuery]);
 
-    return (
+    return useMemo(() => (
         <div className="markdown-body">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
@@ -116,7 +120,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuer
                 {content}
             </ReactMarkdown>
         </div>
-    );
-};
+    ), [content, highlightComponents]);
+});
+
+MarkdownRenderer.displayName = 'MarkdownRenderer';
 
 export default MarkdownRenderer;
