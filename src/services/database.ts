@@ -114,7 +114,47 @@ export async function fetchMessages(conversationId: string): Promise<Message[] |
         return null;
     }
 
-    return (data as DbMessage[]).map(dbToMessage);
+    const messages = (data as DbMessage[]).map(dbToMessage);
+
+    // ─── PART 3: Restore file context from file_attachments table ───
+    const { data: attachmentData, error: attachmentError } = await supabase
+        .from('file_attachments')
+        .select('*')
+        .eq('conversation_id', conversationId);
+
+    if (attachmentError) {
+        console.error('[DB] fetchMessages file_attachments error:', attachmentError);
+        return messages;
+    }
+
+    if (attachmentData && attachmentData.length > 0) {
+        // Group by message_id
+        const attachmentMap: Record<string, any[]> = {};
+        for (const row of attachmentData) {
+            if (!attachmentMap[row.message_id]) attachmentMap[row.message_id] = [];
+            attachmentMap[row.message_id].push(row);
+        }
+
+        // Merge back into messages
+        for (const msg of messages) {
+            const rowAttachments = attachmentMap[msg.id];
+            if (rowAttachments && msg.attachments) {
+                // Map stored text back to existing attachment objects (matched by name)
+                msg.attachments = msg.attachments.map((existing) => {
+                    const matched = rowAttachments.find((a) => a.file_name === existing.name);
+                    if (matched) {
+                        return {
+                            ...existing,
+                            textContent: matched.extracted_text || matched.ai_description || undefined,
+                        };
+                    }
+                    return existing;
+                });
+            }
+        }
+    }
+
+    return messages;
 }
 
 /** Save a single message to the database */
@@ -141,6 +181,34 @@ export async function saveMessage(
         console.error('[DB] saveMessage error:', error);
         return false;
     }
+
+    // ─── PART 3: Save individual attachments to file_attachments table ───
+    if (message.attachments && message.attachments.length > 0) {
+        const attachmentRows = message.attachments.map((a) => ({
+            message_id: message.id,
+            conversation_id: conversationId,
+            file_name: a.name,
+            file_type: a.type,
+            // @ts-ignore: these fields were enriched in fileProcessor.ts
+            storage_path: a.storagePath || null,
+            // @ts-ignore
+            extracted_text: a.textContent || null,
+            // @ts-ignore
+            ai_description: a.aiDescription || null,
+            // @ts-ignore
+            token_estimate: a.tokenEstimate || (a.textContent || a.aiDescription ? Math.ceil(((a.textContent || a.aiDescription)?.length || 0) / 4) : null),
+        }));
+
+        const { error: attachError } = await supabase
+            .from('file_attachments')
+            .insert(attachmentRows);
+
+        if (attachError) {
+            console.error('[DB] saveMessage file_attachments error:', attachError);
+            // We don't return false because the main message was saved
+        }
+    }
+
     return true;
 }
 

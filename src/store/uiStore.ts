@@ -11,6 +11,7 @@ interface UIStore {
     templateMode: TemplateMode;
     isAdminView: boolean;
     billingOpen: boolean;
+    fileLibraryOpen: boolean;
 
     toggleSidebar: () => void;
     setSidebarCollapsed: (collapsed: boolean) => void;
@@ -22,6 +23,7 @@ interface UIStore {
     setTemplateMode: (mode: TemplateMode) => void;
     setIsAdminView: (isAdmin: boolean) => void;
     setBillingOpen: (open: boolean) => void;
+    setFileLibraryOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -35,6 +37,7 @@ export const useUIStore = create<UIStore>()(
             templateMode: 'General',
             isAdminView: false,
             billingOpen: false,
+            fileLibraryOpen: false,
 
             toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
             setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -52,6 +55,7 @@ export const useUIStore = create<UIStore>()(
             setTemplateMode: (mode) => set({ templateMode: mode }),
             setIsAdminView: (isAdmin: boolean) => set({ isAdminView: isAdmin }),
             setBillingOpen: (open: boolean) => set({ billingOpen: open }),
+            setFileLibraryOpen: (open: boolean) => set({ fileLibraryOpen: open }),
         }),
         {
             name: 'lucen-ui-storage',

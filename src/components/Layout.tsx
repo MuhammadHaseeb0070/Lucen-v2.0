@@ -8,6 +8,7 @@ import SettingsScreen from './SettingsScreen';
 import CommandPalette from './CommandPalette';
 import AuthScreen from './AuthScreen';
 import PricingModal from './PricingModal';
+import FileLibrary from './FileLibrary';
 
 import OwnerDashboard from './OwnerDashboard';
 import { useThemeStore, applyTheme } from '../store/themeStore';
@@ -126,6 +127,7 @@ const Layout: React.FC = () => {
             <SideChatPanel />
             <SettingsScreen />
             <PricingModal />
+            <FileLibrary />
             <CommandPalette
                 isOpen={commandPaletteOpen}
                 onClose={() => setCommandPaletteOpen(false)}

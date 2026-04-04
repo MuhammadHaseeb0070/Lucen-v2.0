@@ -5,6 +5,7 @@ import { TEMPLATES, BASE_SYSTEM_PROMPT } from '../config/prompts';
 import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import { useTokenStore } from '../store/tokenStore';
+import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
 
@@ -12,7 +13,7 @@ const OPENROUTER_RAW_DEBUG = false;
 const OPENROUTER_RAW_DEBUG_MAX_CHARS = 250_000; // cap to avoid freezing the browser console
 
 interface StreamCallbacks {
-    onChunk: (content: string) => void;
+    onChunk: (content: string, isContinuation?: boolean) => void;
     onReasoning: (reasoning: string) => void;
     onDone: (truncated?: boolean) => void;
     onError: (error: string) => void;
@@ -31,7 +32,7 @@ interface StreamOptions {
  * - With attachments → array of content parts (multimodal)
  * Puts text first (as recommended by OpenRouter), then images.
  */
-function buildMessageContent(msg: Message): string | Array<Record<string, unknown>> {
+function buildMessageContent(msg: Message, includeImages: boolean = true): string | Array<Record<string, unknown>> {
     if (!msg.attachments || msg.attachments.length === 0) {
         return msg.content;
     }
@@ -64,11 +65,14 @@ function buildMessageContent(msg: Message): string | Array<Record<string, unknow
     }
 
     // 4. Image attachments (OpenRouter expects images after text)
-    for (const img of imageAttachments) {
-        parts.push({
-            type: 'image_url',
-            image_url: { url: img.dataUrl },
-        });
+    // Only include base64 images if explicitly requested (optimization: last 2 messages only)
+    if (includeImages) {
+        for (const img of imageAttachments) {
+            parts.push({
+                type: 'image_url',
+                image_url: { url: img.dataUrl },
+            });
+        }
     }
 
     return parts;
@@ -108,9 +112,11 @@ function buildApiMessages(messages: Message[], systemPromptOverride?: string): A
         ...systemMessages,
         ...recentMessages
             .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => ({
+            .map((m, index) => ({
                 role: m.role,
-                content: buildMessageContent(m),
+                // OPTIMIZATION: Only include raw image base64 for the last 2 messages.
+                // For older messages, the model relies on the aiDescription in textContent.
+                content: buildMessageContent(m, index >= recentMessages.length - 2),
             })),
     ];
 }
@@ -219,7 +225,7 @@ export async function streamChat(
     const isReasoningEnabled = options.isSideChat ? false : model.supportsReasoning;
     // IMPORTANT: we always stream so the UX stays responsive.
     // If a provider doesn't stream reasoning, `message.reasoning` may be empty.
-    await streamViaEdgeFunction(
+    await streamViaEdgeFunctionWrapper(
         messagesWithBudget,
         model,
         session.access_token,
@@ -228,6 +234,74 @@ export async function streamChat(
         isReasoningEnabled,
         options.webSearchEnabled,
         options.signal
+    );
+}
+
+/**
+ * Wrapper for streamViaEdgeFunction to handle artifact continuation logic.
+ */
+async function streamViaEdgeFunctionWrapper(
+    apiMessages: Array<Record<string, unknown>>,
+    model: ReturnType<typeof getActiveModel>,
+    accessToken: string,
+    callbacks: StreamCallbacks,
+    outputBudget: number,
+    isReasoningEnabled: boolean,
+    webSearchEnabled?: boolean,
+    signal?: AbortSignal,
+    continuationCount = 0
+): Promise<void> {
+    let fullResponse = '';
+    
+    // Intercept callback to track content for continuation check
+    const innerCallbacks: StreamCallbacks = {
+        ...callbacks,
+        onChunk: (chunk, isContinuation) => {
+            fullResponse += chunk;
+            callbacks.onChunk(chunk, isContinuation || continuationCount > 0);
+        },
+        onDone: async (truncated) => {
+            // Check if stream ended naturally but artifact is cut off
+            const isPartialArtifact = PARTIAL_OPEN_RE.test(fullResponse) || INCOMPLETE_TAG_RE.test(fullResponse);
+            
+            if (isPartialArtifact && continuationCount < 2) {
+                console.info(`[Continuation] Partial artifact detected. Retrying (${continuationCount + 1}/2)...`);
+                
+                const continuationMessages = [
+                    ...apiMessages,
+                    { role: 'assistant', content: fullResponse },
+                    { 
+                        role: 'user', 
+                        content: "Continue exactly from where you stopped. Output only the continuation, starting from where the artifact content was cut off." 
+                    }
+                ];
+
+                await streamViaEdgeFunctionWrapper(
+                    continuationMessages,
+                    model,
+                    accessToken,
+                    callbacks,
+                    outputBudget,
+                    isReasoningEnabled,
+                    webSearchEnabled,
+                    signal,
+                    continuationCount + 1
+                );
+            } else {
+                callbacks.onDone(truncated);
+            }
+        }
+    };
+
+    await streamViaEdgeFunction(
+        apiMessages,
+        model,
+        accessToken,
+        innerCallbacks,
+        outputBudget,
+        isReasoningEnabled,
+        webSearchEnabled,
+        signal
     );
 }
 

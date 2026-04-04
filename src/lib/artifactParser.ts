@@ -7,11 +7,11 @@ const COMPLETE_ARTIFACT_RE =
   /<lucen_artifact\s+([^>]*)>([\s\S]*?)<\/lucen_artifact>/g;
 
 // Matches a partial (still-streaming) opening tag with no closing tag.
-const PARTIAL_OPEN_RE =
+export const PARTIAL_OPEN_RE =
   /<lucen_artifact\s+([^>]*)>([\s\S]*)$/;
 
 // Matches a tag that's still being written (attributes incomplete).
-const INCOMPLETE_TAG_RE = /<lucen_artifact[^>]*$/;
+export const INCOMPLETE_TAG_RE = /<lucen_artifact[^>]*$/;
 
 function getAttr(attrs: string, name: string): string | undefined {
   const re = new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, 'i');

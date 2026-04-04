@@ -8,7 +8,8 @@ import {
     MessageSquare,
     ChevronLeft,
     ChevronRight,
-    Terminal
+    Terminal,
+    FolderOpen
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
@@ -33,6 +34,8 @@ const Sidebar: React.FC = () => {
         setSidebarWidth,
         isAdminView,
         setIsAdminView,
+        fileLibraryOpen,
+        setFileLibraryOpen,
     } = useUIStore();
     const { user } = useAuthStore();
     const isAdmin = isAdminUser(user?.email);
@@ -243,6 +246,22 @@ const Sidebar: React.FC = () => {
                 >
                     <Terminal size={16} />
                     <span>Mission Control</span>
+                </div>
+            )}
+
+            {/* File Library Access */}
+            {!sidebarCollapsed && (
+                <div
+                    className={`sidebar-admin-link ${fileLibraryOpen ? 'active' : ''}`}
+                    onClick={() => {
+                        setFileLibraryOpen(true);
+                        if (isMobile() && !sidebarCollapsed) toggleSidebar();
+                    }}
+                    style={{ marginTop: isAdmin && !isAdminView ? '8px' : 'auto', borderTop: isAdmin && !isAdminView ? 'none' : '1px solid var(--border-subtle)', paddingTop: isAdmin && !isAdminView ? '0' : '12px' }}
+                    title="Browse your file history"
+                >
+                    <FolderOpen size={16} />
+                    <span>File Library</span>
                 </div>
             )}
 
