@@ -4,7 +4,7 @@ import Layout from './components/Layout';
 import OtpVerifyScreen from './components/OtpVerifyScreen';
 import NewPasswordScreen from './components/NewPasswordScreen';
 import MarketingLayout from './components/MarketingLayout';
-import HomePage from './pages/HomePage';
+import HomePage from './pages/HomePage'; 
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import PackagesPage from './pages/PackagesPage';
