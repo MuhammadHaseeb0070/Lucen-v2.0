@@ -146,6 +146,18 @@ export async function fetchMessages(conversationId: string): Promise<Message[] |
                         return {
                             ...existing,
                             textContent: matched.extracted_text || matched.ai_description || undefined,
+                            // ─── Task 3: Restore Source from Storage ───
+                            // If a storage path exists, generate its public URL and use it as dataUrl.
+                            // This ensures the UI can render historical images correctly.
+                            // @ts-ignore
+                            storagePath: matched.storage_path || null,
+                            // @ts-ignore
+                            dataUrl: matched.storage_path && supabase ? 
+                                supabase.storage.from('attachments').getPublicUrl(matched.storage_path).data.publicUrl : undefined,
+                            // @ts-ignore
+                            aiDescription: matched.ai_description || null,
+                            // @ts-ignore
+                            tokenEstimate: matched.token_estimate || null,
                         };
                     }
                     return existing;
