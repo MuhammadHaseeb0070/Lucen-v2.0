@@ -165,11 +165,6 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getAttachmentType(ftype: InternalFileType): FileAttachment['type'] {
-    if (ftype === 'docx' || ftype === 'pptx' || ftype === 'xlsx') return 'text';
-    return ftype;
-}
-
 // ═══════════════════════════════════════════
 //  EXTRACTORS
 // ═══════════════════════════════════════════
