@@ -10,7 +10,7 @@ import ContactPage from './pages/ContactPage';
 import PackagesPage from './pages/PackagesPage';
 import LoginPage from './pages/Auth/LoginPage';
 import SignupPage from './pages/Auth/SignupPage';
-import TermsPage from './pages/TermsPage';
+import TermsPage from './pages/TermsPage';  
 import PrivacyPage from './pages/PrivacyPage';
 import RefundPage from './pages/RefundPage';
 import { useAuthStore } from './store/authStore';
