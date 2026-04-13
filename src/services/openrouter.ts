@@ -440,7 +440,7 @@ async function streamViaEdgeFunction(
         }
 
         if (shouldSearch) {
-            requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5 }];
+            requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5, mode: 'auto' }];
             callbacks.onWebSearchUsed?.();
             // Inject context-aware search hint so model searches correctly
             if (searchHint) {
@@ -448,7 +448,7 @@ async function streamViaEdgeFunction(
                     ...(requestPayload.messages as Array<Record<string, unknown>>),
                     {
                         role: 'system',
-                        content: `[Search Directive: The user's actual information need based on full conversation context is: "${searchHint}". Use this as your web search query. Do not search for something unrelated.]`,
+                        content: `[Search Directive: Web search is active. Search for: "${searchHint}". IMPORTANT RULES: (1) Use the search results provided to you directly. (2) Do NOT ask the user for information you should be finding via search — timezone, competition type, date range etc. Make reasonable assumptions. (3) If search results are poor quality, say so briefly and give your best answer using your training knowledge. (4) Never instruct the user to go find information themselves when web search is enabled. (5) Answer directly and completely.]`,
                     },
                 ];
             }

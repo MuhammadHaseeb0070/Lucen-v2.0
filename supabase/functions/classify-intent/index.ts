@@ -1,7 +1,7 @@
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const INTENT_MODEL = 'google/gemini-2.0-flash-lite-001';
+const INTENT_MODEL = 'google/gemini-flash-1.5-8b';
 
 const SYSTEM_PROMPT = `You are a web search intent classifier for a chat assistant. Analyze the conversation and decide if the latest user message needs a real-time web search.
 
