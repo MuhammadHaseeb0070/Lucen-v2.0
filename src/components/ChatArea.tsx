@@ -182,6 +182,15 @@ const ChatArea: React.FC = () => {
             },
             onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; useCreditsStore.getState().syncFromServer(); },
             onWebSearchUsed: () => updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
+            onClarificationNeeded: (question) => {
+                flushBuffer();
+                updateMessage(convId, assistantMsgId, {
+                    content: `_Search paused. I need a bit more info to get you the right results:_\n\n**${question}**`,
+                    isStreaming: false,
+                    isReasoningStreaming: false,
+                });
+                abortRef.current = null;
+            },
         }, { signal: controller.signal, webSearchEnabled });
     };
 
@@ -226,6 +235,16 @@ const ChatArea: React.FC = () => {
                 abortRef.current = null;
             },
             onWebSearchUsed: () => updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
+            onClarificationNeeded: (question) => {
+                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
+                updateMessage(convId, assistantMsgId, {
+                    content: (msg?.content || '') + `\n\n_Search paused._\n\n**${question}**`,
+                    isStreaming: false,
+                    isReasoningStreaming: false,
+                });
+                abortRef.current = null;
+            },
         }, { signal: controller.signal, webSearchEnabled });
     };
 
