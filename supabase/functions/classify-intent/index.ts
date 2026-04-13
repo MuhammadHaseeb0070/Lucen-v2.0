@@ -16,9 +16,8 @@ Formats:
 {"state":"clarify","query":null,"question":"one specific question"}
 
 Rules:
-- search: live scores, schedules, prices, weather, news, current events, real-time data
-- skip: greetings, math, code, explanations, things already in conversation
-- query MUST be extremely specific. Include implicit context from previous messages. Expand generic sports queries to include 'all competitions'.`;
+- search: live scores, schedules, news, realtime data, OR if the user explicitly demands a search, OR if they paste a URL/link. If they paste a URL, the query MUST contain that URL.
+- skip: greetings, math, code, explanations, things already in conversation. (WARNING: Do not skip if user pasted a URL or explicitly said 'search for').`;
 
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
@@ -44,8 +43,8 @@ Deno.serve(async (req: Request) => {
 
         const contextWindow = messages.slice(-6);
         const conversationText = contextWindow
-            .filter((m: Record<string, unknown>) => m.role === 'user' || m.role === 'assistant')
-            .map((m: Record<string, unknown>) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${extractText(m.content).slice(0, 400)}`)
+            .filter((m: any) => m.role === 'user' || m.role === 'assistant')
+            .map((m: any) => (m.role === 'user' ? 'User: ' : 'Assistant: ') + extractText(m.content).slice(0, 400))
             .join('\n');
 
         const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -56,8 +55,8 @@ Deno.serve(async (req: Request) => {
         const orPayload = {
             model: INTENT_MODEL,
             messages: [
-                { role: 'system', content: INTENT_SYSTEM + `\nToday's exact date is: ${currentDate}. If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures').` },
-                { role: 'user', content: `Conversation:\n${conversationText}\n\nClassify intent.` }
+                { role: 'system', content: INTENT_SYSTEM + "\nToday's exact date is: " + currentDate + ". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures')." },
+                { role: 'user', content: "Conversation:\n" + conversationText + "\n\nClassify intent." }
             ],
             max_tokens: 120,
             stream: false,
