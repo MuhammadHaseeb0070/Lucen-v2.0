@@ -179,6 +179,7 @@ const ChatArea: React.FC = () => {
                 useCreditsStore.getState().syncFromServer();
             },
             onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; useCreditsStore.getState().syncFromServer(); },
+            onWebSearchUsed: () => updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
         }, { signal: controller.signal, webSearchEnabled });
     };
 
@@ -222,6 +223,7 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
             },
+            onWebSearchUsed: () => updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
         }, { signal: controller.signal, webSearchEnabled });
     };
 

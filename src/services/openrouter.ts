@@ -17,6 +17,7 @@ interface StreamCallbacks {
     onReasoning: (reasoning: string) => void;
     onDone: (truncated?: boolean) => void;
     onError: (error: string) => void;
+    onWebSearchUsed?: () => void;
 }
 
 interface StreamOptions {
@@ -316,6 +317,49 @@ async function streamViaEdgeFunctionWrapper(
 /**
  * Stream via Supabase Edge Function (chat-proxy).
  */
+async function shouldPerformWebSearch(
+    apiMessages: Array<Record<string, unknown>>
+): Promise<boolean> {
+    const lastUserMessage = [...apiMessages]
+        .reverse()
+        .find((m) => m.role === 'user');
+
+    if (!lastUserMessage) return false;
+
+    const content = lastUserMessage.content;
+    const text = typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+            ? (content as Array<Record<string, unknown>>)
+                .filter((p) => p.type === 'text')
+                .map((p) => p.text as string)
+                .join(' ')
+            : '';
+
+    const trimmed = text.trim().toLowerCase();
+
+    // Skip search for short conversational messages
+    const conversationalPatterns = [
+        /^(hi|hello|hey|thanks|thank you|ok|okay|sure|yes|no|nope|yep|got it|great|nice|cool|perfect|awesome|sounds good|agreed|alright|fine|please|go ahead|continue|done|stop|wait|lol|haha)[\s!.?]*$/i,
+    ];
+    if (conversationalPatterns.some((re) => re.test(trimmed))) return false;
+    if (trimmed.length < 8) return false;
+
+    // Always search for strong signals
+    const searchSignals = [
+        /\b(latest|recent|current|today|now|news|price|weather|score|update|release|version|live|breaking|trending|stock|who is|what is the|when is|where is)\b/i,
+        /\b(2024|2025|2026)\b/,
+        /\?$/,
+    ];
+    if (searchSignals.some((re) => re.test(trimmed))) return true;
+
+    // For anything else over 15 chars with web search on, allow it
+    return trimmed.length > 15;
+}
+
+/**
+ * Stream via Supabase Edge Function (chat-proxy).
+ */
 async function streamViaEdgeFunction(
     apiMessages: Array<Record<string, unknown>>,
     model: ReturnType<typeof getActiveModel>,
@@ -344,7 +388,11 @@ async function streamViaEdgeFunction(
     };
 
     if (webSearchEnabled) {
-        requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5 }];
+        const needsSearch = await shouldPerformWebSearch(apiMessages);
+        if (needsSearch) {
+            requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5 }];
+            callbacks.onWebSearchUsed?.();
+        }
     }
 
     // Debug: confirm this code path executed before we hit the Edge function.
