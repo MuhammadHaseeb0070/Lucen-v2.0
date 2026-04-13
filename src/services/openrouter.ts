@@ -200,7 +200,8 @@ async function computeOutputBudget(
         const inputTokens = await countAsync(serialized);
 
         const remaining = contextWindow - inputTokens - SAFETY_HEADROOM;
-        const budget = Math.max(MIN_OUTPUT_BUDGET, Math.min(maxOutputTokens, remaining));
+        const TIMEOUT_SAFE_CAP = 16384;
+        const budget = Math.max(MIN_OUTPUT_BUDGET, Math.min(TIMEOUT_SAFE_CAP, maxOutputTokens, remaining));
 
         console.debug(`[TokenBudget] input=${inputTokens} ctx=${contextWindow} maxOut=${maxOutputTokens} → budget=${budget}`);
         return budget;
@@ -742,7 +743,8 @@ async function processStream(
 
             for (const line of lines) {
                 const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                if (!trimmed || trimmed.startsWith(':')) continue;
+                if (!trimmed.startsWith('data: ')) continue;
 
                 const data = trimmed.slice(6);
                 if (data === '[DONE]') {

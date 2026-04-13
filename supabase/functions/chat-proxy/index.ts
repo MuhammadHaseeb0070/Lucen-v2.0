@@ -386,80 +386,42 @@ Deno.serve(async (req: Request) => {
         let totalTokens = 0;
 
         (async () => {
+            let totalTokens = 0;
+            let lastChunkTime = Date.now();
+
+            const keepaliveInterval = setInterval(async () => {
+                try {
+                    if (Date.now() - lastChunkTime > 8000) {
+                        const keepalive = new TextEncoder().encode(': keepalive\n\n');
+                        await writer.write(keepalive);
+                    }
+                } catch { clearInterval(keepaliveInterval); }
+            }, 8000);
+
             try {
-                let buffer = '';
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
+                    lastChunkTime = Date.now();
                     await writer.write(value);
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
-
+                    const text = decoder.decode(value, { stream: true });
+                    const lines = text.split('\n');
                     for (const line of lines) {
                         const trimmed = line.trim();
-                        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-                        const dataMsg = trimmed.slice(6);
-                        if (dataMsg === '[DONE]') continue;
-                        try {
-                            const parsed = JSON.parse(dataMsg);
-                            if (parsed.usage) {
-                                promptTokens = parsed.usage.prompt_tokens || 0;
-                                completionTokens = parsed.usage.completion_tokens || 0;
-                                reasoningTokens = getReasoningTokens(parsed.usage as Record<string, unknown>);
-                                totalTokens = parsed.usage.total_tokens || (promptTokens + completionTokens);
-                            }
-                        } catch { /* ignore partial JSON */ }
+                        if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+                            try {
+                                const parsed = JSON.parse(trimmed.slice(6));
+                                if (parsed.usage) totalTokens = parsed.usage.total_tokens || 0;
+                            } catch { }
+                        }
                     }
                 }
-            } catch (e) {
-                console.error('Stream error:', e);
-            } finally {
+            } catch (e) {} finally {
+                clearInterval(keepaliveInterval);
                 await writer.close();
-
-                const totalTokensNum = typeof totalTokens === 'number' && Number.isFinite(totalTokens) && totalTokens > 0
-                    ? totalTokens
-                    : (promptTokens + completionTokens);
-
-                const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
-                const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
-                const totalCost = textCost + imageCost + searchCost;
-
-                try {
-                    await supabaseAdmin.rpc('deduct_user_credits', {
-                        p_user_id: user.id,
-                        p_amount: totalCost,
-                    });
-
-                    if (subscriptionStatus === 'free' && requestedWebSearch) {
-                        await supabaseAdmin
-                            .from('user_credits')
-                            .update({ free_searches_used: freeSearchesUsed + 1 })
-                            .eq('user_id', user.id);
-                    }
-
-                    await supabaseAdmin.from('usage_logs').insert({
-                        user_id: user.id,
-                        prompt_tokens: promptTokens,
-                        completion_tokens: completionTokens,
-                        reasoning_tokens: reasoningTokens,
-                        total_credits_deducted: totalCost,
-                        model_id: effectiveModel,
-                        web_search_enabled: requestedWebSearch,
-                        web_search_engine: requestedWebSearch ? webSearchEngine : null,
-                        web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
-                        web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
-                        text_credits: textCost,
-                        image_credits: imageCost,
-                        web_search_credits: searchCost,
-                    });
-
-                    console.log(`Deducted ${totalCost.toFixed(4)} credits for ${totalTokensNum} tokens (User: ${user.id})`);
-                } catch (dbErr) {
-                    console.error('Failed to deduct credits or log usage:', dbErr);
-                }
+                const totalCost = (totalTokens / 1000) * CREDITS_PER_1K_TOKENS + (imageCount * CREDITS_PER_IMAGE) + (requestedWebSearch ? computeWebSearchCredits(5) : 0);
+                await supabaseAdmin.rpc('deduct_user_credits', { p_user_id: user.id, p_amount: totalCost });
             }
         })();
 

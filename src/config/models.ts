@@ -16,8 +16,8 @@ const SIDE_MODEL_NAME = import.meta.env.VITE_SIDE_CHAT_MODEL_NAME || SIDE_MODEL_
 //   VITE_MODEL_CONTEXT_WINDOW  — total context (input + output). e.g. 131072 for Grok
 //   VITE_MODEL_MAX_OUTPUT      — max output the model supports. e.g. 32768 for Grok
 //
-const MODEL_CONTEXT_WINDOW = parseInt(import.meta.env.VITE_MODEL_CONTEXT_WINDOW || '131072', 10);
-const MODEL_MAX_OUTPUT = parseInt(import.meta.env.VITE_MODEL_MAX_OUTPUT || '32768', 10);
+const MODEL_CONTEXT_WINDOW = parseInt(import.meta.env.VITE_MODEL_CONTEXT_WINDOW || '400000', 10);
+const MODEL_MAX_OUTPUT = parseInt(import.meta.env.VITE_MODEL_MAX_OUTPUT || '128000', 10);
 
 // The SENT max_tokens starts at the model output ceiling but gets reduced
 // dynamically based on actual input size (see openrouter.ts computeOutputBudget).
