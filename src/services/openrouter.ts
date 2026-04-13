@@ -18,6 +18,7 @@ interface StreamCallbacks {
     onDone: (truncated?: boolean) => void;
     onError: (error: string) => void;
     onWebSearchUsed?: () => void;
+    onClarificationNeeded?: (question: string) => void;
 }
 
 interface StreamOptions {
@@ -319,8 +320,8 @@ async function streamViaEdgeFunctionWrapper(
  */
 async function resolveWebSearchContext(
     apiMessages: Array<Record<string, unknown>>
-): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[] }> {
-    const noSearch = { shouldSearch: false, searchHint: null, urls: [] };
+): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null }> {
+    const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null };
 
     // Get last 5 messages for context (cheap, not all 30)
     const contextMessages = apiMessages
@@ -380,18 +381,26 @@ async function resolveWebSearchContext(
                 messages: [
                     {
                         role: 'system',
-                        content: `You are a search intent classifier. Given a conversation, decide if the latest user message requires a real-time web search. If yes, generate the optimal search query capturing the full context.
+                        content: `You are a search intent classifier. Given a conversation, decide if the latest user message requires a real-time web search.
 
-Respond ONLY with valid JSON in this exact format, nothing else:
-{"shouldSearch": true, "query": "optimal search query here"}
-or
-{"shouldSearch": false, "query": null}
+Respond ONLY with valid JSON in one of these three exact formats, nothing else:
+
+1. Search is clear and needed:
+{"state": "search", "query": "optimal search query capturing full context"}
+
+2. Not needed (greetings, code, math, already answered by history):
+{"state": "skip", "query": null}
+
+3. Intent is ambiguous — you need ONE clarification before searching:
+{"state": "clarify", "query": null, "question": "short specific question to ask user"}
 
 Rules:
-- shouldSearch=true for: current events, prices, scores, schedules, weather, news, specific facts that change over time, anything needing up-to-date info
-- shouldSearch=false for: greetings, code help, math, explanations, follow-ups that are answered by conversation history alone
-- The query must reflect the FULL context of what the user wants, not just their last message
-- If the user says "try again" or gives a location as follow-up to a previous search question, the query must incorporate the original topic + the new detail`
+- state=search: current events, prices, scores, schedules, weather, news, real-time facts
+- state=skip: greetings, follow-ups answered by history, code help, math, explanations
+- state=clarify: ONLY when searching now would waste credits because a key detail is missing (e.g. which competition, which city, which date range). Do NOT clarify for minor details — make a reasonable assumption instead.
+- The query must reflect FULL conversation context not just the last message
+- If user says "try again" incorporate the original topic + new detail into the query
+- Prefer state=search with a best-guess query over state=clarify unless truly ambiguous`
                     },
                     {
                         role: 'user',
@@ -405,21 +414,25 @@ Rules:
             }),
         });
 
-        if (!intentResponse.ok) return { shouldSearch: true, searchHint: lastUserText, urls };
+        if (!intentResponse.ok) return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
 
         const raw = await intentResponse.json();
         const text = raw?.choices?.[0]?.message?.content || raw?.content?.[0]?.text || '';
         const cleaned = text.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(cleaned);
 
+        if (parsed.state === 'clarify' && parsed.question) {
+            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: parsed.question };
+        }
         return {
-            shouldSearch: parsed.shouldSearch === true,
+            shouldSearch: parsed.state === 'search',
             searchHint: parsed.query || null,
             urls,
+            clarificationNeeded: null,
         };
     } catch {
         // Fallback: if AI call fails, allow search with raw query
-        return { shouldSearch: true, searchHint: lastUserText, urls };
+        return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
     }
 }
 
@@ -454,7 +467,13 @@ async function streamViaEdgeFunction(
     };
 
     if (webSearchEnabled) {
-        const { shouldSearch, searchHint, urls } = await resolveWebSearchContext(apiMessages);
+        const { shouldSearch, searchHint, urls, clarificationNeeded } = await resolveWebSearchContext(apiMessages);
+
+        if (clarificationNeeded) {
+            callbacks.onClarificationNeeded?.(clarificationNeeded);
+            return;
+        }
+
         if (shouldSearch) {
             requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5 }];
             callbacks.onWebSearchUsed?.();
