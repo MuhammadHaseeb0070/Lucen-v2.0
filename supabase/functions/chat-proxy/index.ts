@@ -189,7 +189,7 @@ Deno.serve(async (req: Request) => {
         console.log(`[Auth OK] ${user.id} (${user.email})`);
 
         // ─── Parse request body ───
-        const { messages, model, max_tokens, is_reasoning, stream, plugins } = await req.json();
+        const { messages, model, max_tokens, is_reasoning, stream, plugins, __bg_description } = await req.json();
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -254,7 +254,8 @@ Deno.serve(async (req: Request) => {
             ? ((creditsRow as Record<string, unknown>).free_searches_used as number)
             : 0;
 
-        if (remainingCredits <= 0) {
+        // Background description calls use cheap model and minimal credits — skip credit gate
+        if (remainingCredits <= 0 && !__bg_description) {
             return new Response(
                 JSON.stringify({ error: 'Insufficient credits' }),
                 { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
@@ -288,10 +289,9 @@ Deno.serve(async (req: Request) => {
         // The client computes a dynamic budget based on actual input size;
         // here we simply enforce an upper bound to prevent abuse.
         const SERVER_MAX_TOKENS_CAP = 32768;
-        const resolvedMaxTokens = Math.min(
-            Math.max(512, Number(max_tokens) || 16384),
-            SERVER_MAX_TOKENS_CAP
-        );
+        const resolvedMaxTokens = __bg_description 
+            ? 200 
+            : Math.min(Math.max(512, Number(max_tokens) || 16384), SERVER_MAX_TOKENS_CAP);
 
         const shouldStream = stream !== false;
 

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import type { Conversation, Message } from '../types';
-import { hasActiveSessionSync } from '../lib/supabase';
+import { hasActiveSessionSync, supabase } from '../lib/supabase';
 import * as db from '../services/database';
 
 interface ChatStore {
@@ -19,6 +19,7 @@ interface ChatStore {
     renameConversation: (id: string, title: string) => void;
     setActiveConversation: (id: string | null) => void;
     clearChats: () => void;
+    updateAttachmentDescription: (dataUrl: string, description: string) => void;
 
     // Message actions
     addMessage: (convId: string, message: Message) => void;
@@ -122,6 +123,39 @@ export const useChatStore = create<ChatStore>()(
 
             clearChats: () => {
                 set({ conversations: [], activeConversationId: null, drafts: {} });
+            },
+
+            updateAttachmentDescription: (dataUrl, description) => {
+                set((state) => ({
+                    conversations: state.conversations.map((c) => ({
+                        ...c,
+                        messages: c.messages.map((m) => {
+                            if (!m.attachments?.some((a) => a.dataUrl === dataUrl)) return m;
+                            return {
+                                ...m,
+                                attachments: m.attachments.map((a) =>
+                                    a.dataUrl === dataUrl ? { ...a, aiDescription: description } : a
+                                ),
+                            };
+                        }),
+                    })),
+                }));
+
+                const state = get();
+                const c = state.conversations.find((conv) => conv.messages.some((msg) => msg.attachments?.some((att) => att.dataUrl === dataUrl)));
+                if (c && supabase) {
+                    const msg = c.messages.find((m) => m.attachments?.some((a) => a.dataUrl === dataUrl));
+                    if (msg) {
+                        const att = msg.attachments?.find((a) => a.dataUrl === dataUrl);
+                        if (att?.name) {
+                            supabase.from('file_attachments')
+                                .update({ ai_description: description })
+                                .eq('message_id', msg.id)
+                                .eq('file_name', att.name)
+                                .then();
+                        }
+                    }
+                }
             },
 
             addMessage: (convId, message) => {

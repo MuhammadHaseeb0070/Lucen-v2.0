@@ -5,6 +5,7 @@ import { TEMPLATES, BASE_SYSTEM_PROMPT } from '../config/prompts';
 import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import { useTokenStore } from '../store/tokenStore';
+import { useChatStore } from '../store/chatStore';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
@@ -272,6 +273,77 @@ export async function streamChat(
 /**
  * Wrapper for streamViaEdgeFunction to handle artifact continuation logic.
  */
+async function generateImageDescriptionsInBackground(
+    apiMessages: Array<Record<string, unknown>>
+): Promise<void> {
+    // Find last user message with images
+    const lastUserMsg = [...apiMessages].reverse().find(m => m.role === 'user');
+    if (!lastUserMsg) return;
+
+    const content = lastUserMsg.content;
+    if (!Array.isArray(content)) return;
+
+    const images = (content as Array<Record<string, unknown>>)
+        .filter(p => p.type === 'image_url' && p.image_url);
+
+    if (images.length === 0) return;
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    try {
+        const { data: { session } } = await supabase!.auth.getSession();
+        if (!session?.access_token) return;
+
+        // Process all images in parallel — non-blocking
+        await Promise.allSettled(images.map(async (imgPart) => {
+            const imgUrl = (imgPart.image_url as Record<string, unknown>).url as string;
+            if (!imgUrl) return;
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': anonKey || '',
+                },
+                body: JSON.stringify({
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'text',
+                                text: 'Describe this image in detail. Cover: main subject, colors, style, text visible, mood, any specific details that would help answer follow-up questions about it. Be thorough but concise. Max 150 words.'
+                            },
+                            {
+                                type: 'image_url',
+                                image_url: { url: imgUrl }
+                            }
+                        ]
+                    }],
+                    model: 'google/gemini-2.0-flash-lite-001',
+                    max_tokens: 200,
+                    stream: false,
+                    __bg_description: true,
+                }),
+            });
+
+            if (!response.ok) return;
+            const data = await response.json();
+            const description = data?.choices?.[0]?.message?.content;
+            if (!description) return;
+
+            // Store back to zustand and DB via existing store
+            const { updateAttachmentDescription } = useChatStore.getState();
+            if (updateAttachmentDescription) {
+                updateAttachmentDescription(imgUrl, description);
+            }
+        }));
+    } catch {
+        // Silent fail — description is optional, never block user
+    }
+}
+
 async function streamViaEdgeFunctionWrapper(
     apiMessages: Array<Record<string, unknown>>,
     model: ReturnType<typeof getActiveModel>,
@@ -293,6 +365,9 @@ async function streamViaEdgeFunctionWrapper(
             callbacks.onChunk(chunk, isContinuation || continuationCount > 0);
         },
         onDone: async (truncated) => {
+            // After first reply — silently generate descriptions for any images in last user message
+            generateImageDescriptionsInBackground(apiMessages);
+            
             // Check if stream ended naturally but artifact is cut off
             const isPartialArtifact = PARTIAL_OPEN_RE.test(fullResponse) || INCOMPLETE_TAG_RE.test(fullResponse);
             
