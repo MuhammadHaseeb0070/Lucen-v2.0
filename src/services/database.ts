@@ -149,14 +149,10 @@ export async function fetchMessages(conversationId: string): Promise<Message[] |
                             // ─── Task 3: Restore Source from Storage ───
                             // If a storage path exists, generate its public URL and use it as dataUrl.
                             // This ensures the UI can render historical images correctly.
-                            // @ts-ignore
                             storagePath: matched.storage_path || null,
-                            // @ts-ignore
                             dataUrl: matched.storage_path && supabase ? 
                                 supabase.storage.from('attachments').getPublicUrl(matched.storage_path).data.publicUrl : undefined,
-                            // @ts-ignore
                             aiDescription: matched.ai_description || null,
-                            // @ts-ignore
                             tokenEstimate: matched.token_estimate || null,
                         };
                     }
@@ -201,13 +197,9 @@ export async function saveMessage(
             conversation_id: conversationId,
             file_name: a.name,
             file_type: a.type,
-            // @ts-ignore: these fields were enriched in fileProcessor.ts
             storage_path: a.storagePath || null,
-            // @ts-ignore
             extracted_text: a.textContent || null,
-            // @ts-ignore
             ai_description: a.aiDescription || null,
-            // @ts-ignore
             token_estimate: a.tokenEstimate || (a.textContent || a.aiDescription ? Math.ceil(((a.textContent || a.aiDescription)?.length || 0) / 4) : null),
         }));
 

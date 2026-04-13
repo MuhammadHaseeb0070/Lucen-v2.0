@@ -329,7 +329,6 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
                 }
             });
             if (!aiError && aiResponse?.choices?.[0]?.message?.content) {
-                // @ts-ignore
                 attachment.aiDescription = aiResponse.choices[0].message.content;
             }
         } catch (err) { console.warn('[FileProcessor] AI Enrichment failed:', err); }
@@ -346,7 +345,6 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
             if (uploadError) {
                 console.error(`[FileProcessor] Storage upload FAILED:`, uploadError);
             } else if (uploadData) {
-                // @ts-ignore
                 attachment.storagePath = uploadData.path;
                 console.log(`[FileProcessor] Upload SUCCESS: ${uploadData.path}`);
             }
@@ -354,9 +352,9 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
     }
 
     // Token Estimation
-    const contentToCount = attachment.textContent || (attachment as any).aiDescription || '';
+    const contentToCount = attachment.textContent || attachment.aiDescription || '';
     if (contentToCount) {
-        (attachment as any).tokenEstimate = Math.ceil(contentToCount.length / 4);
+        attachment.tokenEstimate = Math.ceil(contentToCount.length / 4);
     }
 
     return attachment;

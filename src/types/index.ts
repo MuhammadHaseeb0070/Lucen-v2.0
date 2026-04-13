@@ -6,6 +6,9 @@ export interface FileAttachment {
   size: number;
   dataUrl?: string;       // base64 data URL for images (API + display)
   textContent?: string;   // extracted text for PDF/CSV/TXT files
+  aiDescription?: string;
+  storagePath?: string;
+  tokenEstimate?: number;
 }
 
 export interface Message {

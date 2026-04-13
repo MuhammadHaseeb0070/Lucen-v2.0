@@ -41,7 +41,7 @@ function buildMessageContent(msg: Message, includeImages: boolean = true, includ
 
     const parts: Array<Record<string, unknown>> = [];
     const textAttachments = msg.attachments.filter((a) => a.textContent);
-    const imageAttachments = msg.attachments.filter((a) => a.type === 'image' && a.dataUrl);
+    const imageAttachments = msg.attachments.filter((a) => a.type === 'image' && (a.dataUrl || a.aiDescription));
 
     // 1. Attachment summary — so the model knows exactly what files are present
     const summary = msg.attachments
@@ -74,10 +74,32 @@ function buildMessageContent(msg: Message, includeImages: boolean = true, includ
     // Only include base64 images if explicitly requested (optimization: last 2 messages only)
     if (includeImages) {
         for (const img of imageAttachments) {
-            parts.push({
-                type: 'image_url',
-                image_url: { url: img.dataUrl },
-            });
+            if (img.dataUrl) {
+                parts.push({
+                    type: 'image_url',
+                    image_url: { url: img.dataUrl },
+                });
+            } else if (img.aiDescription) {
+                parts.push({
+                    type: 'text',
+                    text: `[Image: ${img.name} — AI description: ${img.aiDescription}]`,
+                });
+            }
+        }
+    } else {
+        // Image is too old to send base64 — inject description as text fallback
+        for (const img of imageAttachments) {
+            if (img.aiDescription) {
+                parts.push({
+                    type: 'text',
+                    text: `[Image: ${img.name} — previously uploaded. Description: ${img.aiDescription}]`,
+                });
+            } else {
+                parts.push({
+                    type: 'text',
+                    text: `[Image: ${img.name} — was uploaded earlier in this conversation]`,
+                });
+            }
         }
     }
 
