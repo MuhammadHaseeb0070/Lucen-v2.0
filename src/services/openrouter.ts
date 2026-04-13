@@ -359,6 +359,7 @@ async function resolveWebSearchContext(
     if (!session?.access_token) return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
 
     try {
+        console.log('[classify-intent] calling with messages count:', contextMessages.length);
         const intentResponse = await fetch(`${supabaseUrl}/functions/v1/classify-intent`, {
             method: 'POST',
             headers: {
@@ -369,11 +370,13 @@ async function resolveWebSearchContext(
             body: JSON.stringify({ messages: contextMessages }),
         });
 
+        console.log('[classify-intent] response status:', intentResponse.status);
+        const result = await intentResponse.json();
+        console.log('[classify-intent] result:', JSON.stringify(result));
+
         if (!intentResponse.ok) {
             return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
         }
-
-        const result = await intentResponse.json();
 
         if (result.state === 'skip') return noSearch;
 
@@ -392,7 +395,8 @@ async function resolveWebSearchContext(
 
         return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
 
-    } catch {
+    } catch (err) {
+        console.error('[classify-intent] FAILED:', err);
         return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
     }
 }
