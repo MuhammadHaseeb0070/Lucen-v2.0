@@ -317,44 +317,110 @@ async function streamViaEdgeFunctionWrapper(
 /**
  * Stream via Supabase Edge Function (chat-proxy).
  */
-async function shouldPerformWebSearch(
+async function resolveWebSearchContext(
     apiMessages: Array<Record<string, unknown>>
-): Promise<boolean> {
-    const lastUserMessage = [...apiMessages]
-        .reverse()
-        .find((m) => m.role === 'user');
+): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[] }> {
+    const noSearch = { shouldSearch: false, searchHint: null, urls: [] };
 
-    if (!lastUserMessage) return false;
+    // Get last 5 messages for context (cheap, not all 30)
+    const contextMessages = apiMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-5);
 
-    const content = lastUserMessage.content;
-    const text = typeof content === 'string'
-        ? content
-        : Array.isArray(content)
-            ? (content as Array<Record<string, unknown>>)
+    if (contextMessages.length === 0) return noSearch;
+
+    // Extract last user message text
+    const lastUser = [...contextMessages].reverse().find((m) => m.role === 'user');
+    if (!lastUser) return noSearch;
+
+    const extractText = (content: unknown): string => {
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return (content as Array<Record<string, unknown>>)
                 .filter((p) => p.type === 'text')
                 .map((p) => p.text as string)
-                .join(' ')
-            : '';
+                .join(' ');
+        }
+        return '';
+    };
 
-    const trimmed = text.trim().toLowerCase();
+    const lastUserText = extractText(lastUser.content).trim();
 
-    // Skip search for short conversational messages
-    const conversationalPatterns = [
-        /^(hi|hello|hey|thanks|thank you|ok|okay|sure|yes|no|nope|yep|got it|great|nice|cool|perfect|awesome|sounds good|agreed|alright|fine|please|go ahead|continue|done|stop|wait|lol|haha)[\s!.?]*$/i,
-    ];
-    if (conversationalPatterns.some((re) => re.test(trimmed))) return false;
-    if (trimmed.length < 8) return false;
+    // Skip trivially short conversational messages without AI call
+    if (lastUserText.length < 4) return noSearch;
+    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed)[\s!.?]*$/i;
+    if (trivial.test(lastUserText)) return noSearch;
 
-    // Always search for strong signals
-    const searchSignals = [
-        /\b(latest|recent|current|today|now|news|price|weather|score|update|release|version|live|breaking|trending|stock|who is|what is the|when is|where is)\b/i,
-        /\b(2024|2025|2026)\b/,
-        /\?$/,
-    ];
-    if (searchSignals.some((re) => re.test(trimmed))) return true;
+    // Extract any URLs the user explicitly mentioned
+    const urlRegex = /https?:\/\/[^\s"'<>]+/g;
+    const urls = lastUserText.match(urlRegex) || [];
 
-    // For anything else over 15 chars with web search on, allow it
-    return trimmed.length > 15;
+    // Build conversation summary for intent AI call
+    const conversationSummary = contextMessages
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${extractText(m.content).slice(0, 300)}`)
+        .join('\n');
+
+    // Call cheap model to determine real search intent
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabase) return noSearch;
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return noSearch;
+
+    try {
+        const intentResponse = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': anonKey || '',
+            },
+            body: JSON.stringify({
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are a search intent classifier. Given a conversation, decide if the latest user message requires a real-time web search. If yes, generate the optimal search query capturing the full context.
+
+Respond ONLY with valid JSON in this exact format, nothing else:
+{"shouldSearch": true, "query": "optimal search query here"}
+or
+{"shouldSearch": false, "query": null}
+
+Rules:
+- shouldSearch=true for: current events, prices, scores, schedules, weather, news, specific facts that change over time, anything needing up-to-date info
+- shouldSearch=false for: greetings, code help, math, explanations, follow-ups that are answered by conversation history alone
+- The query must reflect the FULL context of what the user wants, not just their last message
+- If the user says "try again" or gives a location as follow-up to a previous search question, the query must incorporate the original topic + the new detail`
+                    },
+                    {
+                        role: 'user',
+                        content: `Conversation:\n${conversationSummary}\n\nShould this require a web search? If yes, what is the ideal search query?`
+                    }
+                ],
+                model: 'google/gemini-2.0-flash-lite-001',
+                max_tokens: 100,
+                stream: false,
+                __intent_check: true,
+            }),
+        });
+
+        if (!intentResponse.ok) return { shouldSearch: true, searchHint: lastUserText, urls };
+
+        const raw = await intentResponse.json();
+        const text = raw?.choices?.[0]?.message?.content || raw?.content?.[0]?.text || '';
+        const cleaned = text.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+
+        return {
+            shouldSearch: parsed.shouldSearch === true,
+            searchHint: parsed.query || null,
+            urls,
+        };
+    } catch {
+        // Fallback: if AI call fails, allow search with raw query
+        return { shouldSearch: true, searchHint: lastUserText, urls };
+    }
 }
 
 /**
@@ -388,10 +454,30 @@ async function streamViaEdgeFunction(
     };
 
     if (webSearchEnabled) {
-        const needsSearch = await shouldPerformWebSearch(apiMessages);
-        if (needsSearch) {
+        const { shouldSearch, searchHint, urls } = await resolveWebSearchContext(apiMessages);
+        if (shouldSearch) {
             requestPayload.plugins = [{ id: 'web', engine: 'exa', max_results: 5 }];
             callbacks.onWebSearchUsed?.();
+            // Inject context-aware search hint so model searches correctly
+            if (searchHint) {
+                requestPayload.messages = [
+                    ...(requestPayload.messages as Array<Record<string, unknown>>),
+                    {
+                        role: 'system',
+                        content: `[Search Directive: The user's actual information need based on full conversation context is: "${searchHint}". Use this as your web search query. Do not search for something unrelated.]`,
+                    },
+                ];
+            }
+            // If user mentioned specific URLs, add fetch directive
+            if (urls.length > 0) {
+                requestPayload.messages = [
+                    ...(requestPayload.messages as Array<Record<string, unknown>>),
+                    {
+                        role: 'system',
+                        content: `[URL Directive: The user explicitly referenced these URLs: ${urls.join(', ')}. Retrieve and use their content in your response.]`,
+                    },
+                ];
+            }
         }
     }
 

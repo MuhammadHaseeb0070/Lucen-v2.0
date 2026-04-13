@@ -189,7 +189,23 @@ Deno.serve(async (req: Request) => {
         console.log(`[Auth OK] ${user.id} (${user.email})`);
 
         // ─── Parse request body ───
-        const { messages, model, max_tokens, is_reasoning, stream, plugins } = await req.json();
+        const { messages, model, max_tokens, is_reasoning, stream, plugins, __intent_check } = await req.json();
+
+        // Lightweight intent check calls skip credit deduction and use cheap model
+        if (__intent_check === true) {
+            const intentResponse = await fetch(OPENROUTER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openrouterApiKey}`,
+                },
+                body: JSON.stringify({ model: 'google/gemini-2.0-flash-lite-001', messages, max_tokens: 100, stream: false }),
+            });
+            const intentData = await intentResponse.json();
+            return new Response(JSON.stringify(intentData), {
+                headers: { ...cors, 'Content-Type': 'application/json' },
+            });
+        }
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
