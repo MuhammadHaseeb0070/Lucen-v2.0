@@ -99,9 +99,10 @@ Deno.serve(async (req: Request) => {
         const serperPayload = { q: query, num: 5 };
         console.log('[DEBUG] Serper Payload IN:', JSON.stringify(serperPayload));
 
+        const cleanSerperKey = serperApiKey.replace(/['"]/g, '').trim();
         const serperResponse = await fetch(SERPER_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-API-KEY': serperApiKey },
+            headers: { 'Content-Type': 'application/json', 'X-API-KEY': cleanSerperKey },
             body: JSON.stringify(serperPayload),
         });
 
