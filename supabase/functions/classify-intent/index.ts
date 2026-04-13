@@ -1,7 +1,7 @@
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const SERPER_URL = 'https://google.serper.dev/search';
+const TAVILY_URL = 'https://api.tavily.com/search';
 const INTENT_MODEL = 'google/gemini-2.0-flash-lite-001';
 
 const INTENT_SYSTEM = `You are a web search intent classifier. Analyze the conversation and decide if the latest user message needs a real-time web search.
@@ -28,7 +28,7 @@ Deno.serve(async (req: Request) => {
         if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
 
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-        const serperApiKey = Deno.env.get('SERPER_API_KEY');
+        const tavilyApiKey = Deno.env.get('TAVILY_API_KEY');
 
         const { messages, doSearch } = await req.json();
         if (!Array.isArray(messages) || messages.length === 0) {
@@ -87,52 +87,54 @@ Deno.serve(async (req: Request) => {
             return new Response(JSON.stringify(intent), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
-        // Phase 2: if state=search and serper available, do the actual search here
+        // Phase 2: if state=search and tavily available, do the actual search here
         const query = String(intent.query || extractText(contextWindow[contextWindow.length-1]?.content));
 
-        if (!serperApiKey) {
+        if (!tavilyApiKey) {
             return new Response(JSON.stringify({ state: 'search', query, results: null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
-        console.log('[DEBUG] Firing Serper SEARCH. Query:', query);
+        console.log('[DEBUG] Firing Tavily SEARCH. Query:', query);
         
-        const serperPayload = { q: query, num: 5 };
-        console.log('[DEBUG] Serper Payload IN:', JSON.stringify(serperPayload));
+        const tavilyPayload = { 
+            api_key: tavilyApiKey.replace(/['"]/g, '').trim(), 
+            query: query, 
+            search_depth: "basic",
+            include_answer: true,
+            max_results: 5 
+        };
 
-        const cleanSerperKey = serperApiKey.replace(/['"]/g, '').trim();
-        const serperResponse = await fetch(SERPER_URL, {
+        const searchResponse = await fetch(TAVILY_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-API-KEY': cleanSerperKey },
-            body: JSON.stringify(serperPayload),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tavilyPayload),
         });
 
-        console.log('[Serper] status:', serperResponse.status);
-        const serperRaw = await serperResponse.text();
-        console.log('[Serper] raw response:', serperRaw.slice(0, 500));
+        console.log('[Tavily] status:', searchResponse.status);
+        const searchRaw = await searchResponse.text();
         
-        if (!serperResponse.ok) {
-            console.error('[Serper] failed with status:', serperResponse.status, serperRaw);
+        if (!searchResponse.ok) {
+            console.error('[Tavily] failed with status:', searchResponse.status, searchRaw);
             return new Response(JSON.stringify({ state: 'search', query, results: null }), { 
                 headers: { ...cors, 'Content-Type': 'application/json' } 
             });
         }
         
-        const serperData = JSON.parse(serperRaw);
+        const searchData = JSON.parse(searchRaw);
 
         // Extract clean results
-        const organic = (serperData.organic || []).slice(0, 5).map((r: Record<string,unknown>) => ({
+        const organic = (searchData.results || []).map((r: Record<string,unknown>) => ({
             title: r.title,
-            snippet: r.snippet,
-            link: r.link,
+            snippet: r.content,
+            link: r.url,
         }));
 
-        const answerBox = serperData.answerBox || null;
-        const knowledgeGraph = serperData.knowledgeGraph || null;
+        const answerBox = searchData.answer ? { answer: searchData.answer } : null;
 
         return new Response(JSON.stringify({
             state: 'search',
             query,
-            results: { organic, answerBox, knowledgeGraph }
+            results: { organic, answerBox, knowledgeGraph: null }
         }), { headers: { ...cors, 'Content-Type': 'application/json' } });
 
     } catch (err) {
