@@ -323,16 +323,11 @@ async function resolveWebSearchContext(
 ): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null }> {
     const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null };
 
-    // Get last 5 messages for context (cheap, not all 30)
     const contextMessages = apiMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(-5);
+        .slice(-6);
 
     if (contextMessages.length === 0) return noSearch;
-
-    // Extract last user message text
-    const lastUser = [...contextMessages].reverse().find((m) => m.role === 'user');
-    if (!lastUser) return noSearch;
 
     const extractText = (content: unknown): string => {
         if (typeof content === 'string') return content;
@@ -345,93 +340,59 @@ async function resolveWebSearchContext(
         return '';
     };
 
+    const lastUser = [...contextMessages].reverse().find((m) => m.role === 'user');
+    if (!lastUser) return noSearch;
     const lastUserText = extractText(lastUser.content).trim();
 
-    // Skip trivially short conversational messages without AI call
-    if (lastUserText.length < 4) return noSearch;
-    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed)[\s!.?]*$/i;
+    // Hard skip — no AI call needed
+    if (lastUserText.length < 3) return noSearch;
+    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed|nice|awesome|sounds good)[\s!.?]*$/i;
     if (trivial.test(lastUserText)) return noSearch;
 
-    // Extract any URLs the user explicitly mentioned
+    // Extract explicit URLs
     const urlRegex = /https?:\/\/[^\s"'<>]+/g;
     const urls = lastUserText.match(urlRegex) || [];
 
-    // Build conversation summary for intent AI call
-    const conversationSummary = contextMessages
-        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${extractText(m.content).slice(0, 300)}`)
-        .join('\n');
-
-    // Call cheap model to determine real search intent
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabase) return noSearch;
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return noSearch;
+    const { data: { session } } = await supabase!.auth.getSession();
+    if (!session?.access_token) return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
 
     try {
-        const intentResponse = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
+        const intentResponse = await fetch(`${supabaseUrl}/functions/v1/classify-intent`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`,
                 'apikey': anonKey || '',
             },
-            body: JSON.stringify({
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are a search intent classifier. Given a conversation, decide if the latest user message requires a real-time web search.
-
-Respond ONLY with valid JSON in one of these three exact formats, nothing else:
-
-1. Search is clear and needed:
-{"state": "search", "query": "optimal search query capturing full context"}
-
-2. Not needed (greetings, code, math, already answered by history):
-{"state": "skip", "query": null}
-
-3. Intent is ambiguous — you need ONE clarification before searching:
-{"state": "clarify", "query": null, "question": "short specific question to ask user"}
-
-Rules:
-- state=search: current events, prices, scores, schedules, weather, news, real-time facts
-- state=skip: greetings, follow-ups answered by history, code help, math, explanations
-- state=clarify: ONLY when searching now would waste credits because a key detail is missing (e.g. which competition, which city, which date range). Do NOT clarify for minor details — make a reasonable assumption instead.
-- The query must reflect FULL conversation context not just the last message
-- If user says "try again" incorporate the original topic + new detail into the query
-- Prefer state=search with a best-guess query over state=clarify unless truly ambiguous`
-                    },
-                    {
-                        role: 'user',
-                        content: `Conversation:\n${conversationSummary}\n\nShould this require a web search? If yes, what is the ideal search query?`
-                    }
-                ],
-                model: 'google/gemini-2.0-flash-lite-001',
-                max_tokens: 100,
-                stream: false,
-                __intent_check: true,
-            }),
+            body: JSON.stringify({ messages: contextMessages }),
         });
 
-        if (!intentResponse.ok) return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
-
-        const raw = await intentResponse.json();
-        const text = raw?.choices?.[0]?.message?.content || raw?.content?.[0]?.text || '';
-        const cleaned = text.replace(/```json|```/g, '').trim();
-        const parsed = JSON.parse(cleaned);
-
-        if (parsed.state === 'clarify' && parsed.question) {
-            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: parsed.question };
+        if (!intentResponse.ok) {
+            return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
         }
-        return {
-            shouldSearch: parsed.state === 'search',
-            searchHint: parsed.query || null,
-            urls,
-            clarificationNeeded: null,
-        };
+
+        const result = await intentResponse.json();
+
+        if (result.state === 'skip') return noSearch;
+
+        if (result.state === 'clarify' && result.question) {
+            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: result.question };
+        }
+
+        if (result.state === 'search') {
+            return {
+                shouldSearch: true,
+                searchHint: result.query || lastUserText,
+                urls,
+                clarificationNeeded: null,
+            };
+        }
+
+        return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
+
     } catch {
-        // Fallback: if AI call fails, allow search with raw query
         return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
     }
 }
