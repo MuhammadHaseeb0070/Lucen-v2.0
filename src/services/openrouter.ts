@@ -32,7 +32,7 @@ interface StreamOptions {
  * - With attachments → array of content parts (multimodal)
  * Puts text first (as recommended by OpenRouter), then images.
  */
-function buildMessageContent(msg: Message, includeImages: boolean = true): string | Array<Record<string, unknown>> {
+function buildMessageContent(msg: Message, includeImages: boolean = true, includeFileText: boolean = true): string | Array<Record<string, unknown>> {
     if (!msg.attachments || msg.attachments.length === 0) {
         return msg.content;
     }
@@ -50,9 +50,13 @@ function buildMessageContent(msg: Message, includeImages: boolean = true): strin
 
     // 2. Text file contents
     if (textAttachments.length > 0) {
-        const contextBlock = textAttachments
-            .map((a) => `── File: ${a.name} (${formatFileSize(a.size)}) ──\n${a.textContent}`)
-            .join('\n\n');
+        const contextBlock = includeFileText
+            ? textAttachments
+                .map((a) => `── File: ${a.name} (${formatFileSize(a.size)}) ──\n${a.textContent}`)
+                .join('\n\n')
+            : textAttachments
+                .map((a) => `[File: ${a.name} — content was provided earlier in this conversation]`)
+                .join('\n');
         parts.push({ type: 'text', text: contextBlock + '\n\n' });
     }
 
@@ -116,7 +120,11 @@ function buildApiMessages(messages: Message[], systemPromptOverride?: string): A
                 role: m.role,
                 // OPTIMIZATION: Only include raw image base64 for the last 2 messages.
                 // For older messages, the model relies on the aiDescription in textContent.
-                content: buildMessageContent(m, index >= recentMessages.length - 2),
+                content: buildMessageContent(
+                    m,
+                    index >= recentMessages.length - 2,
+                    index >= recentMessages.length - 3
+                ),
             })),
     ];
 }
