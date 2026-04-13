@@ -105,8 +105,18 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify(serperPayload),
         });
 
-        const serperData = await serperResponse.json();
-        console.log('[DEBUG] Serper RAW Output:', JSON.stringify(serperData).substring(0, 500) + '... (truncated)');
+        console.log('[Serper] status:', serperResponse.status);
+        const serperRaw = await serperResponse.text();
+        console.log('[Serper] raw response:', serperRaw.slice(0, 500));
+        
+        if (!serperResponse.ok) {
+            console.error('[Serper] failed with status:', serperResponse.status, serperRaw);
+            return new Response(JSON.stringify({ state: 'search', query, results: null }), { 
+                headers: { ...cors, 'Content-Type': 'application/json' } 
+            });
+        }
+        
+        const serperData = JSON.parse(serperRaw);
 
         // Extract clean results
         const organic = (serperData.organic || []).slice(0, 5).map((r: Record<string,unknown>) => ({
