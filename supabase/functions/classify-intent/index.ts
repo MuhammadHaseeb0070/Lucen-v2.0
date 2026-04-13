@@ -48,27 +48,39 @@ Deno.serve(async (req: Request) => {
             .join('\n');
 
         // Phase 1: classify intent
+        console.log('[DEBUG] Classify Intent Input Context:', conversationText);
+        
+        const orPayload = {
+            model: INTENT_MODEL,
+            messages: [
+                { role: 'system', content: INTENT_SYSTEM },
+                { role: 'user', content: `Conversation:\n${conversationText}\n\nClassify intent.` }
+            ],
+            max_tokens: 120,
+            stream: false,
+            temperature: 0,
+        };
+        console.log('[DEBUG] OpenRouter Intent Payload:', JSON.stringify(orPayload));
+
         const orResponse = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openrouterApiKey}` },
-            body: JSON.stringify({
-                model: INTENT_MODEL,
-                messages: [
-                    { role: 'system', content: INTENT_SYSTEM },
-                    { role: 'user', content: `Conversation:\n${conversationText}\n\nClassify intent.` }
-                ],
-                max_tokens: 120,
-                stream: false,
-                temperature: 0,
-            }),
+            body: JSON.stringify(orPayload),
         });
 
         const orData = await orResponse.json();
+        console.log('[DEBUG] OpenRouter RAW Response:', JSON.stringify(orData));
+        
         const raw = orData?.choices?.[0]?.message?.content || '';
         const cleaned = raw.replace(/```json|```/g, '').trim();
 
         let intent: Record<string, unknown> = { state: 'search', query: null };
-        try { intent = JSON.parse(cleaned); } catch { /* use default */ }
+        try { 
+            intent = JSON.parse(cleaned); 
+            console.log('[DEBUG] Parsed Intent State:', JSON.stringify(intent));
+        } catch { 
+            console.log('[DEBUG] Failed to parse intent JSON, defaulting to search');
+        }
 
         // If skip or clarify, return immediately — no search
         if (intent.state !== 'search') {
@@ -82,13 +94,19 @@ Deno.serve(async (req: Request) => {
             return new Response(JSON.stringify({ state: 'search', query, results: null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
+        console.log('[DEBUG] Firing Serper SEARCH. Query:', query);
+        
+        const serperPayload = { q: query, num: 5 };
+        console.log('[DEBUG] Serper Payload IN:', JSON.stringify(serperPayload));
+
         const serperResponse = await fetch(SERPER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-API-KEY': serperApiKey },
-            body: JSON.stringify({ q: query, num: 5 }),
+            body: JSON.stringify(serperPayload),
         });
 
         const serperData = await serperResponse.json();
+        console.log('[DEBUG] Serper RAW Output:', JSON.stringify(serperData).substring(0, 500) + '... (truncated)');
 
         // Extract clean results
         const organic = (serperData.organic || []).slice(0, 5).map((r: Record<string,unknown>) => ({

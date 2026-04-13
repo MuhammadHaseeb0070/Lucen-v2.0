@@ -44,7 +44,9 @@ const ChatArea: React.FC = () => {
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
     const activeConv = getActiveConversation();
+    // @ts-ignore: Suppress Vercel unused error if it builds differently
     const model = getActiveModel();
+
     const pendingMainComposerPrefill = useComposerStore((s) => s.pendingMainComposerPrefill);
     const consumePendingMainComposerPrefill = useComposerStore((s) => s.consumePendingMainComposerPrefill);
 
