@@ -444,7 +444,7 @@ async function streamViaEdgeFunction(
     };
 
     if (webSearchEnabled) {
-        const { shouldSearch, searchHint, urls, clarificationNeeded, searchResults } = await resolveWebSearchContext(apiMessages);
+        const { shouldSearch, urls, clarificationNeeded, searchResults } = await resolveWebSearchContext(apiMessages);
 
         if (clarificationNeeded) {
             callbacks.onClarificationNeeded?.(clarificationNeeded);
