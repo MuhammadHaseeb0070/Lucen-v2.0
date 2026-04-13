@@ -2,7 +2,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
-const INTENT_MODEL = 'google/gemini-2.0-flash-lite-001';
+const INTENT_MODEL = 'openai/gpt-4o-mini';
 
 const INTENT_SYSTEM = `You are a web search intent classifier. Analyze the conversation and decide if the latest user message needs a real-time web search.
 
@@ -37,23 +37,25 @@ Deno.serve(async (req: Request) => {
 
         const extractText = (content: unknown): string => {
             if (typeof content === 'string') return content;
-            if (Array.isArray(content)) return (content as Array<Record<string,unknown>>).filter(p => !!p && p.type === 'text').map(p => String(p.text||'')).join(' ');
+            if (Array.isArray(content)) return (content as Array<Record<string, unknown>>).filter(p => !!p && p.type === 'text').map(p => String(p.text || '')).join(' ');
             return '';
         };
 
         const contextWindow = messages.slice(-6);
         const conversationText = contextWindow
-            .filter((m: Record<string,unknown>) => m.role === 'user' || m.role === 'assistant')
-            .map((m: Record<string,unknown>) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${extractText(m.content).slice(0, 400)}`)
+            .filter((m: Record<string, unknown>) => m.role === 'user' || m.role === 'assistant')
+            .map((m: Record<string, unknown>) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${extractText(m.content).slice(0, 400)}`)
             .join('\n');
+
+        const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
         // Phase 1: classify intent
         console.log('[DEBUG] Classify Intent Input Context:', conversationText);
-        
+
         const orPayload = {
             model: INTENT_MODEL,
             messages: [
-                { role: 'system', content: INTENT_SYSTEM },
+                { role: 'system', content: INTENT_SYSTEM + `\nToday's exact date is: ${currentDate}. If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures').` },
                 { role: 'user', content: `Conversation:\n${conversationText}\n\nClassify intent.` }
             ],
             max_tokens: 120,
@@ -70,15 +72,15 @@ Deno.serve(async (req: Request) => {
 
         const orData = await orResponse.json();
         console.log('[DEBUG] OpenRouter RAW Response:', JSON.stringify(orData));
-        
+
         const raw = orData?.choices?.[0]?.message?.content || '';
         const cleaned = raw.replace(/```json|```/g, '').trim();
 
         let intent: Record<string, unknown> = { state: 'search', query: null };
-        try { 
-            intent = JSON.parse(cleaned); 
+        try {
+            intent = JSON.parse(cleaned);
             console.log('[DEBUG] Parsed Intent State:', JSON.stringify(intent));
-        } catch { 
+        } catch {
             console.log('[DEBUG] Failed to parse intent JSON, defaulting to search');
         }
 
@@ -88,20 +90,20 @@ Deno.serve(async (req: Request) => {
         }
 
         // Phase 2: if state=search and tavily available, do the actual search here
-        const query = String(intent.query || extractText(contextWindow[contextWindow.length-1]?.content));
+        const query = String(intent.query || extractText(contextWindow[contextWindow.length - 1]?.content));
 
         if (!tavilyApiKey) {
             return new Response(JSON.stringify({ state: 'search', query, results: null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
         console.log('[DEBUG] Firing Tavily SEARCH. Query:', query);
-        
-        const tavilyPayload = { 
-            api_key: tavilyApiKey.replace(/['"]/g, '').trim(), 
-            query: query, 
+
+        const tavilyPayload = {
+            api_key: tavilyApiKey.replace(/['"]/g, '').trim(),
+            query: query,
             search_depth: "basic",
             include_answer: true,
-            max_results: 5 
+            max_results: 5
         };
 
         const searchResponse = await fetch(TAVILY_URL, {
@@ -112,18 +114,18 @@ Deno.serve(async (req: Request) => {
 
         console.log('[Tavily] status:', searchResponse.status);
         const searchRaw = await searchResponse.text();
-        
+
         if (!searchResponse.ok) {
             console.error('[Tavily] failed with status:', searchResponse.status, searchRaw);
-            return new Response(JSON.stringify({ state: 'search', query, results: null }), { 
-                headers: { ...cors, 'Content-Type': 'application/json' } 
+            return new Response(JSON.stringify({ state: 'search', query, results: null }), {
+                headers: { ...cors, 'Content-Type': 'application/json' }
             });
         }
-        
+
         const searchData = JSON.parse(searchRaw);
 
         // Extract clean results
-        const organic = (searchData.results || []).map((r: Record<string,unknown>) => ({
+        const organic = (searchData.results || []).map((r: Record<string, unknown>) => ({
             title: r.title,
             snippet: r.content,
             link: r.url,

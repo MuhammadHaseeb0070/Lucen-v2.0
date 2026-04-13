@@ -453,6 +453,7 @@ async function streamViaEdgeFunction(
 
         if (shouldSearch && searchResults) {
             callbacks.onWebSearchUsed?.();
+            (requestPayload as any).plugins = [{ id: 'web', engine: 'tavily', max_results: 5 }];
             // Inject real search results directly — no Exa plugin needed
             requestPayload.messages = [
                 ...(requestPayload.messages as Array<Record<string, unknown>>),
