@@ -306,7 +306,6 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({
                 model: effectiveModel,
                 messages,
-                ...(effectivePlugins ? { plugins: effectivePlugins } : {}),
                 stream: shouldStream,
                 max_tokens: resolvedMaxTokens,
                 include_usage: true,

@@ -320,8 +320,8 @@ async function streamViaEdgeFunctionWrapper(
  */
 async function resolveWebSearchContext(
     apiMessages: Array<Record<string, unknown>>
-): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null }> {
-    const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null };
+): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null; searchResults?: string | null }> {
+    const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null };
 
     const contextMessages = apiMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -331,12 +331,7 @@ async function resolveWebSearchContext(
 
     const extractText = (content: unknown): string => {
         if (typeof content === 'string') return content;
-        if (Array.isArray(content)) {
-            return (content as Array<Record<string, unknown>>)
-                .filter((p) => p.type === 'text')
-                .map((p) => p.text as string)
-                .join(' ');
-        }
+        if (Array.isArray(content)) return (content as Array<Record<string, unknown>>).filter((p) => p.type === 'text').map((p) => p.text as string).join(' ');
         return '';
     };
 
@@ -344,22 +339,19 @@ async function resolveWebSearchContext(
     if (!lastUser) return noSearch;
     const lastUserText = extractText(lastUser.content).trim();
 
-    // Hard skip — no AI call needed
     if (lastUserText.length < 3) return noSearch;
-    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed|nice|awesome|sounds good)[\s!.?]*$/i;
+    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed|nice|awesome)[\s!.?]*$/i;
     if (trivial.test(lastUserText)) return noSearch;
 
-    // Extract explicit URLs
     const urlRegex = /https?:\/\/[^\s"'<>]+/g;
     const urls = lastUserText.match(urlRegex) || [];
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const { data: { session } } = await supabase!.auth.getSession();
-    if (!session?.access_token) return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
+    if (!session?.access_token) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
 
     try {
-        console.log('[classify-intent] calling with messages count:', contextMessages.length);
         const intentResponse = await fetch(`${supabaseUrl}/functions/v1/classify-intent`, {
             method: 'POST',
             headers: {
@@ -370,34 +362,54 @@ async function resolveWebSearchContext(
             body: JSON.stringify({ messages: contextMessages }),
         });
 
-        console.log('[classify-intent] response status:', intentResponse.status);
+        if (!intentResponse.ok) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+
         const result = await intentResponse.json();
         console.log('[classify-intent] result:', JSON.stringify(result));
-
-        if (!intentResponse.ok) {
-            return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
-        }
 
         if (result.state === 'skip') return noSearch;
 
         if (result.state === 'clarify' && result.question) {
-            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: result.question };
+            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: result.question, searchResults: null };
         }
 
         if (result.state === 'search') {
+            // Format search results into clean context block
+            let searchResultsText: string | null = null;
+
+            if (result.results) {
+                const parts: string[] = [`Web search results for: "${result.query}"\n`];
+
+                if (result.results.answerBox) {
+                    const ab = result.results.answerBox;
+                    parts.push(`DIRECT ANSWER: ${ab.answer || ab.snippet || ''}`);
+                }
+                if (result.results.knowledgeGraph?.description) {
+                    parts.push(`KNOWLEDGE: ${result.results.knowledgeGraph.description}`);
+                }
+                if (result.results.organic?.length > 0) {
+                    parts.push('SEARCH RESULTS:');
+                    for (const r of result.results.organic) {
+                        parts.push(`- ${r.title}\n  ${r.snippet}\n  ${r.link}`);
+                    }
+                }
+                searchResultsText = parts.join('\n');
+            }
+
             return {
                 shouldSearch: true,
                 searchHint: result.query || lastUserText,
                 urls,
                 clarificationNeeded: null,
+                searchResults: searchResultsText,
             };
         }
 
-        return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
+        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
 
     } catch (err) {
         console.error('[classify-intent] FAILED:', err);
-        return { shouldSearch: true, searchHint: lastUserText, urls, clarificationNeeded: null };
+        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
     }
 }
 
@@ -432,44 +444,35 @@ async function streamViaEdgeFunction(
     };
 
     if (webSearchEnabled) {
-        const { shouldSearch, searchHint, urls, clarificationNeeded } = await resolveWebSearchContext(apiMessages);
+        const { shouldSearch, searchHint, urls, clarificationNeeded, searchResults } = await resolveWebSearchContext(apiMessages);
 
         if (clarificationNeeded) {
             callbacks.onClarificationNeeded?.(clarificationNeeded);
             return;
         }
 
-        if (shouldSearch) {
-            requestPayload.plugins = [{ id: 'web', max_results: 5 }];
+        if (shouldSearch && searchResults) {
             callbacks.onWebSearchUsed?.();
-            const injections: Array<Record<string, unknown>> = [];
-
-            if (searchHint) {
-                injections.push({
+            // Inject real search results directly — no Exa plugin needed
+            requestPayload.messages = [
+                ...(requestPayload.messages as Array<Record<string, unknown>>),
+                {
                     role: 'system',
-                    content: `[Search Directive: Web search is active. Your search query is: "${searchHint}". STRICT RULES: (1) Use whatever search results you receive — do not say you cannot access live data. (2) NEVER ask the user for timezone, competition, date range or any detail — make reasonable assumptions and answer. (3) If results are poor, answer from your training knowledge and note it may not be current. (4) Never tell the user to go find information themselves. Answer directly now.]`,
-                });
-            }
-
+                    content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: Use these results to answer the user directly. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
+                },
+            ];
+            // URLs mentioned by user
             if (urls.length > 0) {
-                injections.push({
-                    role: 'system',
-                    content: `[URL Directive: User referenced these URLs: ${urls.join(', ')}. Retrieve and include their content.]`,
-                });
-            }
-
-            if (injections.length > 0) {
-                const msgs = requestPayload.messages as Array<Record<string, unknown>>;
-                // Insert after first system message so model sees directive early
-                const firstNonSystem = msgs.findIndex(m => m.role !== 'system');
-                const insertAt = firstNonSystem === -1 ? 0 : firstNonSystem;
                 requestPayload.messages = [
-                    ...msgs.slice(0, insertAt),
-                    ...injections,
-                    ...msgs.slice(insertAt),
+                    ...(requestPayload.messages as Array<Record<string, unknown>>),
+                    {
+                        role: 'system',
+                        content: `[User referenced these URLs: ${urls.join(', ')}. Retrieve and use their content.]`,
+                    },
                 ];
             }
         }
+        // No Exa plugin at all — Serper handles search in classify-intent
     }
 
     // Debug: confirm this code path executed before we hit the Edge function.
