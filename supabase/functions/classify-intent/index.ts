@@ -6,18 +6,19 @@ const INTENT_MODEL = 'openai/gpt-4o-mini';
 
 const INTENT_SYSTEM = `You are a web search intent classifier. Analyze the conversation and decide if the latest user message needs a real-time web search.
 
+If a search is needed, you MUST craft a hyper-specific, Google-optimized search query. DO NOT use lazy shorthands (e.g., never use 'real madrid schedule'). Instead, explicitly expand the topic to cast a wide net (e.g., 'Real Madrid upcoming fixture schedule all competitions Champions League La Liga').
+
 Respond ONLY with raw JSON. No markdown. No backticks. Just JSON.
 
 Formats:
-{"state":"search","query":"ideal search query using full context"}
+{"state":"search","query":"highly descriptive, specific search engine query"}
 {"state":"skip","query":null}
 {"state":"clarify","query":null,"question":"one specific question"}
 
 Rules:
 - search: live scores, schedules, prices, weather, news, current events, real-time data
 - skip: greetings, math, code, explanations, things already in conversation
-- clarify: ONLY if a critical detail makes any query useless. Otherwise assume and search.
-- query MUST reflect full conversation context. "try again" alone = look at previous messages for topic.`;
+- query MUST be extremely specific. Include implicit context from previous messages. Expand generic sports queries to include 'all competitions'.`;
 
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
