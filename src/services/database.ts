@@ -95,6 +95,7 @@ export interface DbMessage {
     content: string;
     reasoning?: string;
     is_truncated: boolean;
+    is_pinned: boolean;
     attachments?: Record<string, unknown>[];
     created_at: string;
 }
@@ -181,6 +182,7 @@ export async function saveMessage(
             content: message.content,
             reasoning: message.reasoning || null,
             is_truncated: message.isTruncated || false,
+            is_pinned: message.isPinned || false,
             // Save attachment metadata only (no file content)
             attachments: message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) || null,
         });
@@ -259,6 +261,25 @@ export async function deleteMessagePair(
 
     if (error) {
         console.error('[DB] deleteMessagePair error:', error);
+        return false;
+    }
+    return true;
+}
+
+/** Toggle pinning state for a message */
+export async function updateMessagePin(
+    messageId: string,
+    isPinned: boolean
+): Promise<boolean> {
+    if (!hasActiveSessionSync() || !supabase) return false;
+
+    const { error } = await supabase
+        .from('messages')
+        .update({ is_pinned: isPinned })
+        .eq('id', messageId);
+
+    if (error) {
+        console.error('[DB] updateMessagePin error:', error);
         return false;
     }
     return true;
@@ -361,6 +382,7 @@ function dbToMessage(row: DbMessage): Message {
         reasoning: row.reasoning,
         timestamp: new Date(row.created_at).getTime(),
         isTruncated: row.is_truncated,
+        isPinned: row.is_pinned,
         // Restore attachment metadata (no file content — that's transient)
         attachments: row.attachments?.map((a: Record<string, unknown>) => ({
             id: a.id as string,

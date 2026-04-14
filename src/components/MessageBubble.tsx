@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2 } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import { parseArtifacts } from '../lib/artifactParser';
@@ -12,6 +12,7 @@ interface MessageBubbleProps {
     onRetry?: (msgId: string) => void;
     onContinue?: (msgId: string) => void;
     onToggleLink?: (message: Message) => void;
+    onPin?: (msgId: string) => void;
     onDeleteHover?: (hovering: boolean) => void;
     showDelete?: boolean;
     showRetry?: boolean;
@@ -28,6 +29,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     onRetry,
     onContinue,
     onToggleLink,
+    onPin,
     onDeleteHover,
     showDelete = false,
     showRetry = false,
@@ -151,6 +153,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         <Link2 size={13} />
                     </button>
                 )}
+                {onPin && (
+                    <button 
+                        className={`msg-action-btn ${message.isPinned ? 'msg-action-btn--pinned' : ''}`} 
+                        onClick={() => onPin(message.id)}
+                        title={message.isPinned ? "Unpin message" : "Pin message"}
+                    >
+                        <Pin size={13} fill={message.isPinned ? "currentColor" : "none"} />
+                    </button>
+                )}
                 {showDelete && onDelete && (
                     <button
                         className="msg-action-btn msg-action-danger"
@@ -167,8 +178,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     }
 
     return (
-        <div className="msg-response">
-                    {!disableReasoning && normalizedReasoning && (
+        <div className={`msg-response ${message.isPinned ? 'msg-response--pinned' : ''}`}>
+            {message.isPinned && (
+                <div className="msg-pinned-indicator">
+                    <Pin size={12} fill="currentColor" />
+                    <span>Pinned Message</span>
+                </div>
+            )}
+            {!disableReasoning && normalizedReasoning && (
                         <div className="reasoning-block">
                             <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
                                 {reasoningOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -223,6 +240,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             title={isLinked ? "Remove from Side Chat context" : "Add to Side Chat context"}
                         >
                             <Link2 size={13} />
+                        </button>
+                    )}
+                    {onPin && (
+                        <button 
+                            className={`msg-action-btn ${message.isPinned ? 'msg-action-btn--pinned' : ''}`} 
+                            onClick={() => onPin(message.id)}
+                            title={message.isPinned ? "Unpin message" : "Pin message"}
+                        >
+                            <Pin size={13} fill={message.isPinned ? "currentColor" : "none"} />
                         </button>
                     )}
                     {showRetry && onRetry && (

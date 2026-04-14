@@ -26,6 +26,7 @@ interface ChatStore {
     updateMessage: (convId: string, msgId: string, updates: Partial<Message>) => void;
     deleteMessagePair: (convId: string, userMsgId: string) => void;
     getActiveConversation: () => Conversation | undefined;
+    togglePinMessage: (convId: string, msgId: string) => void;
     getContextMessages: (convId: string) => Message[];
     setDraft: (convId: string, draft: string) => void;
     getDraft: (convId: string) => string;
@@ -301,6 +302,30 @@ export const useChatStore = create<ChatStore>()(
                 // Sync to Supabase
                 if (hasActiveSessionSync()) {
                     db.deleteMessagePair(convId, userMsgId, assistantMsgId).catch(console.error);
+                }
+            },
+
+            togglePinMessage: (convId, msgId) => {
+                let newPinnedState = false;
+                set((state) => ({
+                    conversations: state.conversations.map((c) => {
+                        if (c.id !== convId) return c;
+                        return {
+                            ...c,
+                            messages: c.messages.map((m) => {
+                                if (m.id === msgId) {
+                                    newPinnedState = !m.isPinned;
+                                    return { ...m, isPinned: newPinnedState };
+                                }
+                                return m;
+                            }),
+                            updatedAt: Date.now(),
+                        };
+                    }),
+                }));
+
+                if (hasActiveSessionSync()) {
+                    db.updateMessagePin(msgId, newPinnedState).catch(console.error);
                 }
             },
 

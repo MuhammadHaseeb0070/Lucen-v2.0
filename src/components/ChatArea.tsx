@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Hash } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
@@ -28,6 +28,7 @@ const ChatArea: React.FC = () => {
         getContextMessages,
         getDraft,
         setDraft,
+        togglePinMessage,
         isMessageLoading,
     } = useChatStore();
 
@@ -386,6 +387,19 @@ const ChatArea: React.FC = () => {
         doStreamResponse(activeConversationId, assistantMsgId);
     };
 
+    const handlePin = (msgId: string) => {
+        if (!activeConversationId) return;
+        togglePinMessage(activeConversationId, msgId);
+    };
+
+    const scrollToMessage = (msgId: string) => {
+        const el = messagesContainerRef.current?.querySelector(`[data-msg-id="${msgId}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setIsAutoScroll(false);
+        }
+    };
+
     const getHighlightedMatchElements = useCallback(() => {
         const q = searchQuery.trim();
         if (!q || q.length < 2) return [];
@@ -482,7 +496,7 @@ const ChatArea: React.FC = () => {
                 elements.push(
                     <div
                         key={msg.id}
-                        className={`msg-exchange ${pairHighlighted ? 'msg-exchange--danger' : ''} ${isActiveMatch ? 'msg-exchange--active-match' : ''} ${isDimmed ? 'msg-exchange--dimmed' : ''}`}
+                        className={`msg-exchange ${pairHighlighted ? 'msg-exchange--danger' : ''} ${isActiveMatch ? 'msg-exchange--active-match' : ''} ${isDimmed ? 'msg-exchange--dimmed' : ''} ${msg.isPinned || nextMsg?.isPinned ? 'msg-exchange--pinned' : ''}`}
                     >
                         <div className="msg-timestamp">
                             <span>{timeStr}</span>
@@ -511,6 +525,7 @@ const ChatArea: React.FC = () => {
                                 message={msg}
                                 onDelete={handleDelete}
                                 onToggleLink={handleToggleLink}
+                                onPin={handlePin}
                                 isLinked={injectedContext.some(m => m.id === msg.id)}
                                 showDelete
                                 onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
@@ -530,6 +545,7 @@ const ChatArea: React.FC = () => {
                                         onRetry={handleRetry}
                                         onContinue={handleContinue}
                                         onToggleLink={handleToggleLink}
+                                        onPin={handlePin}
                                         isLinked={injectedContext.some(m => m.id === nextMsg.id)}
                                         showRetry={nextMsg.id === lastAssistantMsgId}
                                         searchQuery={searchQuery.trim() || undefined}
@@ -559,6 +575,7 @@ const ChatArea: React.FC = () => {
                                     onRetry={handleRetry}
                                     onContinue={handleContinue}
                                     onToggleLink={handleToggleLink}
+                                    onPin={handlePin}
                                     isLinked={injectedContext.some(m => m.id === msg.id)}
                                     showRetry={msg.id === lastAssistantMsgId}
                                     searchQuery={searchQuery.trim() || undefined}
@@ -581,6 +598,42 @@ const ChatArea: React.FC = () => {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
+            <div className="chat-header-overlay">
+                {activeConv && activeConv.messages.length > 0 && (
+                    <div className="chat-message-counter">
+                        <Hash size={12} className="chat-message-counter__icon" />
+                        <span className="chat-message-counter__label">Total Messages</span>
+                        <span className="chat-message-counter__value">{activeConv.messages.filter(m => !m.isStreaming).length}</span>
+                    </div>
+                )}
+            </div>
+
+            <div className="pin-track-container">
+                {activeConv?.messages.map((m, idx) => {
+                    if (!m.isPinned) return null;
+                    const container = messagesContainerRef.current;
+                    if (!container) return null;
+                    
+                    // Simple estimation for marker position based on message index
+                    // In a real app, you might use ResizeObserver to get exact heights,
+                    // but for now, index-based ratio is a good premium-feeling approximation.
+                    const topPercent = (idx / activeConv.messages.length) * 100;
+                    
+                    return (
+                        <div 
+                            key={`pin-${m.id}`}
+                            className="pin-marker"
+                            style={{ top: `${topPercent}%` }}
+                            onClick={() => scrollToMessage(m.id)}
+                        >
+                            <div className="pin-marker-tooltip">
+                                {m.content.slice(0, 30)}...
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
             {isDragOver && (
                 <div className="drop-zone-overlay">
                     <div className="drop-zone-content">
