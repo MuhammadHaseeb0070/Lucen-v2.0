@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/embeddings';
-const EMBED_MODEL = 'google/gemini-embedding-exp-03-07';
+const EMBED_MODEL = 'google/gemini-embedding-001';
 
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
