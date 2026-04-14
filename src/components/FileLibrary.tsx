@@ -11,7 +11,8 @@ import {
     Calendar,
     MessageSquare,
     Grid,
-    List
+    List,
+    ArrowUpRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -249,7 +250,7 @@ const FileLibrary: React.FC = () => {
                                                 <div className="meta-item clickable" onClick={() => handleNavigate(file.conversation_id, file.message_id)}>
                                                     <MessageSquare size={12} />
                                                     <span className="chat-link">{file.conversations?.title || 'Chat'}</span>
-                                                    <span className="jump-hint">— Go to Chat</span>
+                                                    <ArrowUpRight size={12} className="jump-icon" />
                                                 </div>
                                             </div>
                                         </div>
@@ -262,6 +263,18 @@ const FileLibrary: React.FC = () => {
             </div>
 
             <style>{`
+                :root {
+                    --lib-f-scale: 1;
+                    --lib-s-scale: 1;
+                }
+
+                @media (max-width: 640px) {
+                    :root {
+                        --lib-f-scale: 0.85;
+                        --lib-s-scale: 0.9;
+                    }
+                }
+
                 .file-lib-overlay {
                     position: fixed;
                     inset: 0;
@@ -280,7 +293,7 @@ const FileLibrary: React.FC = () => {
                     height: 85vh;
                     background: var(--bg-surface);
                     border: 1px solid var(--divider);
-                    border-radius: 24px;
+                    border-radius: calc(24px * var(--lib-s-scale));
                     display: flex;
                     flex-direction: column;
                     box-shadow: 0 30px 60px rgba(0,0,0,0.4);
@@ -289,12 +302,13 @@ const FileLibrary: React.FC = () => {
                 }
 
                 .file-lib-header {
-                    padding: 24px 32px;
+                    padding: calc(24px * var(--lib-s-scale)) calc(32px * var(--lib-s-scale));
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
                     border-bottom: 1px solid var(--divider);
-                    background: linear-gradient(to bottom, var(--bg-surface), rgba(255,255,255,0.02));
+                    background: rgba(255, 255, 255, 0.6);
+                    backdrop-filter: blur(10px);
                 }
 
                 .file-lib-title-group {
@@ -315,7 +329,7 @@ const FileLibrary: React.FC = () => {
                 }
 
                 .file-lib-title-group h2 {
-                    font-size: 1.25rem;
+                    font-size: calc(1.25rem * var(--lib-f-scale));
                     font-weight: 700;
                     margin: 0;
                     color: var(--text-primary);
@@ -323,7 +337,7 @@ const FileLibrary: React.FC = () => {
 
                 .file-lib-title-group p {
                     margin: 2px 0 0 0;
-                    font-size: 0.82rem;
+                    font-size: calc(0.82rem * var(--lib-f-scale));
                     color: var(--text-tertiary);
                 }
 
@@ -354,12 +368,13 @@ const FileLibrary: React.FC = () => {
                 }
 
                 .file-lib-toolbar {
-                    padding: 16px 32px;
+                    padding: calc(16px * var(--lib-s-scale)) calc(32px * var(--lib-s-scale));
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
                     gap: 16px;
-                    background: var(--bg-muted-alpha);
+                    background: rgba(var(--bg-muted-rgb), 0.4);
+                    backdrop-filter: blur(8px);
                 }
 
                 .search-box {
@@ -516,7 +531,7 @@ const FileLibrary: React.FC = () => {
 
                 .file-primary-name {
                     font-weight: 600;
-                    font-size: 0.9rem;
+                    font-size: calc(0.9rem * var(--lib-f-scale));
                     color: var(--text-primary);
                     white-space: nowrap;
                     overflow: hidden;
@@ -550,14 +565,18 @@ const FileLibrary: React.FC = () => {
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
-                    max-width: 120px;
+                    max-width: 100px;
                 }
 
-                .jump-hint {
-                    font-size: 0.65rem;
-                    opacity: 0.6;
-                    margin-left: auto;
+                .jump-icon {
+                    opacity: 0.4;
+                    transition: opacity 0.2s, transform 0.2s;
                     color: var(--accent);
+                }
+
+                .meta-item.clickable:hover .jump-icon {
+                    opacity: 1;
+                    transform: translate(1px, -1px);
                 }
 
                 .lib-state-msg {
@@ -578,19 +597,21 @@ const FileLibrary: React.FC = () => {
                 @media (max-width: 640px) {
                     .file-lib-overlay { padding: 0; }
                     .file-lib-modal { height: 100vh; border-radius: 0; width: 100vw; }
-                    .file-lib-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+                    .file-lib-header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
                     .file-lib-title-group { gap: 10px; }
                     .lib-icon-badge { width: 32px; height: 32px; border-radius: 10px; }
-                    .lib-icon-badge svg { width: 16px; height: 16px; }
-                    .file-lib-title-group h2 { font-size: 1rem; }
-                    .header-actions { margin-left: auto; }
-                    .view-toggle { scale: 0.9; }
-                    .file-lib-toolbar { padding: 12px 16px; flex-direction: column; align-items: stretch; gap: 12px; }
-                    .search-box { height: 38px; }
-                    .filter-group { overflow-x: auto; padding-bottom: 4px; }
-                    .filter-btn { flex-shrink: 0; padding: 4px 12px; font-size: 0.8rem; }
-                    .file-lib-viewport { padding: 12px; }
-                    .file-content-container.mode-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+                    .lib-icon-badge svg { width: 14px; height: 14px; }
+                    .header-actions { margin-left: auto; gap: 8px; }
+                    .view-toggle { scale: 0.85; }
+                    .file-lib-toolbar { padding: 8px 16px; flex-direction: column; align-items: stretch; gap: 10px; }
+                    .search-box { height: 36px; padding: 0 12px; }
+                    .filter-group { overflow-x: auto; padding-bottom: 2px; gap: 4px; }
+                    .filter-btn { flex-shrink: 0; padding: 4px 10px; font-size: 0.75rem; }
+                    .file-lib-viewport { padding: 10px; }
+                    .file-content-container.mode-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+                    .file-card-info { padding: 10px; gap: 4px; }
+                    .meta-item svg { width: 10px; height: 10px; }
+                    .chat-link { max-width: 80px; }
                 }
             `}</style>
         </div>

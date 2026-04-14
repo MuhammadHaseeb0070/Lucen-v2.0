@@ -100,7 +100,7 @@ const AttachmentViewer: React.FC = () => {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    padding: 16px 24px;
+                    padding: calc(16px * var(--lib-s-scale, 1)) calc(24px * var(--lib-s-scale, 1));
                     background: rgba(255, 255, 255, 0.05);
                     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
                     color: white;
@@ -111,6 +111,7 @@ const AttachmentViewer: React.FC = () => {
                     align-items: center;
                     gap: 12px;
                     font-weight: 500;
+                    font-size: calc(1rem * var(--lib-f-scale, 1));
                     flex: 1;
                     min-width: 0;
                 }
@@ -207,8 +208,10 @@ const AttachmentViewer: React.FC = () => {
 
                 @media (max-width: 640px) {
                     .attachment-viewer-header {
-                        padding: 12px 16px;
+                        padding: 10px 16px;
                     }
+                    .viewer-actions { gap: 12px; }
+                    .viewer-actions svg { width: 18px; height: 18px; }
                     .attachment-viewer-content {
                         padding: 16px;
                     }
