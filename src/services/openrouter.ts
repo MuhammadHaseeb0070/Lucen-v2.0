@@ -112,24 +112,40 @@ async function retrieveRelevantChunks(
     messages: Message[],
     conversationId: string | null
 ): Promise<string | null> {
-    if (!conversationId) return null;
+    console.log('[RAG Debug] Starting check. ConvID:', conversationId);
+
+    if (!conversationId) {
+        console.log('[RAG Debug] Aborted: No conversation ID provided by the UI.');
+        return null;
+    }
 
     // Only retrieve if conversation has file attachments
     const hasFiles = messages.some(m =>
         m.attachments?.some(a => a.type !== 'image')
     );
-    if (!hasFiles) return null;
+    if (!hasFiles) {
+        console.log('[RAG Debug] Aborted: No files found in this chat history.');
+        return null;
+    }
 
-    // Use last user message as query
+    // Use last user message as query (Lowered limit from 10 to 2)
     const lastUser = [...messages].reverse().find(m => m.role === 'user');
-    if (!lastUser || !lastUser.content || lastUser.content.length < 10) return null;
+    if (!lastUser || !lastUser.content || lastUser.content.length < 2) {
+        console.log('[RAG Debug] Aborted: User message too short.');
+        return null;
+    }
+
+    console.log('[RAG Debug] Requirements met, calling Supabase...');
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     try {
         const { data: { session } } = await supabase!.auth.getSession();
-        if (!session?.access_token) return null;
+        if (!session?.access_token) {
+            console.log('[RAG Debug] Aborted: No active auth session.');
+            return null;
+        }
 
         const response = await fetch(`${supabaseUrl}/functions/v1/retrieve-chunks`, {
             method: 'POST',
@@ -145,23 +161,34 @@ async function retrieveRelevantChunks(
             }),
         });
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+            console.log('[RAG Debug] Supabase error:', response.status);
+            return null;
+        }
         const data = await response.json();
         const chunks = data.chunks as Array<{ file_name: string; content: string; similarity: number }>;
 
-        if (!chunks || chunks.length === 0) return null;
+        if (!chunks || chunks.length === 0) {
+            console.log('[RAG Debug] No chunks returned from search.');
+            return null;
+        }
 
         // Only use chunks with decent similarity
         const relevant = chunks.filter(c => c.similarity > 0.5);
-        if (relevant.length === 0) return null;
+        if (relevant.length === 0) {
+            console.log('[RAG Debug] No chunks met similarity threshold (> 0.5).');
+            return null;
+        }
 
         const parts = relevant.map(c =>
             `── From: ${c.file_name} (relevance: ${Math.round(c.similarity * 100)}%) ──\n${c.content}`
         );
 
+        console.log(`[RAG Debug] Success! Injected ${relevant.length} chunks.`);
         return `[Relevant file context retrieved for this query]\n${parts.join('\n\n')}`;
 
-    } catch {
+    } catch (err) {
+        console.error('[RAG Debug] Final Catch Error:', err);
         return null;
     }
 }

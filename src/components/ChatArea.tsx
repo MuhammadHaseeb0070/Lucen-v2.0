@@ -191,7 +191,7 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
             },
-        }, { signal: controller.signal, webSearchEnabled });
+        }, { signal: controller.signal, webSearchEnabled, conversationId: convId });
     };
 
     // ─── Continue truncated response ───
@@ -245,7 +245,7 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
             },
-        }, { signal: controller.signal, webSearchEnabled });
+        }, { signal: controller.signal, webSearchEnabled, conversationId: convId });
     };
 
     const handleSend = async (content: string, attachments?: FileAttachment[]) => {

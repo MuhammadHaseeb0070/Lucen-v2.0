@@ -383,10 +383,9 @@ Deno.serve(async (req: Request) => {
         let promptTokens = 0;
         let completionTokens = 0;
         let reasoningTokens = 0;
-        let totalTokens = 0;
+        let totalTokensNum = 0;
 
         (async () => {
-            let totalTokens = 0;
             let lastChunkTime = Date.now();
 
             const keepaliveInterval = setInterval(async () => {
@@ -412,7 +411,12 @@ Deno.serve(async (req: Request) => {
                         if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
                             try {
                                 const parsed = JSON.parse(trimmed.slice(6));
-                                if (parsed.usage) totalTokens = parsed.usage.total_tokens || 0;
+                                if (parsed.usage) {
+                                    totalTokensNum = parsed.usage.total_tokens || totalTokensNum;
+                                    promptTokens = parsed.usage.prompt_tokens || promptTokens;
+                                    completionTokens = parsed.usage.completion_tokens || completionTokens;
+                                    reasoningTokens = getReasoningTokens(parsed.usage) || reasoningTokens;
+                                }
                             } catch { }
                         }
                     }
@@ -420,8 +424,43 @@ Deno.serve(async (req: Request) => {
             } catch (e) {} finally {
                 clearInterval(keepaliveInterval);
                 await writer.close();
-                const totalCost = (totalTokens / 1000) * CREDITS_PER_1K_TOKENS + (imageCount * CREDITS_PER_IMAGE) + (requestedWebSearch ? computeWebSearchCredits(5) : 0);
-                await supabaseAdmin.rpc('deduct_user_credits', { p_user_id: user.id, p_amount: totalCost });
+                
+                // Fallback calculations
+                totalTokensNum = totalTokensNum > 0 ? totalTokensNum : (promptTokens + completionTokens);
+                
+                const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
+                const imageCost = imageCount * CREDITS_PER_IMAGE;
+                const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
+                const totalCost = textCost + imageCost + searchCost;
+
+                try {
+                    await supabaseAdmin.rpc('deduct_user_credits', { p_user_id: user.id, p_amount: totalCost });
+
+                    if (subscriptionStatus === 'free' && requestedWebSearch) {
+                        await supabaseAdmin
+                            .from('user_credits')
+                            .update({ free_searches_used: freeSearchesUsed + 1 })
+                            .eq('user_id', user.id);
+                    }
+
+                    await supabaseAdmin.from('usage_logs').insert({
+                        user_id: user.id,
+                        prompt_tokens: promptTokens,
+                        completion_tokens: completionTokens,
+                        reasoning_tokens: reasoningTokens,
+                        total_credits_deducted: totalCost,
+                        model_id: effectiveModel,
+                        web_search_enabled: requestedWebSearch,
+                        web_search_engine: requestedWebSearch ? webSearchEngine : null,
+                        web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
+                        web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
+                        text_credits: textCost,
+                        image_credits: imageCost,
+                        web_search_credits: searchCost,
+                    });
+                } catch (dbErr) {
+                    console.error('Failed to deduct or log stream usage:', dbErr);
+                }
             }
         })();
 
