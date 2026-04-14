@@ -375,8 +375,8 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
                 body: JSON.stringify({
                     text: attachment.textContent,
                     file_name: attachment.name,
-                    message_id: (attachment as any).messageId || 'pending',
-                    conversation_id: (attachment as any).conversationId || 'pending',
+                    message_id: (attachment as any).messageId || attachment.id,
+                    conversation_id: (attachment as any).conversationId || '00000000-0000-0000-0000-000000000000',
                 }),
             }).catch(() => {});
         }
