@@ -27,6 +27,7 @@ interface StreamOptions {
     signal?: AbortSignal;
     isSideChat?: boolean;
     webSearchEnabled?: boolean;
+    conversationId?: string;
 }
 
 /**
@@ -107,11 +108,73 @@ function buildMessageContent(msg: Message, includeImages: boolean = true, includ
     return parts;
 }
 
+async function retrieveRelevantChunks(
+    messages: Message[],
+    conversationId: string | null
+): Promise<string | null> {
+    if (!conversationId) return null;
+
+    // Only retrieve if conversation has file attachments
+    const hasFiles = messages.some(m =>
+        m.attachments?.some(a => a.type !== 'image')
+    );
+    if (!hasFiles) return null;
+
+    // Use last user message as query
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUser || !lastUser.content || lastUser.content.length < 10) return null;
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    try {
+        const { data: { session } } = await supabase!.auth.getSession();
+        if (!session?.access_token) return null;
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/retrieve-chunks`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': anonKey || '',
+            },
+            body: JSON.stringify({
+                query: lastUser.content,
+                conversation_id: conversationId,
+                top_k: 5,
+            }),
+        });
+
+        if (!response.ok) return null;
+        const data = await response.json();
+        const chunks = data.chunks as Array<{ file_name: string; content: string; similarity: number }>;
+
+        if (!chunks || chunks.length === 0) return null;
+
+        // Only use chunks with decent similarity
+        const relevant = chunks.filter(c => c.similarity > 0.5);
+        if (relevant.length === 0) return null;
+
+        const parts = relevant.map(c =>
+            `── From: ${c.file_name} (relevance: ${Math.round(c.similarity * 100)}%) ──\n${c.content}`
+        );
+
+        return `[Relevant file context retrieved for this query]\n${parts.join('\n\n')}`;
+
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Build the full API message array with system prompts and conversation history.
  * Does NOT inject the token budget — that's done after counting in streamChat().
  */
-function buildApiMessages(messages: Message[], systemPromptOverride?: string): Array<Record<string, unknown>> {
+function buildApiMessages(
+    messages: Message[],
+    systemPromptOverride?: string,
+    ragContext?: string | null
+): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
 
     // Prevent token/context pollution by taking only the last 30 messages max
@@ -136,9 +199,19 @@ function buildApiMessages(messages: Message[], systemPromptOverride?: string): A
         }
     }
 
+    // Inject RAG context if available
+    const ragMessages: Array<Record<string, unknown>> = [];
+    if (ragContext) {
+        ragMessages.push({
+            role: 'system',
+            content: ragContext,
+        });
+    }
+
     // Assemble the API payload: System messages MUST come before the conversation history
     return [
         ...systemMessages,
+        ...ragMessages,
         ...recentMessages
             .filter((m) => m.role === 'user' || m.role === 'assistant')
             .map((m, index) => ({
@@ -221,7 +294,14 @@ export async function streamChat(
     options: StreamOptions = {}
 ): Promise<void> {
     const model = getActiveModel(options.isSideChat);
-    const apiMessages = buildApiMessages(messages, options.systemPromptOverride);
+
+    // Retrieve relevant file chunks via RAG before building context
+    const ragContext = await retrieveRelevantChunks(
+        messages,
+        options.conversationId || null
+    );
+
+    const apiMessages = buildApiMessages(messages, options.systemPromptOverride, ragContext);
 
     if (!isSupabaseEnabled() || !supabase) {
         callbacks.onError('Please sign in to use chat.');

@@ -357,6 +357,31 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
         attachment.tokenEstimate = Math.ceil(contentToCount.length / 4);
     }
 
+    // Embed text files for RAG after upload
+    if (attachment.textContent && attachment.textContent.length > 200) {
+        const { supabase } = await import('../lib/supabase');
+        const { data: { session } } = await supabase!.auth.getSession();
+        if (session?.access_token) {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            // Fire and forget — do not block UI
+            fetch(`${supabaseUrl}/functions/v1/embed`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': anonKey || '',
+                },
+                body: JSON.stringify({
+                    text: attachment.textContent,
+                    file_name: attachment.name,
+                    message_id: (attachment as any).messageId || 'pending',
+                    conversation_id: (attachment as any).conversationId || 'pending',
+                }),
+            }).catch(() => {});
+        }
+    }
+
     return attachment;
 }
 
