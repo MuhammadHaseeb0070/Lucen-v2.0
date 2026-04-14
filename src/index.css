@@ -935,15 +935,16 @@ h4 {
 }
 
 .sidebar-chat-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 8px;
     padding: 10px 12px;
     margin-bottom: 2px;
     border-radius: var(--r-md);
     cursor: pointer;
     transition: background var(--dur-fast) var(--ease);
     position: relative;
+    align-items: center;
 }
 
 .sidebar-chat-item:hover {
@@ -955,15 +956,12 @@ h4 {
 }
 
 .chat-item-info {
+    grid-column: 1;
     display: flex;
     align-items: center;
     gap: 8px;
     overflow: hidden;
-}
-
-.chat-item-info svg {
-    flex-shrink: 0;
-    color: var(--text-tertiary);
+    min-width: 0;
 }
 
 .chat-item-title {
@@ -973,36 +971,30 @@ h4 {
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--text-primary);
+    flex: 1;
 }
 
 .chat-item-date {
+    grid-column: 1;
     font-size: 0.68rem;
     color: var(--text-tertiary);
     padding-left: 22px;
 }
 
 .chat-item-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
     display: flex;
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
     gap: 2px;
-    background: var(--bg-surface);
     padding: 4px;
     border-radius: var(--r-md);
     opacity: 0.6;
     transition: all var(--dur-fast) var(--ease);
-    box-shadow: -8px 0 12px var(--bg-surface); /* Soft fade effect for text behind */
 }
 
 .sidebar-chat-item:hover .chat-item-actions,
 .sidebar-chat-item.active .chat-item-actions {
     opacity: 1;
-    background: var(--bg-surface);
-    box-shadow: 
-        -12px 0 16px var(--bg-surface),
-        0 2px 8px var(--shadow-color);
 }
 
 .chat-item-action-btn {
@@ -7536,7 +7528,15 @@ mark.search-highlight {
 }
 
 mark.search-highlight.is-active {
-    background: rgba(244, 63, 94, 0.3);
+    background: #f43f5e; /* Vibrant Rose 500 */
+    color: #ffffff;
+    box-shadow: 
+        0 0 0 1.5px #ffffff, /* White inner ring */
+        0 0 0 3px #f43f5e; /* Rose outer ring */
+    z-index: 10;
+    position: relative;
+    border-radius: 3px;
+    font-weight: 600;
 }
 
 .msg-exchange--active-match {
