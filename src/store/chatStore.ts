@@ -197,6 +197,40 @@ export const useChatStore = create<ChatStore>()(
 
                             // Now safe to save the message
                             await db.saveMessage(convId, message);
+
+                            // --- NEW RAG LOGIC: Vectorize files ONLY after message is saved ---
+                            if (message.attachments && message.attachments.length > 0) {
+                                const { data: { session } } = await supabase!.auth.getSession();
+                                if (session?.access_token) {
+                                    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                                    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+                                    for (const att of message.attachments) {
+                                        // Embed either the raw text (PDF/Code) or the AI Image Description
+                                        const contentToEmbed = att.textContent || att.aiDescription;
+                                        
+                                        if (contentToEmbed && contentToEmbed.length > 200) {
+                                            // Fire and forget so we don't slow down the chat UI
+                                            fetch(`${supabaseUrl}/functions/v1/embed`, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'Authorization': `Bearer ${session.access_token}`,
+                                                    'apikey': anonKey || '',
+                                                },
+                                                body: JSON.stringify({
+                                                    text: contentToEmbed,
+                                                    file_name: att.name,
+                                                    message_id: message.id,      // Real Message ID
+                                                    conversation_id: convId,     // Real Conversation ID
+                                                }),
+                                            }).catch(err => console.error('[RAG Embed] Failed:', err));
+                                        }
+                                    }
+                                }
+                            }
+                            // -----------------------------------------------------------------
+
                         } catch (err) {
                             console.error('[Sync] Error saving message to Supabase:', err);
                         }
