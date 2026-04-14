@@ -12,6 +12,15 @@ interface UIStore {
     isAdminView: boolean;
     billingOpen: boolean;
     fileLibraryOpen: boolean;
+    viewerOpen: boolean;
+    viewerFile: { 
+        id: string; 
+        name: string; 
+        type: string; 
+        url?: string; 
+        textContent?: string;
+        aiDescription?: string;
+    } | null;
 
     toggleSidebar: () => void;
     setSidebarCollapsed: (collapsed: boolean) => void;
@@ -24,6 +33,8 @@ interface UIStore {
     setIsAdminView: (isAdmin: boolean) => void;
     setBillingOpen: (open: boolean) => void;
     setFileLibraryOpen: (open: boolean) => void;
+    setViewerOpen: (open: boolean) => void;
+    setViewerFile: (file: any) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -38,6 +49,8 @@ export const useUIStore = create<UIStore>()(
             isAdminView: false,
             billingOpen: false,
             fileLibraryOpen: false,
+            viewerOpen: false,
+            viewerFile: null,
 
             toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
             setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -56,6 +69,8 @@ export const useUIStore = create<UIStore>()(
             setIsAdminView: (isAdmin: boolean) => set({ isAdminView: isAdmin }),
             setBillingOpen: (open: boolean) => set({ billingOpen: open }),
             setFileLibraryOpen: (open: boolean) => set({ fileLibraryOpen: open }),
+            setViewerOpen: (open: boolean) => set({ viewerOpen: open }),
+            setViewerFile: (file: any) => set({ viewerFile: file }),
         }),
         {
             name: 'lucen-ui-storage',

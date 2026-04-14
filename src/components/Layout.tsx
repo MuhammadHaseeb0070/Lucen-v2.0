@@ -9,6 +9,7 @@ import CommandPalette from './CommandPalette';
 import AuthScreen from './AuthScreen';
 import PricingModal from './PricingModal';
 import FileLibrary from './FileLibrary';
+import AttachmentViewer from './AttachmentViewer';
 
 import OwnerDashboard from './OwnerDashboard';
 import { useThemeStore, applyTheme } from '../store/themeStore';
@@ -128,6 +129,7 @@ const Layout: React.FC = () => {
             <SettingsScreen />
             <PricingModal />
             <FileLibrary />
+            <AttachmentViewer />
             <CommandPalette
                 isOpen={commandPaletteOpen}
                 onClose={() => setCommandPaletteOpen(false)}

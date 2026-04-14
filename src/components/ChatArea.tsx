@@ -39,7 +39,11 @@ const ChatArea: React.FC = () => {
         removeInjectedMessage
     } = useSideChatStore();
 
-    const { setSideChatOpen } = useUIStore();
+    const { 
+        setSideChatOpen, 
+        setViewerOpen, 
+        setViewerFile 
+    } = useUIStore();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -401,11 +405,18 @@ const ChatArea: React.FC = () => {
 
             const wasInContext = injectedContext.some(m => m.id === message.id);
             
+            // EXCHANGE-AWARE NOTIFICATION: Check if this exchange has images
+            const pair = [msg];
+            if (pairPartner) pair.push(pairPartner);
+            const hasImages = pair.some(m => m.attachments?.some(a => a.type === 'image'));
+            
+            if (!wasInContext && hasImages) {
+                alert("Note: Images are not supported in Side Chat context. Only message text and document content will be imported.");
+            }
+
             // Toggle both together
-            toggleInjectedMessage(message);
+            toggleInjectedMessage(msg);
             if (pairPartner) {
-                // If the main message is being added, ensure the partner is added too.
-                // If it's being removed, ensure the partner is removed too.
                 const isPartnerIn = injectedContext.some(m => m.id === pairPartner!.id);
                 if (wasInContext === isPartnerIn) {
                     toggleInjectedMessage(pairPartner);
@@ -550,9 +561,36 @@ const ChatArea: React.FC = () => {
                                     <div className="msg-attachments">
                                         {msg.attachments.map((att) => (
                                             att.type === 'image' && att.dataUrl ? (
-                                                <img key={att.id} src={att.dataUrl} alt={att.name} className="msg-attachment-img" />
+                                                <img 
+                                                    key={att.id} 
+                                                    src={att.dataUrl} 
+                                                    alt={att.name} 
+                                                    className="msg-attachment-img clickable" 
+                                                    onClick={() => {
+                                                        setViewerFile({
+                                                            id: att.id,
+                                                            name: att.name,
+                                                            type: 'image',
+                                                            url: att.dataUrl
+                                                        });
+                                                        setViewerOpen(true);
+                                                    }}
+                                                />
                                             ) : (
-                                                <span key={att.id} className="msg-attachment-file">
+                                                <span 
+                                                    key={att.id} 
+                                                    className="msg-attachment-file clickable"
+                                                    onClick={() => {
+                                                        setViewerFile({
+                                                            id: att.id,
+                                                            name: att.name,
+                                                            type: att.type,
+                                                            textContent: att.textContent,
+                                                            aiDescription: att.aiDescription
+                                                        });
+                                                        setViewerOpen(true);
+                                                    }}
+                                                >
                                                     📄 {att.name}
                                                 </span>
                                             )
@@ -633,29 +671,37 @@ const ChatArea: React.FC = () => {
             onDrop={handleDrop}
         >
             <div className="pin-track-container">
-                {activeConv?.messages.map((m, idx) => {
-                    if (!m.isPinned) return null;
-                    const container = messagesContainerRef.current;
-                    if (!container) return null;
-                    
-                    // Simple estimation for marker position based on message index
-                    // In a real app, you might use ResizeObserver to get exact heights,
-                    // but for now, index-based ratio is a good premium-feeling approximation.
-                    const topPercent = (idx / activeConv.messages.length) * 100;
-                    
-                    return (
-                        <div 
-                            key={`pin-${m.id}`}
-                            className="pin-marker"
-                            style={{ top: `${topPercent}%` }}
-                            onClick={() => scrollToMessage(m.id)}
-                        >
-                            <div className="pin-marker-tooltip">
-                                {m.content.slice(0, 30)}...
-                            </div>
-                        </div>
-                    );
-                })}
+                {(() => {
+                    const markers: React.ReactNode[] = [];
+                    if (!activeConv) return null;
+                    const msgs = activeConv.messages;
+
+                    for (let i = 0; i < msgs.length; i++) {
+                        const msg = msgs[i];
+                        const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
+
+                        // Check if either the user msg or its paired assistant msg is pinned
+                        if (msg.isPinned || (nextMsg && nextMsg.isPinned)) {
+                            const topPercent = (i / msgs.length) * 100;
+                            const previewText = (nextMsg?.content || msg.content).slice(0, 40);
+
+                            markers.push(
+                                <div 
+                                    key={`pin-exchange-${msg.id}`}
+                                    className="pin-marker"
+                                    style={{ top: `${topPercent}%` }}
+                                    onClick={() => scrollToMessage(msg.id)}
+                                >
+                                    <div className="pin-marker-tooltip">
+                                        {previewText}...
+                                    </div>
+                                </div>
+                            );
+                        }
+                        if (nextMsg) i++; // Skip assistant message in next iteration
+                    }
+                    return markers;
+                })()}
             </div>
 
             {isDragOver && (

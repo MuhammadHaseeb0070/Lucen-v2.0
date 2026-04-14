@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { 
     X, 
     FileText, 
     Image as ImageIcon, 
     FileCode, 
     Search, 
-    ExternalLink, 
     Loader2, 
-    Inbox
+    Inbox,
+    Eye,
+    Calendar,
+    MessageSquare,
+    Grid,
+    List
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -20,19 +24,24 @@ interface FileRecord {
     file_type: string;
     conversation_id: string;
     created_at: string;
+    storage_path?: string;
+    extracted_text?: string;
+    ai_description?: string;
     conversations?: {
         title: string;
     };
 }
 
 const FileLibrary: React.FC = () => {
-    const { fileLibraryOpen, setFileLibraryOpen } = useUIStore();
+    const { fileLibraryOpen, setFileLibraryOpen, setViewerOpen, setViewerFile } = useUIStore();
     const { user } = useAuthStore();
     const { setActiveConversation } = useChatStore();
     
     const [files, setFiles] = useState<FileRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [filterType, setFilterType] = useState<'all' | 'image' | 'text' | 'code'>('all');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     useEffect(() => {
         if (fileLibraryOpen && user) {
@@ -44,7 +53,6 @@ const FileLibrary: React.FC = () => {
         if (!supabase) return;
         setLoading(true);
         try {
-            // Fetch files joined with conversation titles
             const { data, error } = await supabase
                 .from('file_attachments')
                 .select(`
@@ -53,6 +61,9 @@ const FileLibrary: React.FC = () => {
                     file_type,
                     conversation_id,
                     created_at,
+                    storage_path,
+                    extracted_text,
+                    ai_description,
                     conversations (
                         title
                     )
@@ -74,278 +85,480 @@ const FileLibrary: React.FC = () => {
         setFileLibraryOpen(false);
     };
 
+    const handleView = (file: FileRecord) => {
+        const url = file.storage_path && supabase ? 
+            supabase.storage.from('attachments').getPublicUrl(file.storage_path).data.publicUrl : undefined;
+            
+        setViewerFile({
+            id: file.id,
+            name: file.file_name,
+            type: file.file_type,
+            url,
+            textContent: file.extracted_text,
+            aiDescription: file.ai_description
+        });
+        setViewerOpen(true);
+    };
+
     const getFileIcon = (type: string) => {
         switch (type) {
-            case 'image': return <ImageIcon size={18} className="file-icon image" />;
-            case 'code': return <FileCode size={18} className="file-icon code" />;
-            default: return <FileText size={18} className="file-icon text" />;
+            case 'image': return <ImageIcon size={20} />;
+            case 'code': return <FileCode size={20} />;
+            default: return <FileText size={20} />;
         }
     };
 
-    const filteredFiles = files.filter(f => 
-        f.file_name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredFiles = useMemo(() => {
+        return files.filter(f => {
+            const matchesSearch = f.file_name.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesType = filterType === 'all' || f.file_type === filterType;
+            return matchesSearch && matchesType;
+        });
+    }, [files, searchQuery, filterType]);
 
     if (!fileLibraryOpen) return null;
 
     return (
-        <div className="file-library-overlay" onClick={() => setFileLibraryOpen(false)}>
-            <div className="file-library-modal" onClick={e => e.stopPropagation()}>
-                <div className="file-library-header">
-                    <div className="header-title-area">
-                        <h2>File Library</h2>
-                        <p>Browse and navigate your uploaded resources</p>
+        <div className="file-lib-overlay" onClick={() => setFileLibraryOpen(false)}>
+            <div className="file-lib-modal" onClick={e => e.stopPropagation()}>
+                <div className="file-lib-header">
+                    <div className="file-lib-title-group">
+                        <div className="lib-icon-badge">
+                            <Grid size={20} />
+                        </div>
+                        <div>
+                            <h2>Assets & Library</h2>
+                            <p>{files.length} items collected across chats</p>
+                        </div>
                     </div>
-                    <button className="close-btn" onClick={() => setFileLibraryOpen(false)}>
-                        <X size={20} />
-                    </button>
+                    
+                    <div className="header-actions">
+                        <div className="view-toggle">
+                            <button 
+                                className={viewMode === 'grid' ? 'active' : ''} 
+                                onClick={() => setViewMode('grid')}
+                            >
+                                <Grid size={16} />
+                            </button>
+                            <button 
+                                className={viewMode === 'list' ? 'active' : ''} 
+                                onClick={() => setViewMode('list')}
+                            >
+                                <List size={16} />
+                            </button>
+                        </div>
+                        <button className="close-btn" onClick={() => setFileLibraryOpen(false)}>
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
-                <div className="file-library-search">
-                    <Search size={18} className="search-icon" />
-                    <input 
-                        type="text" 
-                        placeholder="Search files..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        autoFocus
-                    />
+                <div className="file-lib-toolbar">
+                    <div className="search-box">
+                        <Search size={18} />
+                        <input 
+                            type="text" 
+                            placeholder="Find a file..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                    
+                    <div className="filter-group">
+                        <button 
+                            className={`filter-btn ${filterType === 'all' ? 'active' : ''}`}
+                            onClick={() => setFilterType('all')}
+                        >
+                            All
+                        </button>
+                        <button 
+                            className={`filter-btn ${filterType === 'image' ? 'active' : ''}`}
+                            onClick={() => setFilterType('image')}
+                        >
+                            Images
+                        </button>
+                        <button 
+                            className={`filter-btn ${filterType === 'text' ? 'active' : ''}`}
+                            onClick={() => setFilterType('text')}
+                        >
+                            Documents
+                        </button>
+                    </div>
                 </div>
 
-                <div className="file-library-content">
+                <div className="file-lib-viewport">
                     {loading ? (
-                        <div className="library-loading">
-                            <Loader2 size={32} className="spinner" />
-                            <span>Fetching your files...</span>
+                        <div className="lib-state-msg">
+                            <Loader2 size={32} className="spin" />
+                            <p>Loading your library...</p>
                         </div>
                     ) : filteredFiles.length === 0 ? (
-                        <div className="library-empty">
+                        <div className="lib-state-msg">
                             <Inbox size={48} />
-                            <h3>No files found</h3>
-                            <p>{searchQuery ? 'Try a different search term' : 'Upload files in a chat to see them here'}</p>
+                            <h3>Empty Library</h3>
+                            <p>{searchQuery ? 'No matches found' : 'Upload files in chats to build your library'}</p>
                         </div>
                     ) : (
-                        <div className="file-list">
-                            {filteredFiles.map(file => (
-                                <div key={file.id} className="file-item">
-                                    <div className="file-main">
-                                        <div className="file-preview">
-                                            {getFileIcon(file.file_type)}
+                        <div className={`file-content-container mode-${viewMode}`}>
+                            {filteredFiles.map(file => {
+                                const isImg = file.file_type === 'image';
+                                const thumbUrl = isImg && file.storage_path && supabase ? 
+                                    supabase.storage.from('attachments').getPublicUrl(file.storage_path).data.publicUrl : null;
+
+                                return (
+                                    <div key={file.id} className="lib-file-card">
+                                        <div className="file-card-preview" onClick={() => handleView(file)}>
+                                            {thumbUrl ? (
+                                                <img src={thumbUrl} alt="" className="thumb-img" />
+                                            ) : (
+                                                <div className="type-placeholder">
+                                                    {getFileIcon(file.file_type)}
+                                                </div>
+                                            )}
+                                            <div className="card-overlay">
+                                                <button className="quick-view-btn">
+                                                    <Eye size={18} />
+                                                    <span>View</span>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="file-details">
-                                            <span className="file-name">{file.file_name}</span>
-                                            <div className="file-meta">
-                                                <span className="file-date">
-                                                    {new Date(file.created_at).toLocaleDateString()}
+                                        
+                                        <div className="file-card-info">
+                                            <div className="name-row">
+                                                <span className="file-primary-name" title={file.file_name}>
+                                                    {file.file_name}
                                                 </span>
-                                                <span className="dot">•</span>
-                                                <span className="conv-link">
-                                                    Part of: {file.conversations?.title || 'Untitled Chat'}
-                                                </span>
+                                            </div>
+                                            
+                                            <div className="meta-grid">
+                                                <div className="meta-item">
+                                                    <Calendar size={12} />
+                                                    <span>{new Date(file.created_at).toLocaleDateString()}</span>
+                                                </div>
+                                                <div className="meta-item clickable" onClick={() => handleNavigate(file.conversation_id)}>
+                                                    <MessageSquare size={12} />
+                                                    <span className="chat-link">{file.conversations?.title || 'Chat'}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <button 
-                                        className="navigate-btn"
-                                        onClick={() => handleNavigate(file.conversation_id)}
-                                        title="Jump to conversation"
-                                    >
-                                        <ExternalLink size={16} />
-                                        <span>Jump to chat</span>
-                                    </button>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
             </div>
 
             <style>{`
-                .file-library-overlay {
+                .file-lib-overlay {
                     position: fixed;
                     inset: 0;
                     background: rgba(0, 0, 0, 0.4);
-                    backdrop-filter: blur(8px);
+                    backdrop-filter: blur(12px);
                     z-index: 1000;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    animation: fadeIn 0.2s ease-out;
+                    padding: 20px;
+                    animation: fadeIn 0.3s ease-out;
                 }
 
-                .file-library-modal {
-                    width: min(90vw, 700px);
-                    max-height: 80vh;
-                    background: var(--bg-card);
-                    border: 1px solid var(--border-subtle);
-                    border-radius: 20px;
+                .file-lib-modal {
+                    width: min(100%, 900px);
+                    height: 85vh;
+                    background: var(--bg-surface);
+                    border: 1px solid var(--divider);
+                    border-radius: 24px;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+                    box-shadow: 0 30px 60px rgba(0,0,0,0.4);
                     overflow: hidden;
-                    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: scaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                 }
 
-                .file-library-header {
-                    padding: 24px;
+                .file-lib-header {
+                    padding: 24px 32px;
                     display: flex;
                     justify-content: space-between;
-                    align-items: flex-start;
-                    border-bottom: 1px solid var(--border-subtle);
-                }
-
-                .header-title-area h2 {
-                    font-size: 1.5rem;
-                    font-weight: 600;
-                    color: var(--text-primary);
-                    margin: 0 0 4px 0;
-                }
-
-                .header-title-area p {
-                    font-size: 0.9rem;
-                    color: var(--text-muted);
-                    margin: 0;
-                }
-
-                .close-btn {
-                    padding: 8px;
-                    border-radius: 10px;
-                    color: var(--text-muted);
-                    transition: all 0.2s;
-                }
-                .close-btn:hover {
-                    background: var(--bg-hover);
-                    color: var(--text-primary);
-                }
-
-                .file-library-search {
-                    padding: 16px 24px;
-                    display: flex;
                     align-items: center;
-                    gap: 12px;
-                    background: var(--bg-muted);
-                    border-bottom: 1px solid var(--border-subtle);
+                    border-bottom: 1px solid var(--divider);
+                    background: linear-gradient(to bottom, var(--bg-surface), rgba(255,255,255,0.02));
                 }
 
-                .file-library-search input {
-                    flex: 1;
-                    background: transparent;
-                    border: none;
-                    font-size: 1rem;
-                    color: var(--text-primary);
-                    outline: none;
-                }
-
-                .file-library-content {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 12px;
-                }
-
-                .file-list {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                }
-
-                .file-item {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: 12px 16px;
-                    border-radius: 12px;
-                    transition: all 0.2s;
-                    cursor: default;
-                }
-                .file-item:hover {
-                    background: var(--bg-hover);
-                }
-
-                .file-main {
+                .file-lib-title-group {
                     display: flex;
                     align-items: center;
                     gap: 16px;
                 }
 
-                .file-preview {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 10px;
-                    background: var(--bg-muted);
+                .lib-icon-badge {
+                    width: 44px;
+                    height: 44px;
+                    background: var(--accent-soft);
+                    color: var(--accent);
+                    border-radius: 14px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    border: 1px solid var(--border-subtle);
                 }
 
-                .file-icon.image { color: var(--accent); }
-                .file-icon.code { color: var(--warning); }
-                .file-icon.text { color: var(--text-muted); }
-
-                .file-details {
-                    display: flex;
-                    flex-direction: column;
-                }
-
-                .file-name {
-                    font-weight: 500;
+                .file-lib-title-group h2 {
+                    font-size: 1.25rem;
+                    font-weight: 700;
+                    margin: 0;
                     color: var(--text-primary);
                 }
 
-                .file-meta {
-                    font-size: 0.8rem;
-                    color: var(--text-muted);
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
+                .file-lib-title-group p {
+                    margin: 2px 0 0 0;
+                    font-size: 0.82rem;
+                    color: var(--text-tertiary);
                 }
 
-                .navigate-btn {
+                .header-actions {
                     display: flex;
                     align-items: center;
-                    gap: 8px;
-                    padding: 8px 14px;
-                    border-radius: 8px;
+                    gap: 16px;
+                }
+
+                .view-toggle {
+                    display: flex;
                     background: var(--bg-muted);
-                    border: 1px solid var(--border-subtle);
-                    color: var(--text-muted);
-                    font-size: 0.85rem;
-                    font-weight: 500;
+                    padding: 4px;
+                    border-radius: 10px;
+                }
+
+                .view-toggle button {
+                    padding: 6px 10px;
+                    border-radius: 8px;
+                    color: var(--text-tertiary);
                     transition: all 0.2s;
                 }
-                .navigate-btn:hover {
-                    background: var(--accent);
-                    color: white;
+
+                .view-toggle button.active {
+                    background: var(--bg-surface);
+                    color: var(--accent);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+
+                .file-lib-toolbar {
+                    padding: 16px 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 20px;
+                    background: var(--bg-muted-alpha);
+                }
+
+                .search-box {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    background: var(--bg-surface);
+                    border: 1px solid var(--divider);
+                    padding: 0 16px;
+                    height: 42px;
+                    border-radius: 12px;
+                    color: var(--text-tertiary);
+                    transition: border-color 0.2s;
+                }
+
+                .search-box:focus-within {
                     border-color: var(--accent);
                 }
 
-                .library-loading, .library-empty {
+                .search-box input {
+                    flex: 1;
+                    background: transparent;
+                    border: none;
+                    color: var(--text-primary);
+                    outline: none;
+                    font-size: 0.95rem;
+                }
+
+                .filter-group {
+                    display: flex;
+                    gap: 8px;
+                }
+
+                .filter-btn {
+                    padding: 6px 16px;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    border-radius: 100px;
+                    color: var(--text-secondary);
+                    transition: all 0.2s;
+                    border: 1px solid transparent;
+                }
+
+                .filter-btn:hover {
+                    background: var(--bg-hover);
+                }
+
+                .filter-btn.active {
+                    background: var(--accent-soft);
+                    color: var(--accent);
+                    border-color: var(--accent-border);
+                }
+
+                .file-lib-viewport {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 32px;
+                }
+
+                .file-content-container.mode-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                    gap: 24px;
+                }
+
+                .lib-file-card {
+                    display: flex;
+                    flex-direction: column;
+                    background: var(--bg-muted);
+                    border: 1px solid var(--divider-subtle);
+                    border-radius: 18px;
+                    overflow: hidden;
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+
+                .lib-file-card:hover {
+                    transform: translateY(-4px);
+                    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+                    border-color: var(--accent-border);
+                }
+
+                .file-card-preview {
+                    position: relative;
+                    aspect-ratio: 4/3;
+                    background: var(--bg-surface);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    overflow: hidden;
+                }
+
+                .thumb-img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    transition: transform 0.5s ease;
+                }
+
+                .lib-file-card:hover .thumb-img {
+                    transform: scale(1.1);
+                }
+
+                .type-placeholder {
+                    color: var(--text-tertiary);
+                    transition: color 0.3s;
+                }
+
+                .lib-file-card:hover .type-placeholder {
+                    color: var(--accent);
+                }
+
+                .card-overlay {
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(0,0,0,0.4);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    opacity: 0;
+                    transition: opacity 0.2s;
+                    backdrop-filter: blur(4px);
+                }
+
+                .file-card-preview:hover .card-overlay {
+                    opacity: 1;
+                }
+
+                .quick-view-btn {
+                    background: white;
+                    color: black;
+                    padding: 8px 16px;
+                    border-radius: 100px;
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    transform: translateY(10px);
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+
+                .file-card-preview:hover .quick-view-btn {
+                    transform: translateY(0);
+                }
+
+                .file-card-info {
+                    padding: 14px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+
+                .file-primary-name {
+                    font-weight: 600;
+                    font-size: 0.9rem;
+                    color: var(--text-primary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    display: block;
+                }
+
+                .meta-grid {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .meta-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.75rem;
+                    color: var(--text-tertiary);
+                }
+
+                .meta-item.clickable {
+                    cursor: pointer;
+                }
+
+                .meta-item.clickable:hover {
+                    color: var(--accent);
+                }
+
+                .chat-link {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .lib-state-msg {
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    padding: 60px 0;
-                    color: var(--text-muted);
+                    height: 100%;
+                    color: var(--text-tertiary);
+                    min-height: 300px;
                 }
 
-                .spinner {
-                    animation: spin 1s linear infinite;
-                    margin-bottom: 16px;
-                }
+                .spin { animation: spin 1s linear infinite; }
 
-                @keyframes spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                @keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
-
-                @keyframes slideUp {
-                    from { transform: translateY(20px); opacity: 0; }
-                    to { transform: translateY(0); opacity: 1; }
+                @media (max-width: 640px) {
+                    .file-lib-header { padding: 16px; }
+                    .file-lib-toolbar { padding: 12px 16px; flex-direction: column; align-items: stretch; }
+                    .file-lib-viewport { padding: 16px; }
                 }
             `}</style>
         </div>
@@ -353,3 +566,4 @@ const FileLibrary: React.FC = () => {
 };
 
 export default FileLibrary;
+
