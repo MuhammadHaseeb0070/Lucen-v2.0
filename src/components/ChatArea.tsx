@@ -473,7 +473,13 @@ const ChatArea: React.FC = () => {
 
     // Keeps `matchCount` and `activeMatchMsgId` in sync with the rendered <mark> elements.
     useEffect(() => {
-        if (!searchOpen) return;
+        if (!searchOpen) {
+            setActiveMatchMsgId(null);
+            setMatchCount(0);
+            setActiveMatchIndex(0);
+            return;
+        }
+
         const elements = getHighlightedMatchElements();
         setMatchCount(elements.length);
 
@@ -483,12 +489,45 @@ const ChatArea: React.FC = () => {
             return;
         }
 
-        if (activeMatchIndex >= elements.length) setActiveMatchIndex(0);
+        // Apply is-active class to the current match element
+        elements.forEach((el, i) => {
+            if (i === activeMatchIndex) el.classList.add('is-active');
+            else el.classList.remove('is-active');
+        });
+
+        if (activeMatchIndex >= elements.length) {
+            setActiveMatchIndex(0);
+        }
 
         const el = elements[activeMatchIndex] || elements[0];
-        const msgId = el.closest('[data-msg-id]')?.getAttribute('data-msg-id') || null;
+        const msgId = el?.closest('[data-msg-id]')?.getAttribute('data-msg-id') || null;
         setActiveMatchMsgId(msgId);
     }, [searchOpen, getHighlightedMatchElements, activeMatchIndex, activeConv?.messages]);
+
+    // Jump to nearest match on search start
+    useEffect(() => {
+        if (searchOpen && searchQuery.trim().length >= 2) {
+            const elements = getHighlightedMatchElements();
+            if (elements.length > 0) {
+                const container = messagesContainerRef.current;
+                if (container) {
+                    const scrollCenter = container.scrollTop + (container.clientHeight / 2);
+                    let minOffset = Infinity;
+                    let nearestIdx = 0;
+
+                    elements.forEach((el, i) => {
+                        const rect = (el as HTMLElement).offsetTop;
+                        const offset = Math.abs(rect - scrollCenter);
+                        if (offset < minOffset) {
+                            minOffset = offset;
+                            nearestIdx = i;
+                        }
+                    });
+                    setActiveMatchIndex(nearestIdx);
+                }
+            }
+        }
+    }, [searchOpen]); // Only run once when search bar opens
 
     // Scroll to the exact highlighted substring (not just the whole message).
     useEffect(() => {
@@ -671,6 +710,19 @@ const ChatArea: React.FC = () => {
             onDrop={handleDrop}
         >
             <div className="pin-track-container">
+                {searchOpen && activeConv && matchingIds.size > 0 && Array.from(matchingIds).map(msgId => {
+                    const idx = activeConv.messages.findIndex(m => m.id === msgId);
+                    if (idx === -1) return null;
+                    const pos = (idx / activeConv.messages.length) * 100;
+                    return (
+                        <div 
+                            key={`search-marker-${msgId}`}
+                            className="search-marker"
+                            style={{ top: `${pos}%` }}
+                            onClick={() => scrollToMessage(msgId)}
+                        />
+                    );
+                })}
                 {(() => {
                     const markers: React.ReactNode[] = [];
                     if (!activeConv) return null;
@@ -722,7 +774,13 @@ const ChatArea: React.FC = () => {
                                 <input
                                     type="text" className="chat-search-input" placeholder="Search messages..."
                                     value={searchQuery} autoFocus
-                                    onChange={(e) => { setSearchQuery(e.target.value); setActiveMatchIndex(0); }}
+                                    onChange={(e) => { 
+                                        const newVal = e.target.value;
+                                        setSearchQuery(newVal); 
+                                        // If we are starting a fresh search (was empty or too short), 
+                                        // we'll let the nearest-match Effect handle it.
+                                        // Otherwise, we reset index only if current one becomes invalid.
+                                    }}
                                     onKeyDown={handleSearchKeyDown}
                                 />
                                 {searchQuery && matchCount > 0 && <span className="chat-search-count">{activeMatchIndex + 1}/{matchCount}</span>}
@@ -733,7 +791,13 @@ const ChatArea: React.FC = () => {
                                         <button className="chat-search-nav" onClick={goNextMatch} title="Next"><ChevronDown size={15} /></button>
                                     </>
                                 )}
-                                <button className="chat-search-close" onClick={() => { setSearchOpen(false); setSearchQuery(''); }}><X size={15} /></button>
+                                <button className="chat-search-close" onClick={() => { 
+                                    setSearchOpen(false); 
+                                    setSearchQuery(''); 
+                                    setActiveMatchIndex(0);
+                                    setActiveMatchMsgId(null);
+                                    setMatchCount(0);
+                                }}><X size={15} /></button>
                             </>
                         ) : (
                             <button className="chat-search-trigger" onClick={() => setSearchOpen(true)} title="Search messages"><Search size={15} /></button>

@@ -36,6 +36,35 @@ export interface ThemePreset {
 export const THEME_PRESETS: ThemePreset[] = [
 
     // ═══════════════════════════════════════════════════════════════════════════
+    {
+        id: 'washi',
+        name: 'Washi',
+        emoji: '🪷',
+        category: 'warm',
+        isDark: false,
+        colors: {
+            bgBase: '#F5F0E8',
+            bgSurface: '#FDFAF5',
+            bgSurfaceHover: '#EDE8DE',
+            bgMuted: '#E4DDD0',
+            bgInset: '#D6CEC0',
+            textPrimary: '#1C1810',
+            textSecondary: '#6B6358',
+            textTertiary: '#A09588',
+            accent: '#3D6B5E',
+            accentSoft: 'rgba(61, 107, 94, 0.08)',
+            accentText: '#FFFFFF',
+            danger: '#A83030',
+            success: '#3A6B44',
+            warning: '#9A6B20',
+            divider: 'rgba(28, 24, 16, 0.07)',
+            shadow: 'rgba(28, 24, 16, 0.04)',
+            userBubbleBg: '#3D6B5E',
+            userBubbleText: '#FFFFFF',
+            aiBubbleBg: '#FDFAF5',
+            aiBubbleBorder: 'rgba(28, 24, 16, 0.07)',
+        },
+    },
     // 1. LUCEN — Brand default. Kept exactly as-is.
     // ═══════════════════════════════════════════════════════════════════════════
     {
@@ -71,35 +100,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     // ═══════════════════════════════════════════════════════════════════════════
     // 2. WASHI — Japanese washi paper + sumi-e ink. Kept exactly as-is.
     // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'washi',
-        name: 'Washi',
-        emoji: '🪷',
-        category: 'warm',
-        isDark: false,
-        colors: {
-            bgBase: '#F5F0E8',
-            bgSurface: '#FDFAF5',
-            bgSurfaceHover: '#EDE8DE',
-            bgMuted: '#E4DDD0',
-            bgInset: '#D6CEC0',
-            textPrimary: '#1C1810',
-            textSecondary: '#6B6358',
-            textTertiary: '#A09588',
-            accent: '#3D6B5E',
-            accentSoft: 'rgba(61, 107, 94, 0.08)',
-            accentText: '#FFFFFF',
-            danger: '#A83030',
-            success: '#3A6B44',
-            warning: '#9A6B20',
-            divider: 'rgba(28, 24, 16, 0.07)',
-            shadow: 'rgba(28, 24, 16, 0.04)',
-            userBubbleBg: '#3D6B5E',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FDFAF5',
-            aiBubbleBorder: 'rgba(28, 24, 16, 0.07)',
-        },
-    },
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 3. AMBER — Upgraded (contrast pattern aligned to Lucen roles).
@@ -254,303 +254,304 @@ export const THEME_PRESETS: ThemePreset[] = [
     // ═══════════════════════════════════════════════════════════════════════════
     // 7. VERDIGRIS — Upgraded (neutral divider, text ladder tightened).
     // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'verdigris',
-        name: 'Verdigris',
-        emoji: '🏛️',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#141918',
-            bgSurface: '#1C2320',
-            bgSurfaceHover: '#242E2A',
-            bgMuted: '#1A2220',
-            bgInset: '#0D1210',
+    // {
+    //     id: 'verdigris',
+    //     name: 'Verdigris',
+    //     emoji: '🏛️',
+    //     category: 'focus',
+    //     isDark: true,
+    //     colors: {
+    //         bgBase: '#141918',
+    //         bgSurface: '#1C2320',
+    //         bgSurfaceHover: '#242E2A',
+    //         bgMuted: '#1A2220',
+    //         bgInset: '#0D1210',
 
-            textPrimary: '#D7E0DB',
-            textSecondary: '#7FA39A',
-            textTertiary: '#4F6B63',
+    //         textPrimary: '#D7E0DB',
+    //         textSecondary: '#7FA39A',
+    //         textTertiary: '#4F6B63',
 
-            accent: '#5BA89A',
-            accentSoft: 'rgba(91, 168, 154, 0.1)',
-            accentText: '#FFFFFF',
+    //         accent: '#5BA89A',
+    //         accentSoft: 'rgba(91, 168, 154, 0.1)',
+    //         accentText: '#FFFFFF',
 
-            danger: '#D05858',
-            success: '#5AAA7A',
-            warning: '#C8A840',
+    //         danger: '#D05858',
+    //         success: '#5AAA7A',
+    //         warning: '#C8A840',
 
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
+    //         divider: 'rgba(255, 255, 255, 0.08)',
+    //         shadow: 'rgba(0, 0, 0, 0.5)',
 
-            userBubbleBg: '#5BA89A',
-            userBubbleText: '#FFFFFF',
+    //         userBubbleBg: '#5BA89A',
+    //         userBubbleText: '#FFFFFF',
 
-            aiBubbleBg: '#1C2320',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
-        },
-    },
+    //         aiBubbleBg: '#1C2320',
+    //         aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+    //     },
+    // },
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 8. TERMINAL — Upgraded (divider neutral like Studio to reduce glare).
     // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'terminal',
-        name: 'Terminal',
-        emoji: '⚡',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#0E0E0E',
-            bgSurface: '#161616',
-            bgSurfaceHover: '#202020',
-            bgMuted: '#141414',
-            bgInset: '#080808',
+    // {
+    //     id: 'terminal',
+    //     name: 'Terminal',
+    //     emoji: '⚡',
+    //     category: 'focus',
+    //     isDark: true,
+    //     colors: {
+    //         bgBase: '#0E0E0E',
+    //         bgSurface: '#161616',
+    //         bgSurfaceHover: '#202020',
+    //         bgMuted: '#141414',
+    //         bgInset: '#080808',
 
-            textPrimary: '#F0F0F0',
-            textSecondary: '#9B9B9B',
-            textTertiary: '#686868',
+    //         textPrimary: '#F0F0F0',
+    //         textSecondary: '#9B9B9B',
+    //         textTertiary: '#686868',
 
-            accent: '#C8FF00',
-            accentSoft: 'rgba(200, 255, 0, 0.1)',
-            accentText: '#0E0E0E',
+    //         accent: '#C8FF00',
+    //         accentSoft: 'rgba(200, 255, 0, 0.1)',
+    //         accentText: '#0E0E0E',
 
-            danger: '#FF5555',
-            success: '#55DD88',
-            warning: '#FFCC44',
+    //         danger: '#FF5555',
+    //         success: '#55DD88',
+    //         warning: '#FFCC44',
 
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
+    //         divider: 'rgba(255, 255, 255, 0.08)',
+    //         shadow: 'rgba(0, 0, 0, 0.5)',
 
-            userBubbleBg: '#C8FF00',
-            userBubbleText: '#0E0E0E',
+    //         userBubbleBg: '#C8FF00',
+    //         userBubbleText: '#0E0E0E',
 
-            aiBubbleBg: '#161616',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
-        },
-    }, {
-        id: 'ocean',
-        name: 'Ocean',
-        emoji: '🌊',
-        category: 'cool',
-        isDark: false,
-        colors: {
-            bgBase: '#F2F7FF',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#EEF5FF',
-            bgMuted: '#E3ECFA',
-            bgInset: '#D9E4F6',
+    //         aiBubbleBg: '#161616',
+    //         aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+    //     },
+    // }, 
+    // {
+    //     id: 'ocean',
+    //     name: 'Ocean',
+    //     emoji: '🌊',
+    //     category: 'cool',
+    //     isDark: false,
+    //     colors: {
+    //         bgBase: '#F2F7FF',
+    //         bgSurface: '#FFFFFF',
+    //         bgSurfaceHover: '#EEF5FF',
+    //         bgMuted: '#E3ECFA',
+    //         bgInset: '#D9E4F6',
 
-            textPrimary: '#0E1A2B',
-            textSecondary: '#3E556D',
-            textTertiary: '#6E7E93',
+    //         textPrimary: '#0E1A2B',
+    //         textSecondary: '#3E556D',
+    //         textTertiary: '#6E7E93',
 
-            accent: '#0EA5E9',
-            accentSoft: 'rgba(14, 165, 233, 0.1)',
-            accentText: '#FFFFFF',
+    //         accent: '#0EA5E9',
+    //         accentSoft: 'rgba(14, 165, 233, 0.1)',
+    //         accentText: '#FFFFFF',
 
-            danger: '#EF4444',
-            success: '#22C55E',
-            warning: '#F59E0B',
+    //         danger: '#EF4444',
+    //         success: '#22C55E',
+    //         warning: '#F59E0B',
 
-            divider: 'rgba(0, 0, 0, 0.06)',
-            shadow: 'rgba(0, 0, 0, 0.05)',
+    //         divider: 'rgba(0, 0, 0, 0.06)',
+    //         shadow: 'rgba(0, 0, 0, 0.05)',
 
-            userBubbleBg: '#0EA5E9',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
-        },
-    },
+    //         userBubbleBg: '#0EA5E9',
+    //         userBubbleText: '#FFFFFF',
+    //         aiBubbleBg: '#FFFFFF',
+    //         aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+    //     },
+    // },
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 10. FOREST - Soft greens, calm focus (light).
-    // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'forest',
-        name: 'Forest',
-        emoji: '🌿',
-        category: 'focus',
-        isDark: false,
-        colors: {
-            bgBase: '#F4F7F2',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#EDF4E8',
-            bgMuted: '#E3E9DA',
-            bgInset: '#D4DEC7',
+    // // ═══════════════════════════════════════════════════════════════════════════
+    // // 10. FOREST - Soft greens, calm focus (light).
+    // // ═══════════════════════════════════════════════════════════════════════════
+    // {
+    //     id: 'forest',
+    //     name: 'Forest',
+    //     emoji: '🌿',
+    //     category: 'focus',
+    //     isDark: false,
+    //     colors: {
+    //         bgBase: '#F4F7F2',
+    //         bgSurface: '#FFFFFF',
+    //         bgSurfaceHover: '#EDF4E8',
+    //         bgMuted: '#E3E9DA',
+    //         bgInset: '#D4DEC7',
 
-            textPrimary: '#132015',
-            textSecondary: '#435A43',
-            textTertiary: '#6B7D67',
+    //         textPrimary: '#132015',
+    //         textSecondary: '#435A43',
+    //         textTertiary: '#6B7D67',
 
-            accent: '#16A34A',
-            accentSoft: 'rgba(22, 163, 74, 0.1)',
-            accentText: '#FFFFFF',
+    //         accent: '#16A34A',
+    //         accentSoft: 'rgba(22, 163, 74, 0.1)',
+    //         accentText: '#FFFFFF',
 
-            danger: '#DC2626',
-            success: '#15803D',
-            warning: '#D97706',
+    //         danger: '#DC2626',
+    //         success: '#15803D',
+    //         warning: '#D97706',
 
-            divider: 'rgba(0, 0, 0, 0.06)',
-            shadow: 'rgba(0, 0, 0, 0.05)',
+    //         divider: 'rgba(0, 0, 0, 0.06)',
+    //         shadow: 'rgba(0, 0, 0, 0.05)',
 
-            userBubbleBg: '#16A34A',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
-        },
-    },
+    //         userBubbleBg: '#16A34A',
+    //         userBubbleText: '#FFFFFF',
+    //         aiBubbleBg: '#FFFFFF',
+    //         aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+    //     },
+    // },
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 11. INDIGO - Editorial cool tone with strong accent clarity (light).
-    // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'indigo',
-        name: 'Indigo',
-        emoji: '🟦',
-        category: 'curated',
-        isDark: false,
-        colors: {
-            bgBase: '#F5F7FF',
-            bgSurface: '#FFFFFF',
-            bgSurfaceHover: '#EEF1FF',
-            bgMuted: '#E6EAFB',
-            bgInset: '#DCE2FA',
+    // // ═══════════════════════════════════════════════════════════════════════════
+    // // 11. INDIGO - Editorial cool tone with strong accent clarity (light).
+    // // ═══════════════════════════════════════════════════════════════════════════
+    // {
+    //     id: 'indigo',
+    //     name: 'Indigo',
+    //     emoji: '🟦',
+    //     category: 'curated',
+    //     isDark: false,
+    //     colors: {
+    //         bgBase: '#F5F7FF',
+    //         bgSurface: '#FFFFFF',
+    //         bgSurfaceHover: '#EEF1FF',
+    //         bgMuted: '#E6EAFB',
+    //         bgInset: '#DCE2FA',
 
-            textPrimary: '#0F172A',
-            textSecondary: '#374151',
-            textTertiary: '#6B7280',
+    //         textPrimary: '#0F172A',
+    //         textSecondary: '#374151',
+    //         textTertiary: '#6B7280',
 
-            accent: '#4F46E5',
-            accentSoft: 'rgba(79, 70, 229, 0.1)',
-            accentText: '#FFFFFF',
+    //         accent: '#4F46E5',
+    //         accentSoft: 'rgba(79, 70, 229, 0.1)',
+    //         accentText: '#FFFFFF',
 
-            danger: '#EF4444',
-            success: '#22C55E',
-            warning: '#F59E0B',
+    //         danger: '#EF4444',
+    //         success: '#22C55E',
+    //         warning: '#F59E0B',
 
-            divider: 'rgba(0, 0, 0, 0.06)',
-            shadow: 'rgba(0, 0, 0, 0.05)',
+    //         divider: 'rgba(0, 0, 0, 0.06)',
+    //         shadow: 'rgba(0, 0, 0, 0.05)',
 
-            userBubbleBg: '#4F46E5',
-            userBubbleText: '#FFFFFF',
-            aiBubbleBg: '#FFFFFF',
-            aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
-        },
-    },
+    //         userBubbleBg: '#4F46E5',
+    //         userBubbleText: '#FFFFFF',
+    //         aiBubbleBg: '#FFFFFF',
+    //         aiBubbleBorder: 'rgba(0, 0, 0, 0.06)',
+    //     },
+    // },
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 12. AURORA - Calm dark cyan glow (dark).
     // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'aurora',
-        name: 'Aurora',
-        emoji: '🟢',
-        category: 'focus',
-        isDark: true,
-        colors: {
-            bgBase: '#061317',
-            bgSurface: '#0A1D23',
-            bgSurfaceHover: '#0F2B33',
-            bgMuted: '#08171B',
-            bgInset: '#040B0E',
+    // {
+    //     id: 'aurora',
+    //     name: 'Aurora',
+    //     emoji: '🟢',
+    //     category: 'focus',
+    //     isDark: true,
+    //     colors: {
+    //         bgBase: '#061317',
+    //         bgSurface: '#0A1D23',
+    //         bgSurfaceHover: '#0F2B33',
+    //         bgMuted: '#08171B',
+    //         bgInset: '#040B0E',
 
-            textPrimary: '#E6FBFF',
-            textSecondary: '#7FB0B9',
-            textTertiary: '#4C6E77',
+    //         textPrimary: '#E6FBFF',
+    //         textSecondary: '#7FB0B9',
+    //         textTertiary: '#4C6E77',
 
-            accent: '#22D3EE',
-            accentSoft: 'rgba(34, 211, 238, 0.12)',
-            accentText: '#061317',
+    //         accent: '#22D3EE',
+    //         accentSoft: 'rgba(34, 211, 238, 0.12)',
+    //         accentText: '#061317',
 
-            danger: '#FF5C5C',
-            success: '#34D399',
-            warning: '#FBBF24',
+    //         danger: '#FF5C5C',
+    //         success: '#34D399',
+    //         warning: '#FBBF24',
 
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
+    //         divider: 'rgba(255, 255, 255, 0.08)',
+    //         shadow: 'rgba(0, 0, 0, 0.5)',
 
-            userBubbleBg: '#22D3EE',
-            userBubbleText: '#061317',
-            aiBubbleBg: '#0A1D23',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
-        },
-    },
+    //         userBubbleBg: '#22D3EE',
+    //         userBubbleText: '#061317',
+    //         aiBubbleBg: '#0A1D23',
+    //         aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+    //     },
+    // },
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 13. MIDNIGHT - Neutral dark with violet clarity (dark).
     // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'midnight',
-        name: 'Midnight',
-        emoji: '🌙',
-        category: 'curated',
-        isDark: true,
-        colors: {
-            bgBase: '#0B0B12',
-            bgSurface: '#141424',
-            bgSurfaceHover: '#1B1B31',
-            bgMuted: '#10101E',
-            bgInset: '#07070C',
+    // {
+    //     id: 'midnight',
+    //     name: 'Midnight',
+    //     emoji: '🌙',
+    //     category: 'curated',
+    //     isDark: true,
+    //     colors: {
+    //         bgBase: '#0B0B12',
+    //         bgSurface: '#141424',
+    //         bgSurfaceHover: '#1B1B31',
+    //         bgMuted: '#10101E',
+    //         bgInset: '#07070C',
 
-            textPrimary: '#EEEAFB',
-            textSecondary: '#A7A0BF',
-            textTertiary: '#6B658A',
+    //         textPrimary: '#EEEAFB',
+    //         textSecondary: '#A7A0BF',
+    //         textTertiary: '#6B658A',
 
-            accent: '#A78BFA',
-            accentSoft: 'rgba(167, 139, 250, 0.12)',
-            accentText: '#0B0B12',
+    //         accent: '#A78BFA',
+    //         accentSoft: 'rgba(167, 139, 250, 0.12)',
+    //         accentText: '#0B0B12',
 
-            danger: '#FB7185',
-            success: '#34D399',
-            warning: '#FBBF24',
+    //         danger: '#FB7185',
+    //         success: '#34D399',
+    //         warning: '#FBBF24',
 
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
+    //         divider: 'rgba(255, 255, 255, 0.08)',
+    //         shadow: 'rgba(0, 0, 0, 0.5)',
 
-            userBubbleBg: '#A78BFA',
-            userBubbleText: '#0B0B12',
-            aiBubbleBg: '#141424',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
-        },
-    },
+    //         userBubbleBg: '#A78BFA',
+    //         userBubbleText: '#0B0B12',
+    //         aiBubbleBg: '#141424',
+    //         aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+    //     },
+    // },
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 14. SUNSET - Warm dark for cozy long reads (dark).
-    // ═══════════════════════════════════════════════════════════════════════════
-    {
-        id: 'sunset',
-        name: 'Sunset',
-        emoji: '🔥',
-        category: 'warm',
-        isDark: true,
-        colors: {
-            bgBase: '#120A07',
-            bgSurface: '#1C110D',
-            bgSurfaceHover: '#241713',
-            bgMuted: '#160F0B',
-            bgInset: '#0B0503',
+    // // ═══════════════════════════════════════════════════════════════════════════
+    // // 14. SUNSET - Warm dark for cozy long reads (dark).
+    // // ═══════════════════════════════════════════════════════════════════════════
+    // {
+    //     id: 'sunset',
+    //     name: 'Sunset',
+    //     emoji: '🔥',
+    //     category: 'warm',
+    //     isDark: true,
+    //     colors: {
+    //         bgBase: '#120A07',
+    //         bgSurface: '#1C110D',
+    //         bgSurfaceHover: '#241713',
+    //         bgMuted: '#160F0B',
+    //         bgInset: '#0B0503',
 
-            textPrimary: '#FFF3EC',
-            textSecondary: '#DDAF8F',
-            textTertiary: '#A67B62',
+    //         textPrimary: '#FFF3EC',
+    //         textSecondary: '#DDAF8F',
+    //         textTertiary: '#A67B62',
 
-            accent: '#F97316',
-            accentSoft: 'rgba(249, 115, 22, 0.12)',
-            accentText: '#120A07',
+    //         accent: '#F97316',
+    //         accentSoft: 'rgba(249, 115, 22, 0.12)',
+    //         accentText: '#120A07',
 
-            danger: '#FB7185',
-            success: '#34D399',
-            warning: '#FBBF24',
+    //         danger: '#FB7185',
+    //         success: '#34D399',
+    //         warning: '#FBBF24',
 
-            divider: 'rgba(255, 255, 255, 0.08)',
-            shadow: 'rgba(0, 0, 0, 0.5)',
+    //         divider: 'rgba(255, 255, 255, 0.08)',
+    //         shadow: 'rgba(0, 0, 0, 0.5)',
 
-            userBubbleBg: '#F97316',
-            userBubbleText: '#120A07',
-            aiBubbleBg: '#1C110D',
-            aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
-        },
-    }
+    //         userBubbleBg: '#F97316',
+    //         userBubbleText: '#120A07',
+    //         aiBubbleBg: '#1C110D',
+    //         aiBubbleBorder: 'rgba(255, 255, 255, 0.08)',
+    //     },
+    // }
 
 ];
 

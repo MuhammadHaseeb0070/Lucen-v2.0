@@ -982,20 +982,24 @@ h4 {
 }
 
 .chat-item-actions {
-    display: none;
+    display: flex;
     position: absolute;
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
     gap: 2px;
-    background: var(--bg-surface);
+    background: transparent;
     padding: 3px;
     border-radius: var(--r-sm);
-    box-shadow: 0 2px 8px var(--shadow-color);
+    opacity: 0.4;
+    transition: opacity var(--dur-fast) var(--ease);
 }
 
-.sidebar-chat-item:hover .chat-item-actions {
-    display: flex;
+.sidebar-chat-item:hover .chat-item-actions,
+.sidebar-chat-item.active .chat-item-actions {
+    opacity: 1;
+    background: var(--bg-surface);
+    box-shadow: 0 2px 8px var(--shadow-color);
 }
 
 .chat-item-action-btn {
@@ -7496,4 +7500,45 @@ h4 {
     color: var(--accent) !important;
     background: var(--accent-soft) !important;
     border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+}
+
+/* ─── Search Minimap & Highlights ─── */
+.search-marker {
+    position: absolute;
+    right: 4px;
+    width: 10px;
+    height: 4px;
+    background: var(--warning, #f59e0b);
+    border-radius: var(--r-full);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all var(--dur-fast) var(--ease);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.search-marker:hover {
+    width: 16px;
+    transform: translateX(-2px);
+    z-index: 60;
+}
+
+mark.search-highlight {
+    background: var(--accent-light);
+    color: var(--text-primary);
+    border-radius: 2px;
+    padding: 0 1px;
+    transition: all var(--dur-fast) var(--ease);
+}
+
+mark.search-highlight.is-active {
+    background: var(--warning);
+    border: 1.5px solid var(--text-primary);
+    box-shadow: 0 0 0 2px var(--warning-soft);
+}
+
+.msg-exchange--active-match {
+    border: 1.5px solid var(--warning);
+    background: var(--warning-soft, rgba(245, 158, 11, 0.05)) !important;
+    border-radius: var(--r-md);
+    box-shadow: 0 0 0 2px var(--warning-soft);
 }
