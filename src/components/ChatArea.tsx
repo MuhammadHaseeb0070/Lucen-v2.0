@@ -358,24 +358,63 @@ const ChatArea: React.FC = () => {
         if (!activeConversationId) return;
         setHighlightedPairId(null);
         
-        // Find the partner message so we can remove both from side chat context
         const conv = useChatStore.getState().conversations.find(c => c.id === activeConversationId);
         const idx = conv?.messages.findIndex(m => m.id === msgId);
+        
         if (conv && idx !== undefined && idx !== -1) {
-            removeInjectedMessage(msgId);
-            const partnerMsg = conv.messages[idx + 1] || conv.messages[idx - 1];
-            if (partnerMsg) removeInjectedMessage(partnerMsg.id);
+            const msg = conv.messages[idx];
+            removeInjectedMessage(msg.id);
+            
+            if (msg.role === 'user') {
+                if (idx + 1 < conv.messages.length && conv.messages[idx + 1].role === 'assistant') {
+                    removeInjectedMessage(conv.messages[idx + 1].id);
+                }
+            } else if (msg.role === 'assistant') {
+                if (idx - 1 >= 0 && conv.messages[idx - 1].role === 'user') {
+                    removeInjectedMessage(conv.messages[idx - 1].id);
+                }
+            }
         }
 
         deleteMessagePair(activeConversationId, msgId);
     };
 
     const handleToggleLink = (message: Message) => {
-        const wasExisting = injectedContext.some(m => m.id === message.id);
-        toggleInjectedMessage(message);
-        // If we just added it, ensure side chat is open to see the context indicator
-        if (!wasExisting) {
-            setSideChatOpen(true);
+        if (!activeConversationId) return;
+        
+        const conv = useChatStore.getState().conversations.find(c => c.id === activeConversationId);
+        const idx = conv?.messages.findIndex(m => m.id === message.id);
+        
+        if (conv && idx !== undefined && idx !== -1) {
+            const msg = conv.messages[idx];
+            let pairPartner: Message | undefined;
+            
+            if (msg.role === 'user') {
+                if (idx + 1 < conv.messages.length && conv.messages[idx + 1].role === 'assistant') {
+                    pairPartner = conv.messages[idx + 1];
+                }
+            } else if (msg.role === 'assistant') {
+                if (idx - 1 >= 0 && conv.messages[idx - 1].role === 'user') {
+                    pairPartner = conv.messages[idx - 1];
+                }
+            }
+
+            const wasInContext = injectedContext.some(m => m.id === message.id);
+            
+            // Toggle both together
+            toggleInjectedMessage(message);
+            if (pairPartner) {
+                // If the main message is being added, ensure the partner is added too.
+                // If it's being removed, ensure the partner is removed too.
+                const isPartnerIn = injectedContext.some(m => m.id === pairPartner!.id);
+                if (wasInContext === isPartnerIn) {
+                    toggleInjectedMessage(pairPartner);
+                }
+            }
+
+            if (!wasInContext) {
+                setSideChatOpen(true);
+            }
         }
     };
 
@@ -523,11 +562,7 @@ const ChatArea: React.FC = () => {
                             </div>
                             <MessageBubble
                                 message={msg}
-                                onDelete={handleDelete}
-                                onToggleLink={handleToggleLink}
-                                isLinked={injectedContext.some(m => m.id === msg.id)}
-                                showDelete
-                                onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
+                                showDelete={false}
                                 actionsOnly
                             />
                         </div>

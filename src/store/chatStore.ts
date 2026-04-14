@@ -273,59 +273,83 @@ export const useChatStore = create<ChatStore>()(
                 }
             },
 
-            deleteMessagePair: (convId, userMsgId) => {
+            deleteMessagePair: (convId, msgId) => {
                 const conv = get().conversations.find((c) => c.id === convId);
-                const idx = conv?.messages.findIndex((m) => m.id === userMsgId) ?? -1;
-                let assistantMsgId: string | undefined;
+                const idx = conv?.messages.findIndex((m) => m.id === msgId) ?? -1;
+                if (!conv || idx === -1) return;
 
-                if (conv && idx !== -1 && idx + 1 < conv.messages.length && conv.messages[idx + 1].role === 'assistant') {
-                    assistantMsgId = conv.messages[idx + 1].id;
+                const msg = conv.messages[idx];
+                let idsToDelete = [msgId];
+                let userMsgId = msg.role === 'user' ? msg.id : undefined;
+                let assistantMsgId = msg.role === 'assistant' ? msg.id : undefined;
+
+                if (msg.role === 'user') {
+                    // Delete next assistant message if it exists
+                    if (idx + 1 < conv.messages.length && conv.messages[idx + 1].role === 'assistant') {
+                        assistantMsgId = conv.messages[idx + 1].id;
+                        idsToDelete.push(assistantMsgId);
+                    }
+                } else if (msg.role === 'assistant') {
+                    // Delete previous user message if it exists
+                    if (idx - 1 >= 0 && conv.messages[idx - 1].role === 'user') {
+                        userMsgId = conv.messages[idx - 1].id;
+                        idsToDelete.push(userMsgId);
+                    }
                 }
 
-                set((state) => ({
-                    conversations: state.conversations.map((c) => {
-                        if (c.id !== convId) return c;
-                        const msgIdx = c.messages.findIndex((m) => m.id === userMsgId);
-                        if (msgIdx === -1) return c;
-
-                        const newMessages = [...c.messages];
-                        const deleteCount =
-                            msgIdx + 1 < newMessages.length && newMessages[msgIdx + 1].role === 'assistant'
-                                ? 2
-                                : 1;
-                        newMessages.splice(msgIdx, deleteCount);
-
-                        return { ...c, messages: newMessages, updatedAt: Date.now() };
-                    }),
-                }));
-
-                // Sync to Supabase
-                if (hasActiveSessionSync()) {
-                    db.deleteMessagePair(convId, userMsgId, assistantMsgId).catch(console.error);
-                }
-            },
-
-            togglePinMessage: (convId, msgId) => {
-                let newPinnedState = false;
                 set((state) => ({
                     conversations: state.conversations.map((c) => {
                         if (c.id !== convId) return c;
                         return {
                             ...c,
-                            messages: c.messages.map((m) => {
-                                if (m.id === msgId) {
-                                    newPinnedState = !m.isPinned;
-                                    return { ...m, isPinned: newPinnedState };
-                                }
-                                return m;
-                            }),
+                            messages: c.messages.filter((m) => !idsToDelete.includes(m.id)),
+                            updatedAt: Date.now(),
+                        };
+                    }),
+                }));
+
+                // Sync to Supabase
+                if (hasActiveSessionSync()) {
+                    db.deleteMessagePair(convId, userMsgId || msgId, assistantMsgId).catch(console.error);
+                }
+            },
+
+            togglePinMessage: (convId, msgId) => {
+                const conv = get().conversations.find((c) => c.id === convId);
+                const idx = conv?.messages.findIndex((m) => m.id === msgId) ?? -1;
+                if (!conv || idx === -1) return;
+
+                const msg = conv.messages[idx];
+                const newPinnedState = !msg.isPinned;
+                let idsToToggle = [msgId];
+
+                if (msg.role === 'user') {
+                    if (idx + 1 < conv.messages.length && conv.messages[idx + 1].role === 'assistant') {
+                        idsToToggle.push(conv.messages[idx + 1].id);
+                    }
+                } else if (msg.role === 'assistant') {
+                    if (idx - 1 >= 0 && conv.messages[idx - 1].role === 'user') {
+                        idsToToggle.push(conv.messages[idx - 1].id);
+                    }
+                }
+
+                set((state) => ({
+                    conversations: state.conversations.map((c) => {
+                        if (c.id !== convId) return c;
+                        return {
+                            ...c,
+                            messages: c.messages.map((m) =>
+                                idsToToggle.includes(m.id) ? { ...m, isPinned: newPinnedState } : m
+                            ),
                             updatedAt: Date.now(),
                         };
                     }),
                 }));
 
                 if (hasActiveSessionSync()) {
-                    db.updateMessagePin(msgId, newPinnedState).catch(console.error);
+                    idsToToggle.forEach((id) => {
+                        db.updateMessagePin(id, newPinnedState).catch(console.error);
+                    });
                 }
             },
 
