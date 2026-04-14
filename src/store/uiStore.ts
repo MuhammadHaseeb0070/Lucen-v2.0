@@ -21,6 +21,7 @@ interface UIStore {
         textContent?: string;
         aiDescription?: string;
     } | null;
+    pendingMessageJumpId: string | null;
 
     toggleSidebar: () => void;
     setSidebarCollapsed: (collapsed: boolean) => void;
@@ -35,6 +36,7 @@ interface UIStore {
     setFileLibraryOpen: (open: boolean) => void;
     setViewerOpen: (open: boolean) => void;
     setViewerFile: (file: any) => void;
+    setPendingMessageJumpId: (id: string | null) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -51,6 +53,7 @@ export const useUIStore = create<UIStore>()(
             fileLibraryOpen: false,
             viewerOpen: false,
             viewerFile: null,
+            pendingMessageJumpId: null,
 
             toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
             setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -71,6 +74,7 @@ export const useUIStore = create<UIStore>()(
             setFileLibraryOpen: (open: boolean) => set({ fileLibraryOpen: open }),
             setViewerOpen: (open: boolean) => set({ viewerOpen: open }),
             setViewerFile: (file: any) => set({ viewerFile: file }),
+            setPendingMessageJumpId: (id) => set({ pendingMessageJumpId: id }),
         }),
         {
             name: 'lucen-ui-storage',

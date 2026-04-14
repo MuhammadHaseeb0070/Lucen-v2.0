@@ -27,13 +27,20 @@ interface FileRecord {
     storage_path?: string;
     extracted_text?: string;
     ai_description?: string;
+    message_id: string;
     conversations?: {
         title: string;
     };
 }
 
 const FileLibrary: React.FC = () => {
-    const { fileLibraryOpen, setFileLibraryOpen, setViewerOpen, setViewerFile } = useUIStore();
+    const { 
+        fileLibraryOpen, 
+        setFileLibraryOpen, 
+        setViewerOpen, 
+        setViewerFile,
+        setPendingMessageJumpId 
+    } = useUIStore();
     const { user } = useAuthStore();
     const { setActiveConversation } = useChatStore();
     
@@ -64,6 +71,7 @@ const FileLibrary: React.FC = () => {
                     storage_path,
                     extracted_text,
                     ai_description,
+                    message_id,
                     conversations (
                         title
                     )
@@ -80,8 +88,11 @@ const FileLibrary: React.FC = () => {
         }
     };
 
-    const handleNavigate = (convId: string) => {
+    const handleNavigate = (convId: string, msgId?: string) => {
         setActiveConversation(convId);
+        if (msgId) {
+            setPendingMessageJumpId(msgId);
+        }
         setFileLibraryOpen(false);
     };
 
@@ -235,9 +246,10 @@ const FileLibrary: React.FC = () => {
                                                     <Calendar size={12} />
                                                     <span>{new Date(file.created_at).toLocaleDateString()}</span>
                                                 </div>
-                                                <div className="meta-item clickable" onClick={() => handleNavigate(file.conversation_id)}>
+                                                <div className="meta-item clickable" onClick={() => handleNavigate(file.conversation_id, file.message_id)}>
                                                     <MessageSquare size={12} />
                                                     <span className="chat-link">{file.conversations?.title || 'Chat'}</span>
+                                                    <span className="jump-hint">— Go to Chat</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -346,7 +358,7 @@ const FileLibrary: React.FC = () => {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    gap: 20px;
+                    gap: 16px;
                     background: var(--bg-muted-alpha);
                 }
 
@@ -538,6 +550,14 @@ const FileLibrary: React.FC = () => {
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
+                    max-width: 120px;
+                }
+
+                .jump-hint {
+                    font-size: 0.65rem;
+                    opacity: 0.6;
+                    margin-left: auto;
+                    color: var(--accent);
                 }
 
                 .lib-state-msg {
@@ -556,9 +576,21 @@ const FileLibrary: React.FC = () => {
                 @keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
                 @media (max-width: 640px) {
-                    .file-lib-header { padding: 16px; }
-                    .file-lib-toolbar { padding: 12px 16px; flex-direction: column; align-items: stretch; }
-                    .file-lib-viewport { padding: 16px; }
+                    .file-lib-overlay { padding: 0; }
+                    .file-lib-modal { height: 100vh; border-radius: 0; width: 100vw; }
+                    .file-lib-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+                    .file-lib-title-group { gap: 10px; }
+                    .lib-icon-badge { width: 32px; height: 32px; border-radius: 10px; }
+                    .lib-icon-badge svg { width: 16px; height: 16px; }
+                    .file-lib-title-group h2 { font-size: 1rem; }
+                    .header-actions { margin-left: auto; }
+                    .view-toggle { scale: 0.9; }
+                    .file-lib-toolbar { padding: 12px 16px; flex-direction: column; align-items: stretch; gap: 12px; }
+                    .search-box { height: 38px; }
+                    .filter-group { overflow-x: auto; padding-bottom: 4px; }
+                    .filter-btn { flex-shrink: 0; padding: 4px 12px; font-size: 0.8rem; }
+                    .file-lib-viewport { padding: 12px; }
+                    .file-content-container.mode-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
                 }
             `}</style>
         </div>

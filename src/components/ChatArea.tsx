@@ -42,7 +42,9 @@ const ChatArea: React.FC = () => {
     const { 
         setSideChatOpen, 
         setViewerOpen, 
-        setViewerFile 
+        setViewerFile,
+        pendingMessageJumpId,
+        setPendingMessageJumpId
     } = useUIStore();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -539,6 +541,17 @@ const ChatArea: React.FC = () => {
         const el = elements[activeMatchIndex] || elements[0];
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, [activeMatchIndex, searchOpen, getHighlightedMatchElements, activeConv?.messages]);
+
+    useEffect(() => {
+        if (pendingMessageJumpId && activeConv) {
+            // Wait a tiny bit for the current conversation's messages to render if we just switched
+            const timer = setTimeout(() => {
+                scrollToMessage(pendingMessageJumpId);
+                setPendingMessageJumpId(null);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [pendingMessageJumpId, activeConv, scrollToMessage, setPendingMessageJumpId]);
 
     const goNextMatch = () => {
         const elements = getHighlightedMatchElements();

@@ -29,8 +29,8 @@ const AttachmentViewer: React.FC = () => {
         <div className="attachment-viewer-overlay" onClick={handleClose}>
             <div className="attachment-viewer-header" onClick={e => e.stopPropagation()}>
                 <div className="viewer-title">
-                    <FileText size={18} />
-                    <span>{viewerFile.name}</span>
+                    <FileText size={18} style={{ flexShrink: 0 }} />
+                    <span className="truncate">{viewerFile.name}</span>
                 </div>
                 <div className="viewer-actions">
                     {isImage && (
@@ -111,12 +111,21 @@ const AttachmentViewer: React.FC = () => {
                     align-items: center;
                     gap: 12px;
                     font-weight: 500;
+                    flex: 1;
+                    min-width: 0;
+                }
+
+                .viewer-title .truncate {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
                 .viewer-actions {
                     display: flex;
                     align-items: center;
                     gap: 16px;
+                    flex-shrink: 0;
                 }
 
                 .viewer-actions button, .download-link {
