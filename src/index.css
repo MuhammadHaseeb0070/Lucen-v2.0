@@ -984,22 +984,25 @@ h4 {
 .chat-item-actions {
     display: flex;
     position: absolute;
-    right: 8px;
+    right: 4px;
     top: 50%;
     transform: translateY(-50%);
     gap: 2px;
-    background: transparent;
-    padding: 3px;
-    border-radius: var(--r-sm);
-    opacity: 0.4;
-    transition: opacity var(--dur-fast) var(--ease);
+    background: var(--bg-surface);
+    padding: 4px;
+    border-radius: var(--r-md);
+    opacity: 0.6;
+    transition: all var(--dur-fast) var(--ease);
+    box-shadow: -8px 0 12px var(--bg-surface); /* Soft fade effect for text behind */
 }
 
 .sidebar-chat-item:hover .chat-item-actions,
 .sidebar-chat-item.active .chat-item-actions {
     opacity: 1;
     background: var(--bg-surface);
-    box-shadow: 0 2px 8px var(--shadow-color);
+    box-shadow: 
+        -12px 0 16px var(--bg-surface),
+        0 2px 8px var(--shadow-color);
 }
 
 .chat-item-action-btn {
@@ -7508,7 +7511,7 @@ h4 {
     right: 4px;
     width: 10px;
     height: 4px;
-    background: var(--warning, #f59e0b);
+    background: #f43f5e; /* Rose 500 */
     border-radius: var(--r-full);
     cursor: pointer;
     pointer-events: auto;
@@ -7520,25 +7523,27 @@ h4 {
     width: 16px;
     transform: translateX(-2px);
     z-index: 60;
+    background: #e11d48; /* Rose 600 */
 }
 
 mark.search-highlight {
-    background: var(--accent-light);
+    background: rgba(244, 63, 94, 0.15); /* Light rose background */
     color: var(--text-primary);
     border-radius: 2px;
     padding: 0 1px;
     transition: all var(--dur-fast) var(--ease);
+    border: none !important; /* Remove individual borders to avoid double-border bug */
 }
 
 mark.search-highlight.is-active {
-    background: var(--warning);
-    border: 1.5px solid var(--text-primary);
-    box-shadow: 0 0 0 2px var(--warning-soft);
+    background: rgba(244, 63, 94, 0.3);
 }
 
 .msg-exchange--active-match {
-    border: 1.5px solid var(--warning);
-    background: var(--warning-soft, rgba(245, 158, 11, 0.05)) !important;
+    border: 2px solid #f43f5e; /* Rose border for the active match exchange */
+    background: rgba(244, 63, 94, 0.04) !important;
     border-radius: var(--r-md);
-    box-shadow: 0 0 0 2px var(--warning-soft);
+    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.1);
+    position: relative;
+    z-index: 2;
 }

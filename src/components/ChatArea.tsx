@@ -69,6 +69,7 @@ const ChatArea: React.FC = () => {
     const [droppedFiles, setDroppedFiles] = useState<FileAttachment[]>([]);
     const [webSearchEnabled, setWebSearchEnabled] = useState(false);
     const dragCounterRef = useRef(0);
+    const hasJumpedRef = useRef(false);
 
     const scrollToBottom = useCallback(() => {
         // Jump directly to bottom (no smooth) to keep up with streaming.
@@ -477,6 +478,7 @@ const ChatArea: React.FC = () => {
             setActiveMatchMsgId(null);
             setMatchCount(0);
             setActiveMatchIndex(0);
+            hasJumpedRef.current = false;
             return;
         }
 
@@ -506,7 +508,7 @@ const ChatArea: React.FC = () => {
 
     // Jump to nearest match on search start
     useEffect(() => {
-        if (searchOpen && searchQuery.trim().length >= 2) {
+        if (searchOpen && searchQuery.trim().length >= 2 && !hasJumpedRef.current) {
             const elements = getHighlightedMatchElements();
             if (elements.length > 0) {
                 const container = messagesContainerRef.current;
@@ -524,10 +526,11 @@ const ChatArea: React.FC = () => {
                         }
                     });
                     setActiveMatchIndex(nearestIdx);
+                    hasJumpedRef.current = true;
                 }
             }
         }
-    }, [searchOpen]); // Only run once when search bar opens
+    }, [searchOpen, searchQuery, getHighlightedMatchElements]);
 
     // Scroll to the exact highlighted substring (not just the whole message).
     useEffect(() => {
