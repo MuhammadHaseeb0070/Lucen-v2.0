@@ -104,7 +104,7 @@ h4 {
     flex-direction: column;
 }
 
-/* Scrollbar — more visible and premium */
+/* Scrollbar — high visibility with theme support */
 ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -116,26 +116,24 @@ h4 {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--divider) 40%, transparent);
-    border: 3px solid transparent;
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    border: 2px solid transparent; /* Gives a nice 'floating' feel */
     background-clip: padding-box;
     border-radius: var(--r-full);
     transition: background var(--dur-fast) var(--ease);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-tertiary);
-    border: 3px solid transparent;
-    background-clip: padding-box;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-/* Dark mode scrollbar tweaks if needed */
+/* Dark mode scrollbar tweaks */
 [data-theme='dark'] ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 [data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 ::selection {
@@ -7460,35 +7458,6 @@ h4 {
 
 .pin-marker:hover .pin-marker-tooltip {
     opacity: 1;
-}
-
-/* ─── Message Counter Badge ─── */
-.chat-message-counter {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    background: var(--bg-surface);
-    border: 1px solid var(--divider);
-    border-radius: var(--r-full);
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--text-secondary);
-    box-shadow: 0 2px 12px var(--shadow-color);
-    pointer-events: auto;
-    transition: all var(--dur) var(--ease);
-}
-
-.chat-message-counter__label {
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 0.68rem;
-}
-
-.chat-message-counter__value {
-    color: var(--accent);
-    font-variant-numeric: tabular-nums;
 }
 
 .chat-header-overlay {

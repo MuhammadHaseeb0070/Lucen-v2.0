@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Hash } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
@@ -525,7 +525,6 @@ const ChatArea: React.FC = () => {
                                 message={msg}
                                 onDelete={handleDelete}
                                 onToggleLink={handleToggleLink}
-                                onPin={handlePin}
                                 isLinked={injectedContext.some(m => m.id === msg.id)}
                                 showDelete
                                 onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
@@ -598,16 +597,6 @@ const ChatArea: React.FC = () => {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            <div className="chat-header-overlay">
-                {activeConv && activeConv.messages.length > 0 && (
-                    <div className="chat-message-counter">
-                        <Hash size={12} className="chat-message-counter__icon" />
-                        <span className="chat-message-counter__label">Total Messages</span>
-                        <span className="chat-message-counter__value">{activeConv.messages.filter(m => !m.isStreaming).length}</span>
-                    </div>
-                )}
-            </div>
-
             <div className="pin-track-container">
                 {activeConv?.messages.map((m, idx) => {
                     if (!m.isPinned) return null;
