@@ -177,19 +177,24 @@ const SideChatPanel: React.FC = () => {
         // (which would otherwise discard any injected system messages).
         const contextBlock = getContextBlock();
         const userContentWithContext = contextBlock ? `${contextBlock}${content}` : content;
-        apiMessages.push({ role: 'user', content: userContentWithContext });
+        
+        // Extract native sidechat attachments + any attachments imported from the main chat context
+        const injectedAttachments = isContextEnabled ? injectedContext.flatMap(m => m.attachments || []) : [];
+        const finalAttachments = [...(attachments || []), ...injectedAttachments];
+
+        apiMessages.push({ 
+            role: 'user', 
+            content: userContentWithContext,
+            attachments: finalAttachments.length > 0 ? finalAttachments : undefined
+        });
 
         const messagesToSend: Message[] = apiMessages.map((m, i) => ({
             id: String(i),
             role: m.role as 'user' | 'assistant' | 'system',
             content: m.content,
             timestamp: Date.now(),
+            attachments: m.attachments,
         }));
-
-        // For the last message, attach the files so the API builds multimodal content
-        if (attachments && attachments.length > 0 && messagesToSend.length > 0) {
-            messagesToSend[messagesToSend.length - 1].attachments = attachments;
-        }
 
         await streamChat(
             messagesToSend,

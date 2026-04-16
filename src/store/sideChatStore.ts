@@ -17,7 +17,7 @@ interface SideChatStore {
     toggleContextEnabled: () => void;
     toggleInjectedMessage: (message: Message) => void;
     removeInjectedMessage: (msgId: string) => void;
-    getApiMessages: () => { role: string; content: string }[];
+    getApiMessages: () => { role: string; content: string; attachments?: any[] }[];
     getContextBlock: () => string;
     setPendingMessage: (msg: string) => void;
     clearPendingMessage: () => void;
@@ -87,7 +87,7 @@ export const useSideChatStore = create<SideChatStore>()(
                 // Build prior side-chat history (excluding streaming messages).
                 const chatMsgs = state.messages
                     .filter((m) => !m.isStreaming)
-                    .map((m) => ({ role: m.role, content: m.content }));
+                    .map((m) => ({ role: m.role, content: m.content, attachments: m.attachments }));
 
                 return chatMsgs;
             },
