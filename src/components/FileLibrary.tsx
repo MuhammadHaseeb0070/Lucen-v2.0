@@ -219,7 +219,7 @@ const FileLibrary: React.FC = () => {
 
                                 return (
                                     <div key={file.id} className="lib-file-card">
-                                        <div className="file-card-preview" onClick={() => handleView(file)}>
+                                        <div className="file-preview-area" onClick={() => handleView(file)}>
                                             {thumbUrl ? (
                                                 <img src={thumbUrl} alt="" className="thumb-img" />
                                             ) : (
@@ -229,30 +229,35 @@ const FileLibrary: React.FC = () => {
                                             )}
                                             <div className="card-overlay">
                                                 <button className="quick-view-btn">
-                                                    <Eye size={18} />
-                                                    <span>View</span>
+                                                    <Eye size={16} />
+                                                    <span>Preview</span>
                                                 </button>
                                             </div>
                                         </div>
                                         
-                                        <div className="file-card-info">
-                                            <div className="name-row">
+                                        <div className="file-info-area">
+                                            <div className="info-top">
                                                 <span className="file-primary-name" title={file.file_name}>
                                                     {file.file_name}
                                                 </span>
-                                            </div>
-                                            
-                                            <div className="meta-grid">
-                                                <div className="meta-item">
+                                                
+                                                <div className="file-meta-row">
                                                     <Calendar size={12} />
                                                     <span>{new Date(file.created_at).toLocaleDateString()}</span>
                                                 </div>
-                                                <div className="meta-item clickable" onClick={() => handleNavigate(file.conversation_id, file.message_id)}>
-                                                    <MessageSquare size={12} />
-                                                    <span className="chat-link">{file.conversations?.title || 'Chat'}</span>
-                                                    <ArrowUpRight size={12} className="jump-icon" />
-                                                </div>
                                             </div>
+
+                                            <button 
+                                                className="go-to-chat-btn" 
+                                                onClick={() => handleNavigate(file.conversation_id, file.message_id)}
+                                                title={`Go to: ${file.conversations?.title || 'Chat'}`}
+                                            >
+                                                <div className="btn-content">
+                                                    <MessageSquare size={14} className="chat-ic" />
+                                                    <span className="btn-text">Open in Chat</span>
+                                                </div>
+                                                <ArrowUpRight size={14} className="arrow-ic" />
+                                            </button>
                                         </div>
                                     </div>
                                 );
@@ -263,18 +268,7 @@ const FileLibrary: React.FC = () => {
             </div>
 
             <style>{`
-                :root {
-                    --lib-f-scale: 1;
-                    --lib-s-scale: 1;
-                }
-
-                @media (max-width: 640px) {
-                    :root {
-                        --lib-f-scale: 0.85;
-                        --lib-s-scale: 0.9;
-                    }
-                }
-
+                /* ─── BASE OVERLAY & MODAL ─── */
                 .file-lib-overlay {
                     position: fixed;
                     inset: 0;
@@ -289,11 +283,11 @@ const FileLibrary: React.FC = () => {
                 }
 
                 .file-lib-modal {
-                    width: min(100%, 900px);
+                    width: min(100%, 950px);
                     height: 85vh;
                     background: var(--bg-surface);
                     border: 1px solid var(--divider);
-                    border-radius: calc(24px * var(--lib-s-scale));
+                    border-radius: 20px;
                     display: flex;
                     flex-direction: column;
                     box-shadow: 0 30px 60px rgba(0,0,0,0.4);
@@ -301,8 +295,9 @@ const FileLibrary: React.FC = () => {
                     animation: scaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                 }
 
+                /* ─── HEADER ─── */
                 .file-lib-header {
-                    padding: calc(24px * var(--lib-s-scale)) calc(32px * var(--lib-s-scale));
+                    padding: 24px 32px;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
@@ -322,14 +317,14 @@ const FileLibrary: React.FC = () => {
                     height: 44px;
                     background: var(--accent-soft);
                     color: var(--accent);
-                    border-radius: 14px;
+                    border-radius: 12px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                 }
 
                 .file-lib-title-group h2 {
-                    font-size: calc(1.25rem * var(--lib-f-scale));
+                    font-size: 1.25rem;
                     font-weight: 700;
                     margin: 0;
                     color: var(--text-primary);
@@ -337,7 +332,7 @@ const FileLibrary: React.FC = () => {
 
                 .file-lib-title-group p {
                     margin: 2px 0 0 0;
-                    font-size: calc(0.82rem * var(--lib-f-scale));
+                    font-size: 0.82rem;
                     color: var(--text-tertiary);
                 }
 
@@ -355,10 +350,13 @@ const FileLibrary: React.FC = () => {
                 }
 
                 .view-toggle button {
-                    padding: 6px 10px;
+                    padding: 6px 12px;
                     border-radius: 8px;
                     color: var(--text-tertiary);
                     transition: all 0.2s;
+                    border: none;
+                    background: transparent;
+                    cursor: pointer;
                 }
 
                 .view-toggle button.active {
@@ -367,34 +365,44 @@ const FileLibrary: React.FC = () => {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 }
 
+                .close-btn {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-tertiary);
+                    cursor: pointer;
+                    transition: color 0.2s;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .close-btn:hover { color: var(--text-primary); }
+
+                /* ─── TOOLBAR ─── */
                 .file-lib-toolbar {
-                    padding: calc(16px * var(--lib-s-scale)) calc(32px * var(--lib-s-scale));
+                    padding: 16px 32px;
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
                     gap: 16px;
                     background: rgba(var(--bg-muted-rgb), 0.4);
-                    backdrop-filter: blur(8px);
+                    border-bottom: 1px solid var(--divider-subtle);
                 }
 
                 .search-box {
                     flex: 1;
+                    max-width: 320px;
                     display: flex;
                     align-items: center;
                     gap: 12px;
                     background: var(--bg-surface);
                     border: 1px solid var(--divider);
                     padding: 0 16px;
-                    height: 42px;
+                    height: 40px;
                     border-radius: 12px;
                     color: var(--text-tertiary);
                     transition: border-color 0.2s;
                 }
-
-                .search-box:focus-within {
-                    border-color: var(--accent);
-                }
-
+                .search-box:focus-within { border-color: var(--accent); }
                 .search-box input {
                     flex: 1;
                     background: transparent;
@@ -408,7 +416,6 @@ const FileLibrary: React.FC = () => {
                     display: flex;
                     gap: 8px;
                 }
-
                 .filter-btn {
                     padding: 6px 16px;
                     font-size: 0.85rem;
@@ -417,166 +424,21 @@ const FileLibrary: React.FC = () => {
                     color: var(--text-secondary);
                     transition: all 0.2s;
                     border: 1px solid transparent;
+                    background: transparent;
+                    cursor: pointer;
                 }
-
-                .filter-btn:hover {
-                    background: var(--bg-hover);
-                }
-
+                .filter-btn:hover { background: var(--bg-hover); }
                 .filter-btn.active {
                     background: var(--accent-soft);
                     color: var(--accent);
                     border-color: var(--accent-border);
                 }
 
+                /* ─── VIEWPORT & CARDS ─── */
                 .file-lib-viewport {
                     flex: 1;
                     overflow-y: auto;
-                    padding: 32px;
-                }
-
-                .file-content-container.mode-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-                    gap: 24px;
-                }
-
-                .lib-file-card {
-                    display: flex;
-                    flex-direction: column;
-                    background: var(--bg-muted);
-                    border: 1px solid var(--divider-subtle);
-                    border-radius: 18px;
-                    overflow: hidden;
-                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-                }
-
-                .lib-file-card:hover {
-                    transform: translateY(-4px);
-                    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
-                    border-color: var(--accent-border);
-                }
-
-                .file-card-preview {
-                    position: relative;
-                    aspect-ratio: 4/3;
-                    background: var(--bg-surface);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    cursor: pointer;
-                    overflow: hidden;
-                }
-
-                .thumb-img {
-                    width: 100%;
-                    height: 100%;
-                    object-fit: cover;
-                    transition: transform 0.5s ease;
-                }
-
-                .lib-file-card:hover .thumb-img {
-                    transform: scale(1.1);
-                }
-
-                .type-placeholder {
-                    color: var(--text-tertiary);
-                    transition: color 0.3s;
-                }
-
-                .lib-file-card:hover .type-placeholder {
-                    color: var(--accent);
-                }
-
-                .card-overlay {
-                    position: absolute;
-                    inset: 0;
-                    background: rgba(0,0,0,0.4);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    opacity: 0;
-                    transition: opacity 0.2s;
-                    backdrop-filter: blur(4px);
-                }
-
-                .file-card-preview:hover .card-overlay {
-                    opacity: 1;
-                }
-
-                .quick-view-btn {
-                    background: white;
-                    color: black;
-                    padding: 8px 16px;
-                    border-radius: 100px;
-                    font-size: 0.85rem;
-                    font-weight: 700;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    transform: translateY(10px);
-                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-                }
-
-                .file-card-preview:hover .quick-view-btn {
-                    transform: translateY(0);
-                }
-
-                .file-card-info {
-                    padding: 14px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                }
-
-                .file-primary-name {
-                    font-weight: 600;
-                    font-size: calc(0.9rem * var(--lib-f-scale));
-                    color: var(--text-primary);
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    display: block;
-                }
-
-                .meta-grid {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 4px;
-                }
-
-                .meta-item {
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    font-size: 0.75rem;
-                    color: var(--text-tertiary);
-                }
-
-                .meta-item.clickable {
-                    cursor: pointer;
-                }
-
-                .meta-item.clickable:hover {
-                    color: var(--accent);
-                }
-
-                .chat-link {
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    max-width: 100px;
-                }
-
-                .jump-icon {
-                    opacity: 0.4;
-                    transition: opacity 0.2s, transform 0.2s;
-                    color: var(--accent);
-                }
-
-                .meta-item.clickable:hover .jump-icon {
-                    opacity: 1;
-                    transform: translate(1px, -1px);
+                    padding: 24px 32px;
                 }
 
                 .lib-state-msg {
@@ -586,32 +448,221 @@ const FileLibrary: React.FC = () => {
                     justify-content: center;
                     height: 100%;
                     color: var(--text-tertiary);
-                    min-height: 300px;
+                    min-height: 250px;
                 }
-
                 .spin { animation: spin 1s linear infinite; }
 
+                /* Common Card Styles */
+                .lib-file-card {
+                    background: var(--bg-surface);
+                    border: 1px solid var(--divider-subtle);
+                    border-radius: 16px;
+                    overflow: hidden;
+                    transition: all 0.2s ease;
+                    display: flex;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+                }
+                .lib-file-card:hover {
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                    border-color: var(--divider);
+                    transform: translateY(-2px);
+                }
+
+                .file-preview-area {
+                    position: relative;
+                    background: var(--bg-muted);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    overflow: hidden;
+                }
+                .thumb-img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    transition: transform 0.4s ease;
+                }
+                .lib-file-card:hover .thumb-img { transform: scale(1.05); }
+
+                .type-placeholder { color: var(--text-tertiary); }
+                .lib-file-card:hover .type-placeholder { color: var(--accent); }
+
+                .card-overlay {
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(0,0,0,0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    opacity: 0;
+                    transition: opacity 0.2s;
+                    backdrop-filter: blur(2px);
+                }
+                .file-preview-area:hover .card-overlay { opacity: 1; }
+                
+                .quick-view-btn {
+                    background: white;
+                    color: black;
+                    padding: 6px 14px;
+                    border-radius: 100px;
+                    border: none;
+                    font-size: 0.8rem;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    transform: translateY(8px);
+                    transition: transform 0.2s ease;
+                    cursor: pointer;
+                }
+                .file-preview-area:hover .quick-view-btn { transform: translateY(0); }
+
+                .file-info-area {
+                    display: flex;
+                    flex-direction: column;
+                }
+                
+                .file-primary-name {
+                    font-weight: 600;
+                    font-size: 0.9rem;
+                    color: var(--text-primary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    display: block;
+                }
+                
+                .file-meta-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.75rem;
+                    color: var(--text-tertiary);
+                    margin-top: 4px;
+                }
+
+                .go-to-chat-btn {
+                    margin-top: auto;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    width: 100%;
+                    padding: 10px 14px;
+                    background: var(--bg-muted);
+                    border: none;
+                    border-top: 1px solid var(--divider-subtle);
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    color: var(--text-secondary);
+                }
+                .go-to-chat-btn .btn-content {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .go-to-chat-btn .btn-text {
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                }
+                .go-to-chat-btn:hover {
+                    background: var(--accent-soft);
+                    color: var(--accent);
+                }
+                .go-to-chat-btn:hover .arrow-ic { transform: translate(2px, -2px); }
+
+                /* ─── GRID MODE ─── */
+                .file-content-container.mode-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                    gap: 20px;
+                }
+                .mode-grid .lib-file-card {
+                    flex-direction: column;
+                }
+                .mode-grid .file-preview-area {
+                    aspect-ratio: 16 / 9;
+                    width: 100%;
+                }
+                .mode-grid .info-top {
+                    padding: 14px 14px 16px 14px;
+                }
+
+                /* ─── LIST MODE ─── */
+                .file-content-container.mode-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+                .mode-list .lib-file-card {
+                    flex-direction: row;
+                    height: 84px;
+                }
+                .mode-list .file-preview-area {
+                    width: 120px;
+                    height: 100%;
+                    border-right: 1px solid var(--divider-subtle);
+                }
+                .mode-list .file-info-area {
+                    flex: 1;
+                    flex-direction: row;
+                    align-items: center;
+                    padding: 0 20px;
+                }
+                .mode-list .info-top {
+                    flex: 1;
+                    min-width: 0;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                }
+                .mode-list .go-to-chat-btn {
+                    margin-top: 0;
+                    width: auto;
+                    border: none;
+                    border-radius: 8px;
+                    background: transparent;
+                    padding: 8px 16px;
+                    border: 1px solid var(--divider);
+                }
+                .mode-list .go-to-chat-btn:hover {
+                    border-color: var(--accent-border);
+                }
+
+                /* ─── KEYFRAMES ─── */
                 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
                 @keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+                @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+                /* ─── MOBILE SCALING (Max-Width: 640px) ─── */
                 @media (max-width: 640px) {
                     .file-lib-overlay { padding: 0; }
                     .file-lib-modal { height: 100vh; border-radius: 0; width: 100vw; }
-                    .file-lib-header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
-                    .file-lib-title-group { gap: 10px; }
-                    .lib-icon-badge { width: 32px; height: 32px; border-radius: 10px; }
-                    .lib-icon-badge svg { width: 14px; height: 14px; }
-                    .header-actions { margin-left: auto; gap: 8px; }
-                    .view-toggle { scale: 0.85; }
-                    .file-lib-toolbar { padding: 8px 16px; flex-direction: column; align-items: stretch; gap: 10px; }
-                    .search-box { height: 36px; padding: 0 12px; }
-                    .filter-group { overflow-x: auto; padding-bottom: 2px; gap: 4px; }
-                    .filter-btn { flex-shrink: 0; padding: 4px 10px; font-size: 0.75rem; }
-                    .file-lib-viewport { padding: 10px; }
-                    .file-content-container.mode-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
-                    .file-card-info { padding: 10px; gap: 4px; }
-                    .meta-item svg { width: 10px; height: 10px; }
-                    .chat-link { max-width: 80px; }
+                    
+                    .file-lib-header { padding: 16px 20px; flex-wrap: wrap; gap: 12px; }
+                    .lib-icon-badge { width: 36px; height: 36px; border-radius: 10px; }
+                    .file-lib-title-group h2 { font-size: 1.1rem; }
+                    .file-lib-title-group p { font-size: 0.75rem; }
+                    
+                    .header-actions { margin-left: auto; gap: 12px; }
+                    .view-toggle { padding: 3px; }
+                    .view-toggle button { padding: 5px 8px; }
+                    
+                    .file-lib-toolbar { padding: 12px 20px; flex-direction: column; align-items: stretch; gap: 12px; }
+                    .search-box { max-width: 100%; height: 38px; }
+                    .filter-group { overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+                    .filter-group::-webkit-scrollbar { display: none; }
+                    .filter-btn { flex-shrink: 0; padding: 5px 14px; font-size: 0.8rem; }
+                    
+                    .file-lib-viewport { padding: 16px 20px; }
+                    
+                    .file-content-container.mode-grid { gap: 16px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+                    
+                    .mode-list .lib-file-card { height: auto; flex-direction: column; }
+                    .mode-list .file-preview-area { width: 100%; height: 120px; border-right: none; border-bottom: 1px solid var(--divider-subtle); }
+                    .mode-list .file-info-area { flex-direction: column; padding: 0; align-items: stretch; }
+                    .mode-list .info-top { padding: 12px 14px; }
+                    .mode-list .go-to-chat-btn { border-radius: 0; border: none; border-top: 1px solid var(--divider-subtle); justify-content: center; padding: 12px; }
                 }
             `}</style>
         </div>
