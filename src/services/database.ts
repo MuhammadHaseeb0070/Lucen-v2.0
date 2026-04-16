@@ -215,6 +215,16 @@ export async function saveMessage(
         }
     }
 
+    // Update conversation updated_at
+    const { error: convError } = await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
+
+    if (convError) {
+        console.error('[DB] saveMessage update conversation updated_at error:', convError);
+    }
+
     return true;
 }
 

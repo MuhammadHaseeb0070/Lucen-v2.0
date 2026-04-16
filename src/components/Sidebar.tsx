@@ -153,7 +153,9 @@ const Sidebar: React.FC = () => {
                         <p>No conversations yet</p>
                     </div>
                 ) : (
-                    conversations.map((conv) => (
+                    [...conversations]
+                        .sort((a, b) => b.updatedAt - a.updatedAt)
+                        .map((conv) => (
                         <div
                             key={conv.id}
                             className={`sidebar-chat-item ${conv.id === activeConversationId && !isAdminView ? 'active' : ''
