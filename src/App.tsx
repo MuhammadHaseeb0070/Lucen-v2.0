@@ -8,7 +8,7 @@ import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import PackagesPage from './pages/PackagesPage';
-import LoginPage from './pages/Auth/LoginPage';
+import LoginPage from './pages/Auth/LoginPage';   
 import SignupPage from './pages/Auth/SignupPage';
 import TermsPage from './pages/TermsPage';  
 import PrivacyPage from './pages/PrivacyPage';
