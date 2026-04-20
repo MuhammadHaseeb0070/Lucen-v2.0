@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Send, Square, RotateCcw, Paperclip, X, FileText, Image as ImageIcon, Quote, Globe } from 'lucide-react';
-import { MAX_MESSAGE_LENGTH } from '../config/credits';
 import { processFiles, formatFileSize } from '../services/fileProcessor';
 import type { FileAttachment } from '../types';
 
@@ -36,7 +35,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
     isStreaming = false,
     disabled = false,
     placeholder = 'Message Lucen...',
-    maxLength = MAX_MESSAGE_LENGTH,
+    maxLength,
     prefillValue,
     droppedFiles,
     onDroppedFilesConsumed,
@@ -159,6 +158,38 @@ const MessageInput: React.FC<MessageInputProps> = ({
         textareaRef.current?.focus();
     };
 
+    const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        if (disabled || processingFiles) return;
+
+        const items = Array.from(e.clipboardData?.items || []);
+        if (items.length === 0) return;
+
+        const imageFiles: File[] = items
+            .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+            .map((item) => item.getAsFile())
+            .filter((file): file is File => Boolean(file));
+
+        if (imageFiles.length === 0) return; // Keep default text paste behavior
+
+        // Prevent dumping binary clipboard data into the textarea when image paste is intended.
+        e.preventDefault();
+        setProcessingFiles(true);
+        try {
+            const normalizedFiles = imageFiles.map((file, index) => {
+                if (file.name && file.name.trim() && file.name !== 'image.png') return file;
+                const ext = (file.type.split('/')[1] || 'png').toLowerCase();
+                return new File([file], `pasted-image-${Date.now()}-${index + 1}.${ext}`, { type: file.type || 'image/png' });
+            });
+            const { attachments: newAttachments, errors } = await processFiles(normalizedFiles);
+            if (errors.length > 0) console.warn('Clipboard image processing warnings:', errors);
+            setAttachments((prev) => [...prev, ...newAttachments]);
+        } catch (err) {
+            console.error('Failed to process pasted image(s):', err);
+        } finally {
+            setProcessingFiles(false);
+        }
+    };
+
     const removeAttachment = (id: string) => {
         setAttachments((prev) => prev.filter((a) => a.id !== id));
     };
@@ -248,10 +279,12 @@ const MessageInput: React.FC<MessageInputProps> = ({
                         ref={textareaRef}
                         value={input}
                         onChange={(e) => {
-                            const val = e.target.value.slice(0, maxLength);
+                            const rawValue = e.target.value;
+                            const val = typeof maxLength === 'number' ? rawValue.slice(0, maxLength) : rawValue;
                             setInput(val);
                             onInputChange?.(val);
                         }}
+                        onPaste={handlePaste}
                         onKeyDown={handleKeyDown}
                         placeholder={processingFiles ? 'Processing files...' : getPlaceholder()}
                         disabled={disabled || processingFiles}
@@ -262,7 +295,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
                         <div className="input-metrics">
                             {input.length > 0 && (
                                 <span className="char-count" title="Characters">
-                                    {input.length}/{maxLength}
+                                    {typeof maxLength === 'number' ? `${input.length}/${maxLength}` : input.length}
                                 </span>
                             )}
                         </div>

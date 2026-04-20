@@ -18,7 +18,6 @@ import { useSideChatStore, createMessage } from '../store/sideChatStore';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
 import { streamChat } from '../services/openrouter';
-import { MAX_SIDE_CHAT_MESSAGE_LENGTH } from '../config/credits';
 import { processFiles } from '../services/fileProcessor';
 import { SIDE_CHAT_SYSTEM_PROMPT } from '../config/prompts';
 import type { Message, FileAttachment } from '../types';
@@ -500,7 +499,6 @@ const SideChatPanel: React.FC = () => {
                     onStop={handleStop}
                     isStreaming={isStreaming}
                     placeholder="Quick question..."
-                    maxLength={MAX_SIDE_CHAT_MESSAGE_LENGTH}
                     droppedFiles={droppedFiles.length > 0 ? droppedFiles : undefined}
                     onDroppedFilesConsumed={handleDroppedFilesConsumed}
                     prefillValue={pendingMessage || ''}
