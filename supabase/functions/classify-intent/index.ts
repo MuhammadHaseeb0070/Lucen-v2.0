@@ -2,7 +2,9 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
-const INTENT_MODEL = 'openai/gpt-4o-mini';
+// Intent classifier model — env-driven. Set WEB_INTENT_MODEL in Supabase
+// function secrets to any capable OpenRouter model (small/cheap preferred).
+const INTENT_MODEL = Deno.env.get('WEB_INTENT_MODEL') || 'openai/gpt-4o-mini';
 
 const INTENT_SYSTEM = `You are a web search intent classifier. Analyze the conversation and decide if the latest user message needs a real-time web search.
 

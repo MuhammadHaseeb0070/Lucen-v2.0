@@ -7,6 +7,8 @@ export interface FileAttachment {
   dataUrl?: string;       // base64 data URL for images (API + display)
   textContent?: string;   // extracted text for PDF/CSV/TXT files
   aiDescription?: string;
+  /** Timestamp (ms) when the current aiDescription was generated. Used to decide reuse vs refresh. */
+  descriptionGeneratedAt?: number;
   storagePath?: string;
   tokenEstimate?: number;
 }
@@ -62,6 +64,8 @@ export interface ModelInfo {
   name: string;
   provider: string;
   supportsReasoning: boolean;
+  /** Whether this model natively accepts image inputs. When false, images must be routed through the vision helper. */
+  supportsVision: boolean;
   /** Hard cap on output tokens sent to the API (computed dynamically) */
   maxTokens: number;
   /** Maximum output tokens the model supports (model capability, e.g. 32768) */

@@ -301,7 +301,10 @@ export async function processFile(file: File): Promise<FileAttachment> {
 // ═══════════════════════════════════════════
 //  ENRICHMENT & STORAGE
 // ═══════════════════════════════════════════
-const IMAGE_DESCRIPTION_PROMPT = "Describe this image in complete detail. If it contains text, code, tables, data, or UI — reproduce it exactly. Be exhaustive.";
+// Upload-time enrichment no longer calls any vision model. Image understanding
+// happens per-turn (with conversation context) via the `describe-image` edge
+// function right before the main model request. That keeps us to a single
+// vision call per turn and lets the helper incorporate the last 5 exchanges.
 
 function dataUrlToUint8Array(dataUrl: string): Uint8Array {
     const base64 = dataUrl.split(',')[1];
@@ -315,49 +318,33 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
 async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachment> {
     if (!isSupabaseEnabled() || !supabase) return attachment;
 
+    // For images: only upload the raw bytes to Supabase Storage so the file
+    // persists for history / future reference. Description is generated later
+    // at send time (see openrouter.ensureImageContext).
     if (attachment.type === 'image' && attachment.dataUrl) {
-        console.log(`[FileProcessor] Processing image: ${attachment.name}`);
-        
-        // 1. AI Description
         try {
             await ensureFreshSession();
-            const { data: aiResponse, error: aiError } = await supabase.functions.invoke('chat-proxy', {
-                body: {
-                    messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_DESCRIPTION_PROMPT }, { type: 'image_url', image_url: { url: attachment.dataUrl } }] }],
-                    model: 'google/gemini-2.0-flash-001',
-                    stream: false
-                }
-            });
-            if (!aiError && aiResponse?.choices?.[0]?.message?.content) {
-                attachment.aiDescription = aiResponse.choices[0].message.content;
-            }
-        } catch (err) { console.warn('[FileProcessor] AI Enrichment failed:', err); }
-
-        // 2. Storage Upload
-        try {
-            console.log(`[FileProcessor] Uploading ${attachment.name} to 'attachments' bucket...`);
-            const bytes = dataUrlToUint8Array(attachment.dataUrl!);
+            const bytes = dataUrlToUint8Array(attachment.dataUrl);
             const path = `${Date.now()}-${attachment.name}`;
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('attachments')
                 .upload(path, bytes, { contentType: attachment.mimeType, cacheControl: '3600', upsert: false });
 
             if (uploadError) {
-                console.error(`[FileProcessor] Storage upload FAILED:`, uploadError);
+                console.error('[FileProcessor] Storage upload FAILED:', uploadError);
             } else if (uploadData) {
                 attachment.storagePath = uploadData.path;
-                console.log(`[FileProcessor] Upload SUCCESS: ${uploadData.path}`);
             }
-        } catch (err) { console.error('[FileProcessor] Storage exception:', err); }
+        } catch (err) {
+            console.error('[FileProcessor] Storage exception:', err);
+        }
     }
 
-    // Token Estimation
+    // Rough token estimate for any extracted text we already have.
     const contentToCount = attachment.textContent || attachment.aiDescription || '';
     if (contentToCount) {
         attachment.tokenEstimate = Math.ceil(contentToCount.length / 4);
     }
-
-
 
     return attachment;
 }

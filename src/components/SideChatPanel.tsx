@@ -7,7 +7,6 @@ import {
     Unlink,
     Trash2,
     Minimize2,
-    Upload,
     CheckSquare,
     Square,
 } from 'lucide-react';
@@ -18,7 +17,6 @@ import { useSideChatStore, createMessage } from '../store/sideChatStore';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
 import { streamChat } from '../services/openrouter';
-import { processFiles } from '../services/fileProcessor';
 import { SIDE_CHAT_SYSTEM_PROMPT } from '../config/prompts';
 import type { Message, FileAttachment } from '../types';
 import Logo from './Logo';
@@ -59,9 +57,6 @@ const SideChatPanel: React.FC = () => {
     const [selectedContextMsgs, setSelectedContextMsgs] = useState<Set<string>>(new Set());
 
     const isStreaming = messages.some((m) => m.isStreaming);
-    const [isDragOver, setIsDragOver] = useState(false);
-    const [droppedFiles, setDroppedFiles] = useState<FileAttachment[]>([]);
-    const dragCounterRef = useRef(0);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -229,42 +224,6 @@ const SideChatPanel: React.FC = () => {
         abortRef.current?.abort();
     };
 
-    // ---------- Drop Zone ----------
-    const handleDragEnter = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounterRef.current++;
-        if (e.dataTransfer.types.includes('Files')) setIsDragOver(true);
-    }, []);
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounterRef.current--;
-        if (dragCounterRef.current === 0) setIsDragOver(false);
-    }, []);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-    }, []);
-
-    const handleDrop = useCallback(async (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-        dragCounterRef.current = 0;
-        const files = e.dataTransfer.files;
-        if (files.length === 0) return;
-        const { attachments, errors } = await processFiles(files);
-        if (errors.length > 0) console.warn('Side chat drop warnings:', errors);
-        if (attachments.length > 0) setDroppedFiles(attachments);
-    }, []);
-
-    const handleDroppedFilesConsumed = useCallback(() => {
-        setDroppedFiles([]);
-    }, []);
-
     // ---------- Context Import ----------
     const handleImportContext = () => {
         const activeConv = getActiveConversation();
@@ -324,20 +283,7 @@ const SideChatPanel: React.FC = () => {
                     width: sideChatSize.width,
                     height: sideChatSize.height,
                 }}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
             >
-                {/* Drop zone overlay */}
-                {isDragOver && (
-                    <div className="drop-zone-overlay drop-zone-overlay--panel">
-                        <div className="drop-zone-content">
-                            <Upload size={28} />
-                            <span className="drop-zone-label">Drop to attach</span>
-                        </div>
-                    </div>
-                )}
                 {/* Resize edges */}
                 <div className="resize-edge resize-n" onMouseDown={(e) => handleResizeStart(e, 'n')} />
                 <div className="resize-edge resize-s" onMouseDown={(e) => handleResizeStart(e, 's')} />
@@ -493,18 +439,17 @@ const SideChatPanel: React.FC = () => {
                     isSideChat={true}
                 />
 
-                {/* Input */}
+                {/* Input — side chat is text-only: no files, no paste-to-image, no web search. */}
                 <MessageInput
                     onSend={handleSend}
                     onStop={handleStop}
                     isStreaming={isStreaming}
                     placeholder="Quick question..."
-                    droppedFiles={droppedFiles.length > 0 ? droppedFiles : undefined}
-                    onDroppedFilesConsumed={handleDroppedFilesConsumed}
                     prefillValue={pendingMessage || ''}
                     onPrefillConsumed={clearPendingMessage}
                     initialValue={getDraft('side-chat')}
                     onInputChange={(val) => setDraft('side-chat', val)}
+                    disableAttachments
                 />
             </div>
 

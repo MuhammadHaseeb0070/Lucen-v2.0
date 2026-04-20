@@ -35,8 +35,17 @@ interface StreamOptions {
  * - No attachments → simple string (most efficient)
  * - With attachments → array of content parts (multimodal)
  * Puts text first (as recommended by OpenRouter), then images.
+ *
+ * When `supportsVision` is false, `image_url` parts are NEVER emitted. Instead
+ * images are represented by their first-person `aiDescription` so the main
+ * model can respond naturally as if it saw them itself.
  */
-function buildMessageContent(msg: Message, includeImages: boolean = true, includeFileText: boolean = true): string | Array<Record<string, unknown>> {
+function buildMessageContent(
+    msg: Message,
+    includeImages: boolean = true,
+    includeFileText: boolean = true,
+    supportsVision: boolean = true,
+): string | Array<Record<string, unknown>> {
     if (!msg.attachments || msg.attachments.length === 0) {
         return msg.content;
     }
@@ -66,41 +75,53 @@ function buildMessageContent(msg: Message, includeImages: boolean = true, includ
 
     // 3. User's message text (or fallback for image-only messages)
     const userText = msg.content.trim() || (imageAttachments.length > 0
-        ? 'The user shared the image(s) above. Please look at them and respond accordingly.'
+        ? 'The user shared the image(s) above.'
         : '');
     if (userText) {
         parts.push({ type: 'text', text: userText });
     }
 
-    // 4. Image attachments (OpenRouter expects images after text)
-    // Only include base64 images if explicitly requested (optimization: last 2 messages only)
-    if (includeImages) {
-        for (const img of imageAttachments) {
-            if (img.dataUrl) {
-                parts.push({
-                    type: 'image_url',
-                    image_url: { url: img.dataUrl },
-                });
-            } else if (img.aiDescription) {
-                parts.push({
-                    type: 'text',
-                    text: `[Image: ${img.name} — AI description: ${img.aiDescription}]`,
-                });
+    // 4. Image content
+    //   - If the main model supports vision AND this is a recent enough message,
+    //     emit native image_url parts (raw base64) for direct perception.
+    //   - Otherwise emit first-person description text so the main model can
+    //     respond as if it personally saw the image.
+    if (imageAttachments.length > 0) {
+        const canSendRawImages = includeImages && supportsVision;
+
+        if (canSendRawImages) {
+            for (const img of imageAttachments) {
+                if (img.dataUrl) {
+                    parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+                } else if (img.aiDescription) {
+                    parts.push({ type: 'text', text: `[Image: ${img.name}]\nI see: ${img.aiDescription}` });
+                }
             }
-        }
-    } else {
-        // Image is too old to send base64 — inject description as text fallback
-        for (const img of imageAttachments) {
-            if (img.aiDescription) {
+        } else {
+            // Text-fallback path (used always for text-only main models).
+            // If all images share the exact same aiDescription (batched vision
+            // call), emit it once to avoid duplicating hundreds of tokens.
+            const distinct = Array.from(new Set(
+                imageAttachments.map((a) => a.aiDescription || '').filter(Boolean),
+            ));
+
+            if (distinct.length === 1 && imageAttachments.length > 1) {
+                const names = imageAttachments.map((a) => a.name).join(', ');
                 parts.push({
                     type: 'text',
-                    text: `[Image: ${img.name} — previously uploaded. Description: ${img.aiDescription}]`,
+                    text: `[Images: ${names}]\nI see: ${distinct[0]}`,
                 });
             } else {
-                parts.push({
-                    type: 'text',
-                    text: `[Image: ${img.name} — was uploaded earlier in this conversation]`,
-                });
+                for (const img of imageAttachments) {
+                    if (img.aiDescription) {
+                        parts.push({ type: 'text', text: `[Image: ${img.name}]\nI see: ${img.aiDescription}` });
+                    } else {
+                        parts.push({
+                            type: 'text',
+                            text: `[Image: ${img.name}]\n(I wasn't able to get a clear look at this image right now.)`,
+                        });
+                    }
+                }
             }
         }
     }
@@ -193,6 +214,23 @@ async function retrieveRelevantChunks(
     }
 }
 
+// A silent, always-on notice that tells the main model to treat any first-person
+// "I see …" blocks it sees on user messages as its own direct perception.
+// This keeps the assistant from ever mentioning helpers/tools/descriptions.
+const ASSISTANT_VISION_NOTICE = `<assistant_vision_notice>
+When the user attaches images in this conversation, each image will appear inside their message as "[Image: <name>]" followed by a first-person description starting with "I see:". Treat those descriptions as your own direct perception of the image — respond as if you personally looked at it. Never mention any description, tool, helper, model, process, or that you received information from elsewhere. Never say things like "based on the description", "from what I can see in the description", or "I was told". Just speak naturally about what you see, as if the image were right in front of you.
+</assistant_vision_notice>`;
+
+function buildRuntimeContext(): string {
+    const now = new Date();
+    const localStr = now.toLocaleString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+    const iso = now.toISOString();
+    return `<runtime_context>\nCurrent date/time: ${localStr} (UTC ${iso}).\nUse this as your authoritative "now" when the user asks about today, dates, days of the week, or recency — do not claim uncertainty about the current date.\n</runtime_context>`;
+}
+
 /**
  * Build the full API message array with system prompts and conversation history.
  * Does NOT inject the token budget — that's done after counting in streamChat().
@@ -200,9 +238,11 @@ async function retrieveRelevantChunks(
 function buildApiMessages(
     messages: Message[],
     systemPromptOverride?: string,
-    ragContext?: string | null
+    ragContext?: string | null,
+    opts: { supportsVision?: boolean } = {},
 ): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
+    const supportsVision = opts.supportsVision !== false;
 
     // Prevent token/context pollution by taking only the last 30 messages max
     const recentMessages = messages.slice(-30);
@@ -226,6 +266,20 @@ function buildApiMessages(
         }
     }
 
+    // Always inject current date/time so the main model can answer date-sensitive
+    // questions without needing web search.
+    systemMessages.push({ role: 'system', content: buildRuntimeContext() });
+
+    // If the main model can't natively see images AND this conversation has
+    // any image attachments, give the assistant the "treat descriptions as
+    // your own eyes" notice so it never leaks helper/tool existence.
+    if (!supportsVision) {
+        const hasAnyImage = recentMessages.some((m) => m.attachments?.some((a) => a.type === 'image'));
+        if (hasAnyImage) {
+            systemMessages.push({ role: 'system', content: ASSISTANT_VISION_NOTICE });
+        }
+    }
+
     // Inject RAG context if available
     const ragMessages: Array<Record<string, unknown>> = [];
     if (ragContext) {
@@ -243,12 +297,15 @@ function buildApiMessages(
             .filter((m) => m.role === 'user' || m.role === 'assistant')
             .map((m, index) => ({
                 role: m.role,
-                // OPTIMIZATION: Only include raw image base64 for the last 2 messages.
-                // For older messages, the model relies on the aiDescription in textContent.
+                // OPTIMIZATION: For vision-capable main models, only include raw
+                // image base64 for the last 2 messages. Older messages rely on
+                // the stored first-person description. For text-only main
+                // models, raw images are never emitted (see buildMessageContent).
                 content: buildMessageContent(
                     m,
                     index >= recentMessages.length - 2,
-                    index >= recentMessages.length - 3
+                    index >= recentMessages.length - 3,
+                    supportsVision,
                 ),
             })),
     ];
@@ -312,6 +369,114 @@ async function computeOutputBudget(
     }
 }
 
+// ─── Vision context orchestration ────────────────────────────────────────────
+// When the main model can't natively see images, run the vision helper once
+// per turn that contains NEW images. Descriptions are written back to the
+// attachments so they persist in message history and are reused on follow-ups
+// without any extra API calls.
+//
+// Staleness policy: if an image is still referenced in the active window
+// (last 3 user turns) but its description was generated more than 3 user turns
+// ago, we re-describe it with the current context so the assistant stays
+// accurate. Otherwise cached descriptions are reused.
+const MAX_VISION_CONTEXT_EXCHANGES = 10; // last 5 user/assistant exchanges
+const STALE_AFTER_USER_TURNS = 3;
+
+function countUserMessagesAfter(messages: Message[], timestamp: number): number {
+    let count = 0;
+    for (const m of messages) {
+        if (m.role === 'user' && m.timestamp > timestamp) count++;
+    }
+    return count;
+}
+
+async function ensureImageContext(messages: Message[]): Promise<void> {
+    // Find the current (most recent) user message — this is the turn being sent.
+    let currentIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') { currentIdx = i; break; }
+    }
+    if (currentIdx === -1) return;
+
+    const currentMsg = messages[currentIdx];
+    const currentImages = (currentMsg.attachments || []).filter(
+        (a) => a.type === 'image' && a.dataUrl,
+    );
+    if (currentImages.length === 0) return;
+
+    // Decide which of the current turn's images actually need a (re)description.
+    //   • No aiDescription at all         → needs description.
+    //   • Has description but it's stale  → refresh with current context.
+    const needsDescribe = currentImages.filter((att) => {
+        if (!att.aiDescription) return true;
+        const stamp = att.descriptionGeneratedAt;
+        if (!stamp) return true;
+        const turnsSince = countUserMessagesAfter(messages, stamp);
+        return turnsSince > STALE_AFTER_USER_TURNS;
+    });
+
+    if (needsDescribe.length === 0) return; // All fresh — reuse silently.
+
+    if (!isSupabaseEnabled() || !supabase) return;
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+
+    // Build recent conversation context (excluding the current turn). Include
+    // prior images' descriptions as plain text so the vision helper can
+    // understand references like "the second chart we looked at".
+    const priorMessages = messages.slice(Math.max(0, currentIdx - MAX_VISION_CONTEXT_EXCHANGES), currentIdx);
+    const recent_messages = priorMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => {
+            const imageHints = (m.attachments || [])
+                .filter((a) => a.type === 'image')
+                .map((a) => a.aiDescription ? `[Image ${a.name}] ${a.aiDescription}` : `[Image ${a.name}]`)
+                .join(' ');
+            const content = [m.content, imageHints].filter(Boolean).join('\n');
+            return { role: m.role, content };
+        });
+
+    try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/describe-image`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': anonKey || '',
+            },
+            body: JSON.stringify({
+                images: needsDescribe.map((a) => ({ dataUrl: a.dataUrl, name: a.name })),
+                recent_messages,
+                user_text: currentMsg.content,
+            }),
+        });
+
+        if (!response.ok) {
+            console.warn('[ensureImageContext] describe-image failed:', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        const description: string = typeof data?.description === 'string' ? data.description.trim() : '';
+        if (!description) return;
+
+        // Persist the same batched description on every image that was part of
+        // this call so buildMessageContent can emit it exactly once.
+        const now = Date.now();
+        const { updateAttachmentDescription } = useChatStore.getState();
+        for (const att of needsDescribe) {
+            if (!att.dataUrl) continue;
+            // Optimistic local update with a generated-at timestamp.
+            updateAttachmentDescription(att.dataUrl, description, now);
+        }
+    } catch (err) {
+        console.warn('[ensureImageContext] exception:', err);
+    }
+}
+
 /**
  * Stream chat via Edge Function proxy (secure — API key stays server-side).
  */
@@ -328,7 +493,25 @@ export async function streamChat(
         options.conversationId || null
     );
 
-    const apiMessages = buildApiMessages(messages, options.systemPromptOverride, ragContext);
+    // If the main model can't see images directly, run the silent vision helper
+    // once for any images in the current turn (batched). No effect on turns
+    // without new images.
+    if (!model.supportsVision) {
+        await ensureImageContext(messages);
+        // Refresh messages from the store so the freshly-written aiDescription
+        // is picked up by buildApiMessages.
+        if (options.conversationId) {
+            const conv = useChatStore.getState().conversations.find((c) => c.id === options.conversationId);
+            if (conv) {
+                const refreshed = conv.messages.filter((m) => !m.isStreaming);
+                messages = refreshed as Message[];
+            }
+        }
+    }
+
+    const apiMessages = buildApiMessages(messages, options.systemPromptOverride, ragContext, {
+        supportsVision: model.supportsVision,
+    });
 
     if (!isSupabaseEnabled() || !supabase) {
         callbacks.onError('Please sign in to use chat.');
@@ -381,77 +564,6 @@ export async function streamChat(
 /**
  * Wrapper for streamViaEdgeFunction to handle artifact continuation logic.
  */
-async function generateImageDescriptionsInBackground(
-    apiMessages: Array<Record<string, unknown>>
-): Promise<void> {
-    // Find last user message with images
-    const lastUserMsg = [...apiMessages].reverse().find(m => m.role === 'user');
-    if (!lastUserMsg) return;
-
-    const content = lastUserMsg.content;
-    if (!Array.isArray(content)) return;
-
-    const images = (content as Array<Record<string, unknown>>)
-        .filter(p => p.type === 'image_url' && p.image_url);
-
-    if (images.length === 0) return;
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    try {
-        const { data: { session } } = await supabase!.auth.getSession();
-        if (!session?.access_token) return;
-
-        // Process all images in parallel — non-blocking
-        await Promise.allSettled(images.map(async (imgPart) => {
-            const imgUrl = (imgPart.image_url as Record<string, unknown>).url as string;
-            if (!imgUrl) return;
-
-            const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`,
-                    'apikey': anonKey || '',
-                },
-                body: JSON.stringify({
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'text',
-                                text: 'Describe this image in detail. Cover: main subject, colors, style, text visible, mood, any specific details that would help answer follow-up questions about it. Be thorough but concise. Max 150 words.'
-                            },
-                            {
-                                type: 'image_url',
-                                image_url: { url: imgUrl }
-                            }
-                        ]
-                    }],
-                    model: 'google/gemini-2.0-flash-lite-001',
-                    max_tokens: 200,
-                    stream: false,
-                    __bg_description: true,
-                }),
-            });
-
-            if (!response.ok) return;
-            const data = await response.json();
-            const description = data?.choices?.[0]?.message?.content;
-            if (!description) return;
-
-            // Store back to zustand and DB via existing store
-            const { updateAttachmentDescription } = useChatStore.getState();
-            if (updateAttachmentDescription) {
-                updateAttachmentDescription(imgUrl, description);
-            }
-        }));
-    } catch {
-        // Silent fail — description is optional, never block user
-    }
-}
-
 async function streamViaEdgeFunctionWrapper(
     apiMessages: Array<Record<string, unknown>>,
     model: ReturnType<typeof getActiveModel>,
@@ -473,9 +585,12 @@ async function streamViaEdgeFunctionWrapper(
             callbacks.onChunk(chunk, isContinuation || continuationCount > 0);
         },
         onDone: async (truncated) => {
-            // After first reply — silently generate descriptions for any images in last user message
-            generateImageDescriptionsInBackground(apiMessages);
-            
+            // NOTE: Post-reply background description has been removed.
+            // Image understanding now happens via ensureImageContext() BEFORE the main
+            // model call, so a single vision call per turn is enough. Leaving
+            // generateImageDescriptionsInBackground defined for backwards compatibility
+            // in case a caller still invokes it elsewhere.
+
             // Check if stream ended naturally but artifact is cut off
             const isPartialArtifact = PARTIAL_OPEN_RE.test(fullResponse) || INCOMPLETE_TAG_RE.test(fullResponse);
             
@@ -835,6 +950,10 @@ async function processStream(
         t = t.replace(/<lucen_system>[\s\S]*?<\/lucen_system>/gi, '');
         t = t.replace(/<active_template>[\s\S]*?<\/active_template>/gi, '');
         t = t.replace(/<template[\s\S]*?<\/template>/gi, '');
+        // Internal vision / runtime notices must never surface to the user.
+        t = t.replace(/<assistant_vision_notice>[\s\S]*?<\/assistant_vision_notice>/gi, '');
+        t = t.replace(/<runtime_context>[\s\S]*?<\/runtime_context>/gi, '');
+        t = t.replace(/<image_perception>[\s\S]*?<\/image_perception>/gi, '');
 
         return t;
     }

@@ -23,16 +23,24 @@ const MODEL_MAX_OUTPUT = parseInt(import.meta.env.VITE_MODEL_MAX_OUTPUT || '1280
 // dynamically based on actual input size (see openrouter.ts computeOutputBudget).
 const STATIC_MAX_TOKENS = MODEL_MAX_OUTPUT;
 
+// Whether the main/side model can natively accept images.
+// Defaults to false (safest) so images are routed through the vision helper
+// and only the main model's text pipeline is used for the final reply.
+const MAIN_SUPPORTS_VISION = import.meta.env.VITE_MAIN_MODEL_SUPPORTS_VISION === 'true';
+const SIDE_SUPPORTS_VISION = import.meta.env.VITE_SIDE_MODEL_SUPPORTS_VISION === 'true';
+
 export function getActiveModel(isSideChat = false): ModelInfo {
     const id = isSideChat ? SIDE_MODEL_ID : MAIN_MODEL_ID;
     const name = isSideChat ? SIDE_MODEL_NAME : MAIN_MODEL_NAME;
     const provider = id.split('/')[0] || 'Unknown';
     const supportsReasoning = import.meta.env.VITE_SUPPORTS_REASONING === 'true';
+    const supportsVision = isSideChat ? SIDE_SUPPORTS_VISION : MAIN_SUPPORTS_VISION;
     return {
         id,
         name,
         provider,
         supportsReasoning,
+        supportsVision,
         maxTokens: STATIC_MAX_TOKENS,
         maxOutputTokens: MODEL_MAX_OUTPUT,
         contextWindow: MODEL_CONTEXT_WINDOW,

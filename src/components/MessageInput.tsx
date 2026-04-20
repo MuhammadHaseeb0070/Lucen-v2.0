@@ -26,6 +26,8 @@ interface MessageInputProps {
     webSearchEnabled?: boolean;
     /** Toggle web search on/off */
     onToggleWebSearch?: (enabled: boolean) => void;
+    /** When true, hides the paperclip, disables pasted image attachments, and ignores dropped files. */
+    disableAttachments?: boolean;
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
@@ -44,6 +46,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
     onInputChange,
     webSearchEnabled = false,
     onToggleWebSearch,
+    disableAttachments = false,
 }) => {
     const [input, setInput] = useState(initialValue);
     const [quoteText, setQuoteText] = useState<string | null>(null);
@@ -91,8 +94,12 @@ const MessageInput: React.FC<MessageInputProps> = ({
         }
     }, [prefillValue]); // Removed onPrefillConsumed and onInputChange to prevent infinite re-renders
 
-    // Accept files dropped from parent (drop zone)
+    // Accept files dropped from parent (drop zone) unless attachments are disabled.
     useEffect(() => {
+        if (disableAttachments) {
+            if (droppedFiles && droppedFiles.length > 0) onDroppedFilesConsumed?.();
+            return;
+        }
         if (droppedFiles && droppedFiles.length > 0) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setAttachments((prev) => [...prev, ...droppedFiles]);
@@ -100,7 +107,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
             // Focus input after drop
             requestAnimationFrame(() => textareaRef.current?.focus());
         }
-    }, [droppedFiles, onDroppedFilesConsumed]);
+    }, [droppedFiles, onDroppedFilesConsumed, disableAttachments]);
 
     useEffect(() => {
         if (textareaRef.current) {
@@ -160,6 +167,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
     const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
         if (disabled || processingFiles) return;
+        if (disableAttachments) return; // text-only contexts (e.g. side chat) ignore pasted images
 
         const items = Array.from(e.clipboardData?.items || []);
         if (items.length === 0) return;
@@ -257,23 +265,27 @@ const MessageInput: React.FC<MessageInputProps> = ({
                 )}
 
                 <div className="input-row">
-                    {/* Paperclip / attach button */}
-                    <button
-                        className="attach-btn"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={disabled || processingFiles}
-                        title="Attach files or images"
-                    >
-                        <Paperclip size={17} />
-                    </button>
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        accept="image/*,.pdf,.csv,.txt,.md,.json,.xml,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.rb,.php,.sql,.sh,.bash,.bat,.ps1,.yaml,.yml,.toml,.ini,.cfg,.env,.conf,.css,.scss,.less,.sass,.html,.htm,.vue,.svelte,.log,.tsv,.jsonl,.ndjson,.r,.m,.swift,.kt,.kts,.dart,.lua,.pl,.pm,.ex,.exs,.erl,.hs,.ml,.clj,.scala,.groovy,.tf,.dockerfile,.makefile,.cmake,.graphql,.gql,.proto,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
-                        onChange={handleFileSelect}
-                        style={{ display: 'none' }}
-                    />
+                    {/* Paperclip / attach button — hidden when attachments are disabled (e.g. side chat). */}
+                    {!disableAttachments && (
+                        <>
+                            <button
+                                className="attach-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={disabled || processingFiles}
+                                title="Attach files or images"
+                            >
+                                <Paperclip size={17} />
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept="image/*,.pdf,.csv,.txt,.md,.json,.xml,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.rb,.php,.sql,.sh,.bash,.bat,.ps1,.yaml,.yml,.toml,.ini,.cfg,.env,.conf,.css,.scss,.less,.sass,.html,.htm,.vue,.svelte,.log,.tsv,.jsonl,.ndjson,.r,.m,.swift,.kt,.kts,.dart,.lua,.pl,.pm,.ex,.exs,.erl,.hs,.ml,.clj,.scala,.groovy,.tf,.dockerfile,.makefile,.cmake,.graphql,.gql,.proto,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                                onChange={handleFileSelect}
+                                style={{ display: 'none' }}
+                            />
+                        </>
+                    )}
 
                     <textarea
                         ref={textareaRef}

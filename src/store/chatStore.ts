@@ -19,7 +19,7 @@ interface ChatStore {
     renameConversation: (id: string, title: string) => void;
     setActiveConversation: (id: string | null) => void;
     clearChats: () => void;
-    updateAttachmentDescription: (dataUrl: string, description: string) => void;
+    updateAttachmentDescription: (dataUrl: string, description: string, generatedAt?: number) => void;
 
     // Message actions
     addMessage: (convId: string, message: Message) => void;
@@ -126,7 +126,8 @@ export const useChatStore = create<ChatStore>()(
                 set({ conversations: [], activeConversationId: null, drafts: {} });
             },
 
-            updateAttachmentDescription: (dataUrl, description) => {
+            updateAttachmentDescription: (dataUrl, description, generatedAt) => {
+                const stamp = generatedAt ?? Date.now();
                 set((state) => ({
                     conversations: state.conversations.map((c) => ({
                         ...c,
@@ -135,7 +136,9 @@ export const useChatStore = create<ChatStore>()(
                             return {
                                 ...m,
                                 attachments: m.attachments.map((a) =>
-                                    a.dataUrl === dataUrl ? { ...a, aiDescription: description } : a
+                                    a.dataUrl === dataUrl
+                                        ? { ...a, aiDescription: description, descriptionGeneratedAt: stamp }
+                                        : a
                                 ),
                             };
                         }),

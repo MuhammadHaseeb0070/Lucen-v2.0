@@ -2,7 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/embeddings';
-const EMBED_MODEL = 'google/gemini-embedding-001';
+// Embedding model — env-driven. Must match EMBEDDING_MODEL used by the
+// `embed` function so queries and chunks live in the same vector space.
+const EMBED_MODEL = Deno.env.get('EMBEDDING_MODEL') || 'google/gemini-embedding-001';
 
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
