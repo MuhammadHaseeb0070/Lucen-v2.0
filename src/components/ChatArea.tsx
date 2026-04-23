@@ -49,6 +49,7 @@ const ChatArea: React.FC = () => {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const pinTrackRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
     const activeConv = getActiveConversation();
     // @ts-ignore: Suppress Vercel unused error if it builds differently
@@ -73,8 +74,8 @@ const ChatArea: React.FC = () => {
     const [pinLabelsByConversation, setPinLabelsByConversation] = useState<Record<string, Record<string, string>>>({});
     const [editingPinId, setEditingPinId] = useState<string | null>(null);
     const [pinLabelDraft, setPinLabelDraft] = useState('');
-    const [pinMarkers, setPinMarkers] = useState<Array<{ id: string; topPercent: number; targetMsgId: string; previewText: string }>>([]);
-    const [searchMarkers, setSearchMarkers] = useState<Array<{ id: string; topPercent: number }>>([]);
+    const [pinMarkers, setPinMarkers] = useState<Array<{ id: string; topPx: number; targetMsgId: string; previewText: string }>>([]);
+    const [searchMarkers, setSearchMarkers] = useState<Array<{ id: string; topPx: number }>>([]);
     const dragCounterRef = useRef(0);
     const hasJumpedRef = useRef(false);
 
@@ -623,36 +624,42 @@ const ChatArea: React.FC = () => {
         }
 
         const container = messagesContainerRef.current;
-        if (!container) return;
+        const track = pinTrackRef.current;
+        if (!container || !track) return;
 
         const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 1);
-        const toTopPercent = (msgId: string) => {
+        const trackPadding = 8;
+        const trackUsableHeight = Math.max(track.clientHeight - trackPadding * 2, 1);
+        const toTopPx = (msgId: string) => {
             const el = container.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
             if (!el) return null;
-            const pct = (el.offsetTop / maxScrollTop) * 100;
-            return Math.max(0, Math.min(100, pct));
+            const containerRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const absoluteTopInScroll = container.scrollTop + (elRect.top - containerRect.top);
+            const ratio = Math.max(0, Math.min(1, absoluteTopInScroll / maxScrollTop));
+            return trackPadding + (ratio * trackUsableHeight);
         };
 
-        const nextSearchMarkers: Array<{ id: string; topPercent: number }> = [];
+        const nextSearchMarkers: Array<{ id: string; topPx: number }> = [];
         if (searchOpen && matchingIds.size > 0) {
             matchingIds.forEach((msgId) => {
-                const topPercent = toTopPercent(msgId);
-                if (topPercent !== null) nextSearchMarkers.push({ id: msgId, topPercent });
+                const topPx = toTopPx(msgId);
+                if (topPx !== null) nextSearchMarkers.push({ id: msgId, topPx });
             });
         }
         setSearchMarkers(nextSearchMarkers);
 
-        const markers: Array<{ id: string; topPercent: number; targetMsgId: string; previewText: string }> = [];
+        const markers: Array<{ id: string; topPx: number; targetMsgId: string; previewText: string }> = [];
         const msgs = activeConv.messages;
         for (let i = 0; i < msgs.length; i++) {
             const msg = msgs[i];
             const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
             if (msg.isPinned || (nextMsg && nextMsg.isPinned)) {
-                const topPercent = toTopPercent(msg.id);
-                if (topPercent !== null) {
+                const topPx = toTopPx(msg.id);
+                if (topPx !== null) {
                     markers.push({
                         id: msg.id,
-                        topPercent,
+                        topPx,
                         targetMsgId: msg.id,
                         previewText: (nextMsg?.content || msg.content).trim().slice(0, 56),
                     });
@@ -853,12 +860,12 @@ const ChatArea: React.FC = () => {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            <div className="pin-track-container">
+            <div className="pin-track-container" ref={pinTrackRef}>
                 {searchMarkers.map((marker) => (
                     <div
                         key={`search-marker-${marker.id}`}
                         className="search-marker"
-                        style={{ top: `${marker.topPercent}%` }}
+                        style={{ top: `${marker.topPx}px` }}
                         onClick={() => scrollToMessage(marker.id)}
                     />
                 ))}
@@ -868,10 +875,11 @@ const ChatArea: React.FC = () => {
                     return (
                         <div
                             key={`pin-exchange-${marker.id}`}
-                            className="pin-marker"
-                            style={{ top: `${marker.topPercent}%` }}
+                            className={`pin-marker ${isEditing ? 'is-editing' : ''}`}
+                            style={{ top: `${marker.topPx}px` }}
                             onClick={() => scrollToMessage(marker.targetMsgId)}
                         >
+                            <div className="pin-marker-dot" />
                             <div className="pin-marker-tooltip" onClick={(e) => e.stopPropagation()}>
                                 {isEditing ? (
                                     <div className="pin-marker-tooltip-edit">
