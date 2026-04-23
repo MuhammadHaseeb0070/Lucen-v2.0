@@ -31,15 +31,30 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
   dismissedIds: new Set<string>(),
 
   setActiveArtifact: (artifact) => {
-    if (artifact && get().dismissedIds.has(artifact.id)) return;
-    set({ activeArtifact: artifact, viewMode: 'preview' });
+    if (!artifact) {
+      set({ activeArtifact: null });
+      return;
+    }
+    // Explicit intent (user clicked the artifact card or programmatic first
+    // open). Clear any prior dismissal for this id so streaming updates can
+    // flow again and the workspace actually opens.
+    const nextDismissed = new Set(get().dismissedIds);
+    nextDismissed.delete(artifact.id);
+    set({
+      activeArtifact: artifact,
+      viewMode: 'preview',
+      dismissedIds: nextDismissed,
+    });
   },
 
   updateArtifactContent: (artifact) => {
     const { dismissedIds, activeArtifact } = get();
+    // Auto-streaming updates never reopen a dismissed artifact — that's the
+    // whole point of the dismissal memory. Only explicit setActiveArtifact
+    // can clear it.
     if (dismissedIds.has(artifact.id)) return;
-    // Only update if this is the currently open artifact, or if none is open.
-    if (activeArtifact && activeArtifact.id !== artifact.id) return;
+    // Only update if this is the currently open artifact.
+    if (!activeArtifact || activeArtifact.id !== artifact.id) return;
     set({ activeArtifact: artifact });
   },
 

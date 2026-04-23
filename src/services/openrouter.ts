@@ -1104,6 +1104,12 @@ async function processStream(
     const decoder = new TextDecoder();
     let buffer = '';
     let wasTruncated = false;
+    // Track whether the upstream explicitly told us it finished. If we reach
+    // EOF without ever seeing a natural-finish reason (e.g. 'stop',
+    // 'content_filter', 'tool_calls'), we treat it as truncation — the socket
+    // was likely cut (Supabase wall-clock timeout, provider disconnect, etc.)
+    // and the auto-continuation loop should try to resume.
+    let sawNaturalFinish = false;
 
     // Debug tracking: capture last delta route so we can see whether text is
     // arriving via `delta.content` or `delta.reasoning*`.
@@ -1122,6 +1128,7 @@ async function processStream(
         console.log('[OpenRouterDebug] streamSummary', {
             why,
             truncated: wasTruncated,
+            sawNaturalFinish,
             chunkCount,
             reasoningChunkCount,
             contentChunkCount,
@@ -1197,6 +1204,13 @@ async function processStream(
                     // Detect truncation: finish_reason === 'length' means max_tokens was hit
                     if (choice.finish_reason === 'length') {
                         wasTruncated = true;
+                    } else if (
+                        choice.finish_reason === 'stop' ||
+                        choice.finish_reason === 'content_filter' ||
+                        choice.finish_reason === 'tool_calls' ||
+                        choice.finish_reason === 'end_turn'
+                    ) {
+                        sawNaturalFinish = true;
                     }
 
                     const delta = choice.delta;
@@ -1242,7 +1256,19 @@ async function processStream(
             }
         }
 
-        callbacks.onDone(wasTruncated);
+        // If we reached EOF without [DONE] AND without any natural-finish
+        // signal, the socket was almost certainly cut mid-response. Surface
+        // this as "truncated" so the continuation loop resumes instead of
+        // silently stopping with a half-finished artifact and a stuck UI.
+        const eofTruncated = wasTruncated || (!sawNaturalFinish && contentChunkCount > 0);
+        if (!wasTruncated && eofTruncated) {
+            // eslint-disable-next-line no-console
+            console.log('[OpenRouterDebug] eofWithoutFinishReason — treating as truncated', {
+                contentChunkCount,
+                reasoningChunkCount,
+            });
+        }
+        callbacks.onDone(eofTruncated);
         logStreamSummary('eof');
     } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
