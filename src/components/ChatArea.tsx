@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Pencil, Check } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
@@ -70,6 +70,11 @@ const ChatArea: React.FC = () => {
     const [isDragOver, setIsDragOver] = useState(false);
     const [droppedFiles, setDroppedFiles] = useState<FileAttachment[]>([]);
     const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+    const [pinLabelsByConversation, setPinLabelsByConversation] = useState<Record<string, Record<string, string>>>({});
+    const [editingPinId, setEditingPinId] = useState<string | null>(null);
+    const [pinLabelDraft, setPinLabelDraft] = useState('');
+    const [pinMarkers, setPinMarkers] = useState<Array<{ id: string; topPercent: number; targetMsgId: string; previewText: string }>>([]);
+    const [searchMarkers, setSearchMarkers] = useState<Array<{ id: string; topPercent: number }>>([]);
     const dragCounterRef = useRef(0);
     const hasJumpedRef = useRef(false);
 
@@ -576,6 +581,129 @@ const ChatArea: React.FC = () => {
 
     const hasMessages = activeConv && activeConv.messages.length > 0;
 
+    const pinnedExchangeIds = useMemo(() => {
+        if (!activeConv) return new Set<string>();
+        const ids = new Set<string>();
+        const msgs = activeConv.messages;
+        for (let i = 0; i < msgs.length; i++) {
+            const msg = msgs[i];
+            const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
+            if (msg.isPinned || (nextMsg && nextMsg.isPinned)) ids.add(msg.id);
+            if (nextMsg) i++;
+        }
+        return ids;
+    }, [activeConv]);
+
+    const activePinLabels = useMemo(() => {
+        if (!activeConversationId) return {};
+        return pinLabelsByConversation[activeConversationId] || {};
+    }, [pinLabelsByConversation, activeConversationId]);
+
+    useEffect(() => {
+        if (!activeConversationId) return;
+        setPinLabelsByConversation((prev) => {
+            const current = prev[activeConversationId] || {};
+            const nextForConversation: Record<string, string> = {};
+            Object.entries(current).forEach(([id, value]) => {
+                if (pinnedExchangeIds.has(id)) nextForConversation[id] = value;
+            });
+            return { ...prev, [activeConversationId]: nextForConversation };
+        });
+        if (editingPinId && !pinnedExchangeIds.has(editingPinId)) {
+            setEditingPinId(null);
+            setPinLabelDraft('');
+        }
+    }, [pinnedExchangeIds, editingPinId, activeConversationId]);
+
+    const recalculateTrackMarkers = useCallback(() => {
+        if (!activeConv) {
+            setPinMarkers([]);
+            setSearchMarkers([]);
+            return;
+        }
+
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 1);
+        const toTopPercent = (msgId: string) => {
+            const el = container.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+            if (!el) return null;
+            const pct = (el.offsetTop / maxScrollTop) * 100;
+            return Math.max(0, Math.min(100, pct));
+        };
+
+        const nextSearchMarkers: Array<{ id: string; topPercent: number }> = [];
+        if (searchOpen && matchingIds.size > 0) {
+            matchingIds.forEach((msgId) => {
+                const topPercent = toTopPercent(msgId);
+                if (topPercent !== null) nextSearchMarkers.push({ id: msgId, topPercent });
+            });
+        }
+        setSearchMarkers(nextSearchMarkers);
+
+        const markers: Array<{ id: string; topPercent: number; targetMsgId: string; previewText: string }> = [];
+        const msgs = activeConv.messages;
+        for (let i = 0; i < msgs.length; i++) {
+            const msg = msgs[i];
+            const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
+            if (msg.isPinned || (nextMsg && nextMsg.isPinned)) {
+                const topPercent = toTopPercent(msg.id);
+                if (topPercent !== null) {
+                    markers.push({
+                        id: msg.id,
+                        topPercent,
+                        targetMsgId: msg.id,
+                        previewText: (nextMsg?.content || msg.content).trim().slice(0, 56),
+                    });
+                }
+            }
+            if (nextMsg) i++;
+        }
+        setPinMarkers(markers);
+    }, [activeConv, matchingIds, searchOpen]);
+
+    useEffect(() => {
+        const raf = requestAnimationFrame(recalculateTrackMarkers);
+        return () => cancelAnimationFrame(raf);
+    }, [recalculateTrackMarkers, activeConv?.messages, searchQuery, searchOpen, matchCount]);
+
+    useEffect(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        const refresh = () => recalculateTrackMarkers();
+        const resizeObserver = new ResizeObserver(refresh);
+        resizeObserver.observe(container);
+        const list = container.querySelector('.messages-list');
+        if (list) resizeObserver.observe(list);
+
+        window.addEventListener('resize', refresh);
+        return () => {
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', refresh);
+        };
+    }, [recalculateTrackMarkers]);
+
+    const startPinLabelEdit = (pinId: string, currentLabel: string) => {
+        setEditingPinId(pinId);
+        setPinLabelDraft(currentLabel);
+    };
+
+    const savePinLabel = () => {
+        if (!editingPinId || !activeConversationId) return;
+        const next = pinLabelDraft.trim();
+        setPinLabelsByConversation((prev) => {
+            const current = prev[activeConversationId] || {};
+            const updated = { ...current };
+            if (next) updated[editingPinId] = next;
+            else delete updated[editingPinId];
+            return { ...prev, [activeConversationId]: updated };
+        });
+        setEditingPinId(null);
+        setPinLabelDraft('');
+    };
+
     const renderMessages = () => {
         if (!activeConv) return null;
         const msgs = activeConv.messages;
@@ -726,50 +854,71 @@ const ChatArea: React.FC = () => {
             onDrop={handleDrop}
         >
             <div className="pin-track-container">
-                {searchOpen && activeConv && matchingIds.size > 0 && Array.from(matchingIds).map(msgId => {
-                    const idx = activeConv.messages.findIndex(m => m.id === msgId);
-                    if (idx === -1) return null;
-                    const pos = (idx / activeConv.messages.length) * 100;
+                {searchMarkers.map((marker) => (
+                    <div
+                        key={`search-marker-${marker.id}`}
+                        className="search-marker"
+                        style={{ top: `${marker.topPercent}%` }}
+                        onClick={() => scrollToMessage(marker.id)}
+                    />
+                ))}
+                {pinMarkers.map((marker) => {
+                    const label = activePinLabels[marker.id]?.trim();
+                    const isEditing = editingPinId === marker.id;
                     return (
-                        <div 
-                            key={`search-marker-${msgId}`}
-                            className="search-marker"
-                            style={{ top: `${pos}%` }}
-                            onClick={() => scrollToMessage(msgId)}
-                        />
+                        <div
+                            key={`pin-exchange-${marker.id}`}
+                            className="pin-marker"
+                            style={{ top: `${marker.topPercent}%` }}
+                            onClick={() => scrollToMessage(marker.targetMsgId)}
+                        >
+                            <div className="pin-marker-tooltip" onClick={(e) => e.stopPropagation()}>
+                                {isEditing ? (
+                                    <div className="pin-marker-tooltip-edit">
+                                        <input
+                                            className="pin-marker-tooltip-input"
+                                            value={pinLabelDraft}
+                                            onChange={(e) => setPinLabelDraft(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') savePinLabel();
+                                                if (e.key === 'Escape') {
+                                                    setEditingPinId(null);
+                                                    setPinLabelDraft('');
+                                                }
+                                            }}
+                                            placeholder="Label this pin"
+                                            autoFocus
+                                        />
+                                        <button className="pin-marker-tooltip-btn" onClick={savePinLabel} title="Save label">
+                                            <Check size={12} />
+                                        </button>
+                                        <button
+                                            className="pin-marker-tooltip-btn"
+                                            onClick={() => {
+                                                setEditingPinId(null);
+                                                setPinLabelDraft('');
+                                            }}
+                                            title="Cancel"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="pin-marker-tooltip-row">
+                                        <span className="pin-marker-tooltip-text">{label || marker.previewText}</span>
+                                        <button
+                                            className="pin-marker-tooltip-btn"
+                                            onClick={() => startPinLabelEdit(marker.id, label || '')}
+                                            title={label ? 'Edit label' : 'Add label'}
+                                        >
+                                            <Pencil size={11} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     );
                 })}
-                {(() => {
-                    const markers: React.ReactNode[] = [];
-                    if (!activeConv) return null;
-                    const msgs = activeConv.messages;
-
-                    for (let i = 0; i < msgs.length; i++) {
-                        const msg = msgs[i];
-                        const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
-
-                        // Check if either the user msg or its paired assistant msg is pinned
-                        if (msg.isPinned || (nextMsg && nextMsg.isPinned)) {
-                            const topPercent = (i / msgs.length) * 100;
-                            const previewText = (nextMsg?.content || msg.content).slice(0, 40);
-
-                            markers.push(
-                                <div 
-                                    key={`pin-exchange-${msg.id}`}
-                                    className="pin-marker"
-                                    style={{ top: `${topPercent}%` }}
-                                    onClick={() => scrollToMessage(msg.id)}
-                                >
-                                    <div className="pin-marker-tooltip">
-                                        {previewText}...
-                                    </div>
-                                </div>
-                            );
-                        }
-                        if (nextMsg) i++; // Skip assistant message in next iteration
-                    }
-                    return markers;
-                })()}
             </div>
 
             {isDragOver && (

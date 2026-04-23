@@ -7453,10 +7453,66 @@ h4 {
     transition: opacity var(--dur-fast) var(--ease);
     font-weight: 600;
     box-shadow: 0 4px 12px var(--shadow-color);
+    min-width: 150px;
+    max-width: 240px;
 }
 
 .pin-marker:hover .pin-marker-tooltip {
     opacity: 1;
+    pointer-events: auto;
+}
+
+.pin-marker-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pin-marker-tooltip-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pin-marker-tooltip-edit {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pin-marker-tooltip-input {
+    width: 132px;
+    border: 1px solid color-mix(in srgb, var(--bg-surface) 25%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg-surface) 88%, black);
+    color: var(--text-primary);
+    font-size: 0.68rem;
+    line-height: 1.2;
+    padding: 5px 7px;
+    outline: none;
+}
+
+.pin-marker-tooltip-input:focus {
+    border-color: var(--accent);
+}
+
+.pin-marker-tooltip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: inherit;
+    background: transparent;
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.pin-marker-tooltip-btn:hover {
+    background: color-mix(in srgb, var(--bg-surface) 18%, transparent);
 }
 
 .chat-header-overlay {
@@ -7546,4 +7602,4 @@ mark.search-highlight.is-active {
     box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.1);
     position: relative;
     z-index: 2;
-}
+}
