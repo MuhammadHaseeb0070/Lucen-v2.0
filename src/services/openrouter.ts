@@ -6,6 +6,7 @@ import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import { useTokenStore } from '../store/tokenStore';
 import { useChatStore } from '../store/chatStore';
+import { detectResponseMode, getPerCallOutput, type ResponseMode } from './outputBudget';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
@@ -28,6 +29,10 @@ interface StreamOptions {
     isSideChat?: boolean;
     webSearchEnabled?: boolean;
     conversationId?: string;
+    // Manual continuation: resume a truncated assistant reply using the same
+    // structured protocol the auto-continue loop uses. `priorAssistantText`
+    // should be the partial content already shown to the user.
+    continuation?: { priorAssistantText: string };
 }
 
 /**
@@ -231,21 +236,107 @@ function buildRuntimeContext(): string {
     return `<runtime_context>\nCurrent date/time: ${localStr} (UTC ${iso}).\nUse this as your authoritative "now" when the user asks about today, dates, days of the week, or recency — do not claim uncertainty about the current date.\n</runtime_context>`;
 }
 
+// ─── Token-aware context pruning ─────────────────────────────────────────────
+// Replaces the naive `slice(-30)` with a budget-aware selection that:
+//   1. Always keeps pinned messages (in original order).
+//   2. Walks backward from the tail including messages while total token cost
+//      stays under the input budget.
+//   3. Reports how many older turns were dropped so we can surface a hint.
+//
+// Uses a fast char-based approximation (4 chars ≈ 1 token) rather than N
+// worker round-trips — pruning only needs rough decisions, and the final
+// output budget still uses the precise tokenizer in computeOutputBudget.
+
+function approxTokens(text: string): number {
+    return Math.ceil((text || '').length / 4);
+}
+
+function messageCostApprox(m: Message): number {
+    let total = approxTokens(m.content);
+    if (m.attachments) {
+        for (const a of m.attachments) {
+            if (a.textContent) total += approxTokens(a.textContent);
+            if (a.aiDescription) total += approxTokens(a.aiDescription);
+        }
+    }
+    // Per-message framing overhead (role tags, delimiters)
+    total += 8;
+    return total;
+}
+
+interface PruneResult {
+    pruned: Message[];
+    droppedCount: number;
+}
+
+function pruneMessagesForContext(
+    messages: Message[],
+    inputBudgetTokens: number,
+): PruneResult {
+    if (messages.length === 0) return { pruned: [], droppedCount: 0 };
+
+    const pinnedIds = new Set(messages.filter((m) => m.isPinned).map((m) => m.id));
+    let pinnedCost = 0;
+    for (const m of messages) {
+        if (pinnedIds.has(m.id)) pinnedCost += messageCostApprox(m);
+    }
+    const nonPinnedBudget = Math.max(0, inputBudgetTokens - pinnedCost);
+
+    const keptNonPinned = new Set<string>();
+    let running = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (pinnedIds.has(m.id)) continue;
+        const c = messageCostApprox(m);
+        if (running + c > nonPinnedBudget) break;
+        keptNonPinned.add(m.id);
+        running += c;
+    }
+
+    // Always keep at least the last 2 non-pinned messages (typically the
+    // current user turn + the immediately preceding assistant turn) even if
+    // they exceed the budget — otherwise the request is semantically useless.
+    if (keptNonPinned.size === 0) {
+        for (let i = messages.length - 1, kept = 0; i >= 0 && kept < 2; i--) {
+            const m = messages[i];
+            if (pinnedIds.has(m.id)) continue;
+            keptNonPinned.add(m.id);
+            kept++;
+        }
+    }
+
+    const pruned: Message[] = [];
+    let droppedCount = 0;
+    for (const m of messages) {
+        if (pinnedIds.has(m.id) || keptNonPinned.has(m.id)) {
+            pruned.push(m);
+        } else {
+            droppedCount++;
+        }
+    }
+    return { pruned, droppedCount };
+}
+
 /**
  * Build the full API message array with system prompts and conversation history.
  * Does NOT inject the token budget — that's done after counting in streamChat().
+ *
+ * `omittedTurnsCount` > 0 adds a one-line summary note so the model knows
+ * earlier history existed but was trimmed to fit the window.
  */
 function buildApiMessages(
     messages: Message[],
     systemPromptOverride?: string,
     ragContext?: string | null,
-    opts: { supportsVision?: boolean } = {},
+    opts: { supportsVision?: boolean; omittedTurnsCount?: number } = {},
 ): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
     const supportsVision = opts.supportsVision !== false;
+    const omittedTurnsCount = opts.omittedTurnsCount || 0;
 
-    // Prevent token/context pollution by taking only the last 30 messages max
-    const recentMessages = messages.slice(-30);
+    // Pruning happens BEFORE this function is called. We no longer apply a
+    // fixed slice(-30); the caller is responsible for budget-aware trimming.
+    const recentMessages = messages;
 
     const systemMessages: Array<Record<string, unknown>> = [];
 
@@ -289,6 +380,14 @@ function buildApiMessages(
         });
     }
 
+    // Earlier-conversation omission note (context pruning signal)
+    if (omittedTurnsCount > 0) {
+        systemMessages.push({
+            role: 'system',
+            content: `[Earlier conversation summary: ${omittedTurnsCount} older turn${omittedTurnsCount === 1 ? '' : 's'} were omitted to fit the context window. Pinned messages and the most recent turns are preserved below. Do NOT mention this omission to the user.]`,
+        });
+    }
+
     // Assemble the API payload: System messages MUST come before the conversation history
     return [
         ...systemMessages,
@@ -323,18 +422,21 @@ const SAFETY_HEADROOM = 512;
 /**
  * Compute how many output tokens are safely available for this request.
  *
- * Formula:
- *   remaining = contextWindow - inputTokens - SAFETY_HEADROOM
- *   budget    = clamp(remaining, MIN_OUTPUT_BUDGET, maxOutputTokens)
+ * The per-call cap is fixed by the response mode (artifact = 2048, chat = 6144)
+ * and enforced on both client and server. This function exists only to shrink
+ * that cap further when the conversation is so long that we need to leave room
+ * for input. It never *expands* the cap beyond `perCallCap`.
  *
- * For reasoning models (Grok, DeepSeek R1), reasoning tokens eat into the same
- * output budget. We do NOT apply a separate reasoning reserve here — OpenRouter
- * handles it internally, but a larger SAFETY_HEADROOM offsets this.
+ *   remaining = contextWindow - inputTokens - SAFETY_HEADROOM
+ *   budget    = clamp(remaining, MIN_OUTPUT_BUDGET, perCallCap)
+ *
+ * Anything longer than `perCallCap` is produced via the structured
+ * continuation protocol in streamViaEdgeFunctionWrapper.
  */
 async function computeOutputBudget(
     apiMessages: Array<Record<string, unknown>>,
     contextWindow: number,
-    maxOutputTokens: number
+    perCallCap: number
 ): Promise<number> {
     try {
         // Serialize all messages to a single string for token counting.
@@ -357,15 +459,14 @@ async function computeOutputBudget(
         const inputTokens = await countAsync(serialized);
 
         const remaining = contextWindow - inputTokens - SAFETY_HEADROOM;
-        const TIMEOUT_SAFE_CAP = 16384;
-        const budget = Math.max(MIN_OUTPUT_BUDGET, Math.min(TIMEOUT_SAFE_CAP, maxOutputTokens, remaining));
+        const budget = Math.max(MIN_OUTPUT_BUDGET, Math.min(perCallCap, remaining));
 
-        console.debug(`[TokenBudget] input=${inputTokens} ctx=${contextWindow} maxOut=${maxOutputTokens} → budget=${budget}`);
+        console.debug(`[TokenBudget] input=${inputTokens} ctx=${contextWindow} cap=${perCallCap} → budget=${budget}`);
         return budget;
     } catch (err) {
-        // If token counting fails for any reason, fall back to a conservative default
+        // If token counting fails for any reason, fall back to the per-call cap.
         console.warn('[TokenBudget] Counting failed, using fallback:', err);
-        return Math.min(maxOutputTokens, 16384);
+        return perCallCap;
     }
 }
 
@@ -509,10 +610,6 @@ export async function streamChat(
         }
     }
 
-    const apiMessages = buildApiMessages(messages, options.systemPromptOverride, ragContext, {
-        supportsVision: model.supportsVision,
-    });
-
     if (!isSupabaseEnabled() || !supabase) {
         callbacks.onError('Please sign in to use chat.');
         return;
@@ -529,21 +626,60 @@ export async function streamChat(
         return;
     }
 
-    // ─── Compute exact output budget based on actual input size ───────────────
+    // ─── Per-request output policy ──────────────────────────────────────────
+    // Side chat never produces artifacts, so it always uses chat-mode budget.
+    // Manual continuations inherit 'artifact' mode conservatively so the
+    // per-call cap is predictable (2048 tokens) regardless of what the original
+    // turn looked like.
+    const isContinuation = !!options.continuation;
+    const mode: ResponseMode = options.isSideChat
+        ? 'chat'
+        : isContinuation
+            ? 'artifact'
+            : detectResponseMode(messages);
+    const perCallCap = getPerCallOutput(mode);
+
+    // ─── Token-aware context pruning ────────────────────────────────────────
+    // Reserve room for:
+    //   - per-call output (perCallCap)
+    //   - safety headroom (tokenizer approximation, per-call framing)
+    //   - a blanket allowance for system prompts + template + RAG
+    const SYSTEM_PROMPT_RESERVE = 5000;
+    const conversationBudget = Math.max(
+        4096,
+        model.contextWindow - perCallCap - SAFETY_HEADROOM - SYSTEM_PROMPT_RESERVE,
+    );
+    const { pruned: prunedMessages, droppedCount } = pruneMessagesForContext(messages, conversationBudget);
+
+    const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
+        supportsVision: model.supportsVision,
+        omittedTurnsCount: droppedCount,
+    });
+
     const outputBudget = await computeOutputBudget(
         apiMessages,
         model.contextWindow,
-        model.maxOutputTokens
+        perCallCap
     );
 
-    // ─── Inject token budget as a background instruction ─────────────────────
-    // Keep this instruction quiet so the model doesn't mention tokens in its response.
+    // Background instruction: for a fresh turn the "finish cleanly" soft note
+    // is enough. For a manual continuation we append the full structured
+    // continuation protocol instead (prior assistant text + resume marker).
+    const trailingSystemNotes: Array<Record<string, unknown>> = isContinuation
+        ? [
+            { role: 'assistant', content: options.continuation!.priorAssistantText },
+            buildContinuationProtocolMessage(options.continuation!.priorAssistantText),
+        ]
+        : [
+            {
+                role: 'system',
+                content: "[System Note: Finish what you need to say within this single response. If the full answer truly will not fit, stop at a clean line boundary and the system will auto-continue your reply. Do NOT write phrases like 'continued below', 'I'll continue in the next message', '...', or any meta-commentary about length. Never mention tokens, budgets, limits, or chunking in your response. Just answer naturally.]",
+            },
+        ];
+
     const messagesWithBudget: Array<Record<string, unknown>> = [
         ...apiMessages,
-        {
-            role: 'system',
-            content: `[System Note: Your output limit is roughly ${outputBudget} tokens. Ensure your code/explanation completes within this boundary. Do not mention tokens, budgets, or length limits in your response; just answer naturally and completely.]`,
-        },
+        ...trailingSystemNotes,
     ];
 
     const isReasoningEnabled = options.isSideChat ? false : model.supportsReasoning;
@@ -557,12 +693,75 @@ export async function streamChat(
         outputBudget,
         isReasoningEnabled,
         options.webSearchEnabled,
-        options.signal
+        options.signal,
+        mode,
     );
 }
 
+// ─── Structured continuation protocol ────────────────────────────────────────
+// When a model hits its per-call output cap (finish_reason === 'length'), we
+// automatically issue a follow-up request that tells it to resume mid-sentence
+// WITHOUT re-emitting the artifact opening tag or repeating prior content. The
+// client concatenates chunks so the user sees one continuous stream.
+
+const MAX_CHUNKS = 6;                // up to ~6 continuations = ~12k–36k tokens
+const RESUME_MARKER_CHARS = 200;     // trailing chars shown to the model
+const STALL_MIN_CONTINUATION_CHARS = 8; // below this, we treat pass as stalled
+
+function buildContinuationProtocolMessage(priorAssistantText: string): Record<string, unknown> {
+    const tail = priorAssistantText.slice(-RESUME_MARKER_CHARS);
+    const insideArtifact = PARTIAL_OPEN_RE.test(priorAssistantText)
+        || INCOMPLETE_TAG_RE.test(priorAssistantText)
+        || (priorAssistantText.lastIndexOf('<lucen_artifact') >
+            priorAssistantText.lastIndexOf('</lucen_artifact>'));
+
+    const artifactRule = insideArtifact
+        ? "You are CURRENTLY INSIDE a <lucen_artifact> tag. Do NOT re-emit the opening <lucen_artifact ...> tag. Continue the body character-by-character from exactly where you stopped. Emit </lucen_artifact> only once the artifact body is complete."
+        : "Continue the prose/code naturally. Do not greet. Do not restart.";
+
+    return {
+        role: 'system',
+        content: [
+            '<continuation_protocol>',
+            'You were mid-response and hit the per-call token limit. The text below has ALREADY been shown to the user.',
+            'Resume EXACTLY where you stopped. Do NOT greet, do NOT acknowledge the cut, do NOT repeat any prior line or sentence, do NOT summarize.',
+            artifactRule,
+            `Last ~${RESUME_MARKER_CHARS} characters you emitted (resume immediately after the final character):`,
+            '<<<',
+            tail,
+            '>>>',
+            '</continuation_protocol>',
+        ].join('\n'),
+    };
+}
+
 /**
- * Wrapper for streamViaEdgeFunction to handle artifact continuation logic.
+ * Build the message array used for a continuation call.
+ * Exposed for reuse by the manual `Continue generating` button in ChatArea.
+ */
+export function buildContinuationMessages(
+    apiMessages: Array<Record<string, unknown>>,
+    priorAssistantText: string,
+): Array<Record<string, unknown>> {
+    return [
+        ...apiMessages,
+        { role: 'assistant', content: priorAssistantText },
+        buildContinuationProtocolMessage(priorAssistantText),
+    ];
+}
+
+/**
+ * Wrapper for streamViaEdgeFunction that implements auto-continuation.
+ *
+ * Trigger: server-reported `finish_reason === 'length'` (surfaced as
+ * `truncated === true` in onDone). Manual continuation (user button) uses the
+ * same `buildContinuationMessages` helper.
+ *
+ * Stop conditions:
+ *   - finish_reason === 'stop'  → done
+ *   - continuationCount >= MAX_CHUNKS → cap reached, surface as truncated
+ *   - this pass produced < STALL_MIN_CONTINUATION_CHARS → model stalled, stop
+ *   - aborted via signal → honour abort
  */
 async function streamViaEdgeFunctionWrapper(
     apiMessages: Array<Record<string, unknown>>,
@@ -573,54 +772,54 @@ async function streamViaEdgeFunctionWrapper(
     isReasoningEnabled: boolean,
     webSearchEnabled?: boolean,
     signal?: AbortSignal,
-    continuationCount = 0
+    mode: ResponseMode = 'chat',
+    continuationCount = 0,
+    accumulated = '',
 ): Promise<void> {
-    let fullResponse = '';
-    
-    // Intercept callback to track content for continuation check
+    let passChars = 0;
+    let fullResponse = accumulated;
+
     const innerCallbacks: StreamCallbacks = {
         ...callbacks,
         onChunk: (chunk, isContinuation) => {
+            passChars += chunk.length;
             fullResponse += chunk;
             callbacks.onChunk(chunk, isContinuation || continuationCount > 0);
         },
         onDone: async (truncated) => {
-            // NOTE: Post-reply background description has been removed.
-            // Image understanding now happens via ensureImageContext() BEFORE the main
-            // model call, so a single vision call per turn is enough. Leaving
-            // generateImageDescriptionsInBackground defined for backwards compatibility
-            // in case a caller still invokes it elsewhere.
+            const aborted = signal?.aborted === true;
+            const shouldContinue =
+                truncated === true
+                && !aborted
+                && continuationCount < MAX_CHUNKS
+                && passChars >= STALL_MIN_CONTINUATION_CHARS;
 
-            // Check if stream ended naturally but artifact is cut off
-            const isPartialArtifact = PARTIAL_OPEN_RE.test(fullResponse) || INCOMPLETE_TAG_RE.test(fullResponse);
-            
-            if (isPartialArtifact && continuationCount < 2) {
-                console.info(`[Continuation] Partial artifact detected. Retrying (${continuationCount + 1}/2)...`);
-                
-                const continuationMessages = [
-                    ...apiMessages,
-                    { role: 'assistant', content: fullResponse },
-                    { 
-                        role: 'user', 
-                        content: "Continue exactly from where you stopped. Output only the continuation, starting from where the artifact content was cut off." 
-                    }
-                ];
-
-                await streamViaEdgeFunctionWrapper(
-                    continuationMessages,
-                    model,
-                    accessToken,
-                    callbacks,
-                    outputBudget,
-                    isReasoningEnabled,
-                    webSearchEnabled,
-                    signal,
-                    continuationCount + 1
-                );
-            } else {
-                callbacks.onDone(truncated);
+            if (!shouldContinue) {
+                // If we stopped because we hit our internal chunk ceiling,
+                // surface that as truncation so the UI can expose the manual
+                // "Continue generating" button.
+                const hitChunkCeiling = truncated === true && continuationCount >= MAX_CHUNKS;
+                callbacks.onDone(hitChunkCeiling || (truncated === true && passChars < STALL_MIN_CONTINUATION_CHARS));
+                return;
             }
-        }
+
+            console.info(`[Continuation] truncated → auto-continue (${continuationCount + 1}/${MAX_CHUNKS})`);
+            const continuationMessages = buildContinuationMessages(apiMessages, fullResponse);
+
+            await streamViaEdgeFunctionWrapper(
+                continuationMessages,
+                model,
+                accessToken,
+                callbacks,
+                outputBudget,
+                isReasoningEnabled,
+                webSearchEnabled,
+                signal,
+                mode,
+                continuationCount + 1,
+                fullResponse,
+            );
+        },
     };
 
     await streamViaEdgeFunction(
@@ -631,7 +830,8 @@ async function streamViaEdgeFunctionWrapper(
         outputBudget,
         isReasoningEnabled,
         webSearchEnabled,
-        signal
+        signal,
+        mode,
     );
 }
 
@@ -744,7 +944,8 @@ async function streamViaEdgeFunction(
     outputBudget: number,
     isReasoningEnabled: boolean,
     webSearchEnabled?: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    mode: ResponseMode = 'chat',
 ): Promise<void> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -759,6 +960,7 @@ async function streamViaEdgeFunction(
         messages: apiMessages,
         model: model.id,
         max_tokens: outputBudget,
+        mode,
         is_reasoning: isReasoning,
         template_mode: templateMode,
     };

@@ -125,11 +125,13 @@ const ChatArea: React.FC = () => {
         });
     }, [updateMessage]);
 
-    // Clear workspace artifact when switching conversations
+    // Clear workspace artifact + dismissal memory when switching conversations
     const clearArtifact = useArtifactStore((s) => s.clearArtifact);
+    const resetDismissedArtifacts = useArtifactStore((s) => s.resetDismissed);
     useEffect(() => {
         clearArtifact();
-    }, [activeConversationId, clearArtifact]);
+        resetDismissedArtifacts();
+    }, [activeConversationId, clearArtifact, resetDismissedArtifacts]);
 
     useEffect(() => {
         if (!pendingMainComposerPrefill) return;
@@ -209,23 +211,31 @@ const ChatArea: React.FC = () => {
     };
 
     // ─── Continue truncated response ───
+    // Uses the same structured continuation protocol as the automatic loop in
+    // streamViaEdgeFunctionWrapper: the prior partial assistant text is passed
+    // along as a resume marker so the model continues mid-sentence without
+    // re-emitting <lucen_artifact> or repeating earlier lines.
     const handleContinue = async (assistantMsgId: string) => {
         if (!activeConversationId) return;
         const convId = activeConversationId;
+
+        // Capture the partial text BEFORE flipping isStreaming, otherwise
+        // getContextMessages would filter the message out and we'd lose the
+        // content we want to resume from.
+        const partialMsg = useChatStore.getState().conversations
+            .find((c) => c.id === convId)
+            ?.messages.find((m) => m.id === assistantMsgId);
+        const priorAssistantText = partialMsg?.content || '';
 
         updateMessage(convId, assistantMsgId, { isStreaming: true, isTruncated: false });
 
         const controller = new AbortController();
         abortRef.current = controller;
 
+        // After the flag flip this no longer contains the partial assistant
+        // message — which is what we want; the continuation protocol
+        // appends the partial text + resume marker itself.
         const contextMessages = getContextMessages(convId);
-        contextMessages.push({
-            id: 'continue-instruction',
-            role: 'user',
-            content: 'Continue from where you left off. Do not repeat what you already said. Continue directly.',
-            // eslint-disable-next-line react-hooks/purity
-            timestamp: Date.now(),
-        });
 
         await streamChat(contextMessages, {
             onChunk: (chunk) => {
@@ -259,7 +269,12 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
             },
-        }, { signal: controller.signal, webSearchEnabled, conversationId: convId });
+        }, {
+            signal: controller.signal,
+            webSearchEnabled,
+            conversationId: convId,
+            continuation: { priorAssistantText },
+        });
     };
 
     const handleSend = async (content: string, attachments?: FileAttachment[]) => {

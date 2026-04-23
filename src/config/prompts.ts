@@ -144,6 +144,7 @@ STRICT RULES:
 6. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.
 7. If continuing a previous artifact - reproduce it fully with changes applied. Never output a partial diff.
 8. html artifacts: use dark theme by default unless user specifies otherwise. Always include viewport meta tag.
+9. If the artifact is too long to finish in one response, stop at a clean line boundary inside the artifact body. The system will auto-continue. Do NOT write "continued below", "I will continue in the next message", placeholder comments like "// ... rest of code", "TODO: finish this", or any meta-commentary. Just stop mid-stream cleanly — the system stitches the pieces together automatically.
 
 EXAMPLE — correct format:
 <lucen_artifact type="html" title="Todo App">

@@ -44,6 +44,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
     const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
+    const isDismissed = useArtifactStore((s) => s.isDismissed);
 
     const { cleanContent, artifacts } = useMemo(() => {
         // Even when we are not rendering artifacts (e.g. side chat),
@@ -115,6 +116,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         }
         const first = artifacts[0];
 
+        // If the user closed this artifact's workspace, never reopen it or
+        // push further updates into the store for it. The code view can still
+        // render inside the message bubble card itself.
+        if (isDismissed(first.id)) {
+            openedRef.current = false;
+            return;
+        }
+
         if (first.isStreaming) {
             const now = Date.now();
             if (!openedRef.current) {
@@ -123,7 +132,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 setActiveArtifact(first);
                 lastUpdateRef.current = now;
             } else if (now - lastUpdateRef.current > 300) {
-                // Throttle: update content at most every 300ms during streaming
+                // Throttle store update at ~300ms. Actual heavy preview
+                // re-render is further throttled inside ArtifactRenderer.
                 updateArtifactContent(first);
                 lastUpdateRef.current = now;
             }
@@ -135,7 +145,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             updateArtifactContent({ ...first, isStreaming: false });
             openedRef.current = false;
         }
-    }, [disableArtifacts, artifacts, setActiveArtifact, updateArtifactContent]);
+    }, [disableArtifacts, artifacts, setActiveArtifact, updateArtifactContent, isDismissed]);
 
     if (actionsOnly) {
         if (!message.content) return null;

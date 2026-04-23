@@ -8,6 +8,10 @@ interface ArtifactStore {
   viewMode: 'preview' | 'code';
   panelWidthPercent: number;
   previewViewport: PreviewViewport;
+  // IDs of artifacts the user explicitly dismissed. Once dismissed, the
+  // workspace must NOT reopen for that artifact even as new stream chunks
+  // arrive. Non-persisted; cleared on conversation switch.
+  dismissedIds: Set<string>;
 
   setActiveArtifact: (artifact: Artifact | null) => void;
   updateArtifactContent: (artifact: Artifact) => void;
@@ -15,6 +19,8 @@ interface ArtifactStore {
   setPanelWidthPercent: (pct: number) => void;
   setPreviewViewport: (vp: PreviewViewport) => void;
   clearArtifact: () => void;
+  resetDismissed: () => void;
+  isDismissed: (id: string) => boolean;
 }
 
 export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
@@ -22,20 +28,35 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
   viewMode: 'preview',
   panelWidthPercent: 50,
   previewViewport: 'full',
+  dismissedIds: new Set<string>(),
 
-  setActiveArtifact: (artifact) => set({ activeArtifact: artifact, viewMode: 'preview' }),
+  setActiveArtifact: (artifact) => {
+    if (artifact && get().dismissedIds.has(artifact.id)) return;
+    set({ activeArtifact: artifact, viewMode: 'preview' });
+  },
 
   updateArtifactContent: (artifact) => {
-    const current = get().activeArtifact;
-    if (current && current.id === artifact.id) {
-      set({ activeArtifact: artifact });
-    } else {
-      set({ activeArtifact: artifact });
-    }
+    const { dismissedIds, activeArtifact } = get();
+    if (dismissedIds.has(artifact.id)) return;
+    // Only update if this is the currently open artifact, or if none is open.
+    if (activeArtifact && activeArtifact.id !== artifact.id) return;
+    set({ activeArtifact: artifact });
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setPanelWidthPercent: (pct) => set({ panelWidthPercent: Math.max(25, Math.min(75, pct)) }),
   setPreviewViewport: (vp) => set({ previewViewport: vp }),
-  clearArtifact: () => set({ activeArtifact: null, viewMode: 'preview', previewViewport: 'full' }),
+  clearArtifact: () => {
+    const current = get().activeArtifact;
+    const nextDismissed = new Set(get().dismissedIds);
+    if (current) nextDismissed.add(current.id);
+    set({
+      activeArtifact: null,
+      viewMode: 'preview',
+      previewViewport: 'full',
+      dismissedIds: nextDismissed,
+    });
+  },
+  resetDismissed: () => set({ dismissedIds: new Set<string>() }),
+  isDismissed: (id) => get().dismissedIds.has(id),
 }));

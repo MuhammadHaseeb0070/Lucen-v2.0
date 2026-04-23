@@ -189,7 +189,7 @@ Deno.serve(async (req: Request) => {
         console.log(`[Auth OK] ${user.id} (${user.email})`);
 
         // ─── Parse request body ───
-        const { messages, model, max_tokens, is_reasoning, stream, plugins, __bg_description } = await req.json();
+        const { messages, model, max_tokens, mode, is_reasoning, stream, plugins, __bg_description } = await req.json();
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -284,14 +284,28 @@ Deno.serve(async (req: Request) => {
         // If we want to silently strip the plugin instead of blocking:
         // effectivePlugins = subscriptionStatus === 'free' ? stripWebPlugin(effectivePlugins) : effectivePlugins;
 
-        // ─── Server-side token cap ───
-        // Never trust the client value blindly. Cap at a safe server maximum.
-        // The client computes a dynamic budget based on actual input size;
-        // here we simply enforce an upper bound to prevent abuse.
-        const SERVER_MAX_TOKENS_CAP = 32768;
-        const resolvedMaxTokens = __bg_description 
-            ? 200 
-            : Math.min(Math.max(512, Number(max_tokens) || 16384), SERVER_MAX_TOKENS_CAP);
+        // ─── Server-side output policy ─────────────────────────────────────
+        // Single source of truth for per-request output cap (keep in sync with
+        // src/services/outputBudget.ts on the client). Anything longer than a
+        // single cap is produced via the client-side continuation loop.
+        const PER_CALL_OUTPUT: Record<string, number> = {
+            artifact: 2048,
+            chat: 6144,
+        };
+        const ABSOLUTE_CEILING = 8192;
+        const MIN_OUTPUT = 512;
+
+        const normalizedMode: 'artifact' | 'chat' =
+            mode === 'artifact' ? 'artifact' : 'chat';
+        const modeCap = PER_CALL_OUTPUT[normalizedMode];
+
+        const resolvedMaxTokens = __bg_description
+            ? 200
+            : Math.min(
+                Math.max(MIN_OUTPUT, Number(max_tokens) || modeCap),
+                modeCap,
+                ABSOLUTE_CEILING,
+            );
 
         const shouldStream = stream !== false;
 

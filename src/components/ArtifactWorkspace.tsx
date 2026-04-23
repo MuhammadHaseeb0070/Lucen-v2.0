@@ -259,6 +259,7 @@ const ArtifactWorkspace: React.FC = () => {
           type={activeArtifact.type}
           viewMode={viewMode}
           viewport={previewViewport}
+          isStreaming={!!activeArtifact.isStreaming}
         />
       </div>
     </div>

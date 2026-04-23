@@ -9,6 +9,58 @@ interface RendererProps {
   content: string;
   title?: string;
   viewport?: PreviewViewport;
+  isStreaming?: boolean;
+}
+
+// Heavy preview renders (iframe reload, mermaid compile, SVG parse) are
+// throttled to this interval while the artifact is still streaming. Code view
+// continues to update in real time.
+const STREAMING_PREVIEW_THROTTLE_MS = 5000;
+
+// Custom hook: exposes a "previewContent" that only updates every N ms while
+// `isStreaming` is true. When streaming ends, the final content is flushed
+// immediately so the preview matches the complete artifact.
+function useThrottledContent(content: string, isStreaming: boolean, intervalMs: number): string {
+  const [previewContent, setPreviewContent] = useState(content);
+  const lastUpdateRef = useRef<number>(0);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+      setPreviewContent(content);
+      lastUpdateRef.current = Date.now();
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastUpdateRef.current;
+
+    if (elapsed >= intervalMs) {
+      setPreviewContent(content);
+      lastUpdateRef.current = now;
+      return;
+    }
+
+    if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = setTimeout(() => {
+      setPreviewContent(content);
+      lastUpdateRef.current = Date.now();
+      pendingTimerRef.current = null;
+    }, intervalMs - elapsed);
+
+    return () => {
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
+  }, [content, isStreaming, intervalMs]);
+
+  return previewContent;
 }
 
 // ── Error Boundary ──
@@ -55,11 +107,12 @@ const VIEWPORT_WIDTHS: Record<string, string | null> = {
 
 // ── HTML Renderer ──
 
-const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full' }) => {
+const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isStreaming = false }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
 
   const srcDoc = useMemo(() => {
-    const trimmed = content.trim();
+    const trimmed = previewContent.trim();
     if (!trimmed) return '<html><body></body></html>';
     if (trimmed.toLowerCase().includes('<html') || trimmed.toLowerCase().includes('<!doctype'))
       return trimmed;
@@ -67,7 +120,7 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full' }) =
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,-apple-system,sans-serif;padding:16px;color:#1a1a1a;background:#fff}</style>
 </head><body>${trimmed}</body></html>`;
-  }, [content]);
+  }, [previewContent]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -177,15 +230,16 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode; vectorMode?: boole
 
 // ── SVG Renderer ──
 
-const SvgRenderer: React.FC<RendererProps> = ({ content }) => {
+const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     try {
-      let svgContent = content.trim();
+      let svgContent = previewContent.trim();
       if (svgContent.toLowerCase().includes('<html') || svgContent.toLowerCase().includes('<!doctype')) {
         const m = svgContent.match(/<svg[\s\S]*<\/svg>/i);
         if (m) svgContent = m[0];
@@ -211,7 +265,7 @@ const SvgRenderer: React.FC<RendererProps> = ({ content }) => {
       setRenderError(err instanceof Error ? err.message : 'Failed to render SVG');
       if (containerRef.current) containerRef.current.innerHTML = '';
     }
-  }, [content]);
+  }, [previewContent]);
 
   if (renderError) {
     return (
@@ -286,13 +340,14 @@ async function tryRenderMermaid(text: string, id: string): Promise<string> {
   }
 }
 
-const MermaidRenderer: React.FC<RendererProps> = ({ content }) => {
+const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false }) => {
   const [error, setError] = useState<string | null>(null);
   const [svg, setSvg] = useState<string>('');
   const renderIdRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cleanedContent = useMemo(() => sanitizeMermaidSyntax(content), [content]);
+  const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
+  const cleanedContent = useMemo(() => sanitizeMermaidSyntax(previewContent), [previewContent]);
 
   useEffect(() => {
     if (!cleanedContent) return;
@@ -417,9 +472,10 @@ interface ArtifactRendererProps {
   type: ArtifactType;
   viewMode: 'preview' | 'code';
   viewport?: PreviewViewport;
+  isStreaming?: boolean;
 }
 
-const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport }) => {
+const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming }) => {
   if (!content || !content.trim())
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
@@ -431,7 +487,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
   if (Renderer) {
     return (
       <RendererErrorBoundary content={content} language={language}>
-        <Renderer content={content} title={title} viewport={viewport} />
+        <Renderer content={content} title={title} viewport={viewport} isStreaming={isStreaming} />
       </RendererErrorBoundary>
     );
   }
