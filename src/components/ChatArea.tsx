@@ -110,14 +110,33 @@ const ChatArea: React.FC = () => {
         return () => container.removeEventListener('scroll', handleScroll);
     }, []);
 
-    // On mount: clean up stale streaming states
+    // On mount: clean up stale streaming states.
+    //
+    // Distinguish "fresh" (<5 min old) from "stale" (>= 5 min). Fresh messages
+    // were almost certainly interrupted by a page refresh or tab close mid-
+    // generation — we flip them to truncated so the existing Continue button
+    // lets the user resume with a single tap (same handleContinue path).
+    // Stale messages show the hard "Response was interrupted" marker since
+    // resuming hours-old context rarely produces coherent output.
     useEffect(() => {
+        const FRESH_WINDOW_MS = 5 * 60 * 1000;
+        const now = Date.now();
         const state = useChatStore.getState();
         state.conversations.forEach((conv) => {
             conv.messages.forEach((msg) => {
-                if (msg.isStreaming) {
+                if (!msg.isStreaming) return;
+                const age = now - (msg.timestamp || 0);
+                if (age < FRESH_WINDOW_MS && msg.content && msg.content.trim().length > 0) {
+                    // Recoverable: mark truncated so the existing Continue UI appears.
                     updateMessage(conv.id, msg.id, {
-                        isStreaming: false, isReasoningStreaming: false,
+                        isStreaming: false,
+                        isReasoningStreaming: false,
+                        isTruncated: true,
+                    });
+                } else {
+                    updateMessage(conv.id, msg.id, {
+                        isStreaming: false,
+                        isReasoningStreaming: false,
                         content: msg.content || '⚠️ Response was interrupted. Click retry to regenerate.',
                     });
                 }
@@ -149,12 +168,19 @@ const ChatArea: React.FC = () => {
     const isStreaming = activeConv?.messages.some((m) => m.isStreaming) || false;
 
     // ─── Stream helpers ───
-    const doStreamResponse = async (convId: string, assistantMsgId: string) => {
+    //
+    // Both fresh sends and manual continuations use the same chunk-buffering
+    // strategy (60ms flush window) so the UX is identical — no "continue"
+    // button skips the buffer and forces re-renders on every token.
+    const runStream = async (
+        convId: string,
+        assistantMsgId: string,
+        options: { continuation?: { priorAssistantText: string }; trackReasoning: boolean },
+    ) => {
         const controller = new AbortController();
         abortRef.current = controller;
         const contextMessages = getContextMessages(convId);
 
-        // Local buffering to reduce render thrash during streaming.
         let chunkBuffer = '';
         let lastFlushTs = 0;
 
@@ -180,12 +206,14 @@ const ChatArea: React.FC = () => {
                 }
             },
             onReasoning: (reasoning) => {
+                if (!options.trackReasoning) return;
                 const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
                 const msg = conv?.messages.find((m) => m.id === assistantMsgId);
-                updateMessage(convId, assistantMsgId, { reasoning: (msg?.reasoning || '') + reasoning });
+                updateMessage(convId, assistantMsgId, {
+                    reasoning: (msg?.reasoning || '') + reasoning,
+                });
             },
             onDone: (truncated) => {
-                // Flush any remaining buffered chunks.
                 flushBuffer();
                 updateMessage(convId, assistantMsgId, {
                     isStreaming: false,
@@ -193,77 +221,34 @@ const ChatArea: React.FC = () => {
                     isTruncated: truncated || false,
                 });
                 abortRef.current = null;
-                // Sync credit balance from server after deduction
                 useCreditsStore.getState().syncFromServer();
             },
-            onError: (error) => { updateMessage(convId, assistantMsgId, { content: `⚠️ Error: ${error}`, isStreaming: false, isReasoningStreaming: false }); abortRef.current = null; useCreditsStore.getState().syncFromServer(); },
-            onWebSearchUsed: () => updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
-            onClarificationNeeded: (question) => {
+            onError: (error) => {
                 flushBuffer();
+                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
+                const existing = msg?.content || '';
                 updateMessage(convId, assistantMsgId, {
-                    content: `_Search paused. I need a bit more info to get you the right results:_\n\n**${question}**`,
+                    content: options.continuation
+                        ? `${existing}\n\n⚠️ Error continuing: ${error}`
+                        : `⚠️ Error: ${error}`,
                     isStreaming: false,
                     isReasoningStreaming: false,
                 });
                 abortRef.current = null;
+                useCreditsStore.getState().syncFromServer();
             },
-        }, { signal: controller.signal, webSearchEnabled, conversationId: convId });
-    };
-
-    // ─── Continue truncated response ───
-    // Uses the same structured continuation protocol as the automatic loop in
-    // streamViaEdgeFunctionWrapper: the prior partial assistant text is passed
-    // along as a resume marker so the model continues mid-sentence without
-    // re-emitting <lucen_artifact> or repeating earlier lines.
-    const handleContinue = async (assistantMsgId: string) => {
-        if (!activeConversationId) return;
-        const convId = activeConversationId;
-
-        // Capture the partial text BEFORE flipping isStreaming, otherwise
-        // getContextMessages would filter the message out and we'd lose the
-        // content we want to resume from.
-        const partialMsg = useChatStore.getState().conversations
-            .find((c) => c.id === convId)
-            ?.messages.find((m) => m.id === assistantMsgId);
-        const priorAssistantText = partialMsg?.content || '';
-
-        updateMessage(convId, assistantMsgId, { isStreaming: true, isTruncated: false });
-
-        const controller = new AbortController();
-        abortRef.current = controller;
-
-        // After the flag flip this no longer contains the partial assistant
-        // message — which is what we want; the continuation protocol
-        // appends the partial text + resume marker itself.
-        const contextMessages = getContextMessages(convId);
-
-        await streamChat(contextMessages, {
-            onChunk: (chunk) => {
-                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
-                updateMessage(convId, assistantMsgId, { content: (msg?.content || '') + chunk });
-            },
-            onReasoning: () => { /* skip reasoning for continuation */ },
-            onDone: (truncated) => {
-                updateMessage(convId, assistantMsgId, {
-                    isStreaming: false,
-                    isTruncated: truncated || false,
-                });
-                abortRef.current = null;
-            },
-            onError: (error) => {
-                updateMessage(convId, assistantMsgId, {
-                    content: useChatStore.getState().conversations.find((c) => c.id === convId)?.messages.find((m) => m.id === assistantMsgId)?.content + `\n\n⚠️ Error continuing: ${error}`,
-                    isStreaming: false,
-                });
-                abortRef.current = null;
-            },
-            onWebSearchUsed: () => updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
+            onWebSearchUsed: () =>
+                updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
             onClarificationNeeded: (question) => {
+                flushBuffer();
                 const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
                 const msg = conv?.messages.find((m) => m.id === assistantMsgId);
+                const existing = msg?.content || '';
                 updateMessage(convId, assistantMsgId, {
-                    content: (msg?.content || '') + `\n\n_Search paused._\n\n**${question}**`,
+                    content: options.continuation
+                        ? `${existing}\n\n_Search paused._\n\n**${question}**`
+                        : `_Search paused. I need a bit more info to get you the right results:_\n\n**${question}**`,
                     isStreaming: false,
                     isReasoningStreaming: false,
                 });
@@ -273,6 +258,32 @@ const ChatArea: React.FC = () => {
             signal: controller.signal,
             webSearchEnabled,
             conversationId: convId,
+            continuation: options.continuation,
+        });
+    };
+
+    const doStreamResponse = (convId: string, assistantMsgId: string) =>
+        runStream(convId, assistantMsgId, { trackReasoning: true });
+
+    // ─── Continue truncated response ───
+    // Resumes from the message's existing partial content. The
+    // streamViaEdgeFunctionWrapper picks up the prior text as an assistant
+    // message + a short "continue" user nudge (ChatGPT-style), so the model
+    // resumes mid-sentence without re-emitting any opening tag.
+    const handleContinue = async (assistantMsgId: string) => {
+        if (!activeConversationId) return;
+        const convId = activeConversationId;
+
+        // Capture the partial text BEFORE flipping isStreaming, otherwise
+        // getContextMessages would filter the message out.
+        const partialMsg = useChatStore.getState().conversations
+            .find((c) => c.id === convId)
+            ?.messages.find((m) => m.id === assistantMsgId);
+        const priorAssistantText = partialMsg?.content || '';
+
+        updateMessage(convId, assistantMsgId, { isStreaming: true, isTruncated: false });
+        await runStream(convId, assistantMsgId, {
+            trackReasoning: false,
             continuation: { priorAssistantText },
         });
     };

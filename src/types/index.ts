@@ -66,13 +66,32 @@ export interface ModelInfo {
   supportsReasoning: boolean;
   /** Whether this model natively accepts image inputs. When false, images must be routed through the vision helper. */
   supportsVision: boolean;
+  /**
+   * Whether this model leaks reasoning / chain-of-thought into the
+   * `content` channel instead of a separate `reasoning` field. When true
+   * we raise per-call output caps (artifact mode) to give the model room
+   * to both think and answer in a single pass. True for MiniMax M2 and
+   * some DeepSeek R1 provider routes; false for GPT, Claude, Gemini.
+   */
+  reasoningLeak: boolean;
   /** Hard cap on output tokens sent to the API (computed dynamically) */
   maxTokens: number;
   /** Maximum output tokens the model supports (model capability, e.g. 32768) */
   maxOutputTokens: number;
   /** Total context window size — input + output combined (e.g. 131072 for Grok) */
   contextWindow: number;
+  /**
+   * Observed output throughput in tokens/second. Used together with the
+   * platform wall-clock budget to size per-call `max_tokens` so a single
+   * streamed response can realistically finish before Supabase's 150s
+   * idle timeout.
+   */
+  tokensPerSecond: number;
+  /** Legacy per-1k pricing, kept for backwards compatibility. */
   inputCostPer1k: number;
   outputCostPer1k: number;
+  /** USD per 1,000,000 tokens — used for real cost accounting. */
+  inputCostPer1m: number;
+  outputCostPer1m: number;
 }
 

@@ -49,19 +49,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const { cleanContent, artifacts } = useMemo(() => {
         // Even when we are not rendering artifacts (e.g. side chat),
         // we still strip the tags so the user sees clean "basic chat" text.
-        const parsed = parseArtifacts(message.content, message.id);
+        // When the owning message has stopped streaming but the model never
+        // emitted a closing </lucen_artifact>, the parser auto-closes the
+        // tag (forceClose=true) so the card renders as complete-if-truncated
+        // instead of hanging on "Generating". Authority on streaming state
+        // is the message, not the parser.
+        const parsed = parseArtifacts(message.content, message.id, !message.isStreaming);
         if (disableArtifacts) {
             return { cleanContent: parsed.cleanContent, artifacts: [] };
         }
-        // The parser marks an artifact as `isStreaming` whenever it lacks a
-        // closing </lucen_artifact> tag. If the message itself is no longer
-        // streaming (the network request ended) but the model never emitted
-        // the closing tag, we must NOT leave the card stuck on "Generating".
-        // Authority on streaming state is the message, not the parser.
-        const finalized = message.isStreaming
-            ? parsed.artifacts
-            : parsed.artifacts.map((a) => ({ ...a, isStreaming: false }));
-        return { cleanContent: parsed.cleanContent, artifacts: finalized };
+        return { cleanContent: parsed.cleanContent, artifacts: parsed.artifacts };
     }, [disableArtifacts, message.content, message.id, message.isStreaming]);
 
     const normalizedReasoning = useMemo(() => {

@@ -183,6 +183,7 @@ export async function saveMessage(
             reasoning: message.reasoning || null,
             is_truncated: message.isTruncated || false,
             is_pinned: message.isPinned || false,
+            is_streaming: message.isStreaming || false,
             // Save attachment metadata only (no file content)
             attachments: message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) || null,
         });
@@ -231,7 +232,7 @@ export async function saveMessage(
 /** Update an existing message (e.g., after streaming completes) */
 export async function updateMessageInDb(
     messageId: string,
-    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated'>>
+    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming'>>
 ): Promise<boolean> {
     if (!hasActiveSessionSync() || !supabase) return false;
 
@@ -239,6 +240,7 @@ export async function updateMessageInDb(
     if (updates.content !== undefined) dbUpdates.content = updates.content;
     if (updates.reasoning !== undefined) dbUpdates.reasoning = updates.reasoning;
     if (updates.isTruncated !== undefined) dbUpdates.is_truncated = updates.isTruncated;
+    if (updates.isStreaming !== undefined) dbUpdates.is_streaming = updates.isStreaming;
 
     const { error } = await supabase
         .from('messages')
@@ -247,6 +249,46 @@ export async function updateMessageInDb(
 
     if (error) {
         console.error('[DB] updateMessage error:', error);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Upsert a streaming assistant message.
+ *
+ * Used during mid-stream persistence (every MIDSTREAM_PERSIST_MS). The first
+ * call inserts the row (so it survives a page reload) and subsequent calls
+ * update it in place. Safe to call in a throttled loop — the trigger on
+ * `messages` takes care of `updated_at`.
+ */
+export async function upsertStreamingMessage(
+    conversationId: string,
+    message: Message,
+): Promise<boolean> {
+    if (!hasActiveSessionSync() || !supabase) return false;
+
+    const { error } = await supabase
+        .from('messages')
+        .upsert(
+            {
+                id: message.id,
+                conversation_id: conversationId,
+                role: message.role,
+                content: message.content,
+                reasoning: message.reasoning || null,
+                is_truncated: message.isTruncated || false,
+                is_pinned: message.isPinned || false,
+                is_streaming: message.isStreaming === true,
+                attachments:
+                    message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) ||
+                    null,
+            },
+            { onConflict: 'id' },
+        );
+
+    if (error) {
+        console.error('[DB] upsertStreamingMessage error:', error);
         return false;
     }
     return true;

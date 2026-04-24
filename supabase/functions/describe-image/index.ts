@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { recordUsage, type UsageStatus } from '../_shared/usage.ts';
 
 // ============================================================================
 // describe-image
@@ -9,6 +10,8 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 //
 // Model is fully env-driven (never hardcoded) so it can be swapped freely.
 //   VISION_HELPER_MODEL — e.g. google/gemini-2.0-flash-001
+//   VISION_HELPER_INPUT_COST_PER_1M   (optional, for real USD cost tracking)
+//   VISION_HELPER_OUTPUT_COST_PER_1M  (optional, for real USD cost tracking)
 // ============================================================================
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -17,6 +20,13 @@ const CREDITS_PER_IMAGE = 2;
 const MAX_IMAGES_PER_CALL = 10;
 const MAX_RECENT_MESSAGES = 10;       // last ~5 exchanges
 const MAX_RECENT_CHARS_PER_MSG = 1200; // trim noisy long messages
+
+const VISION_INPUT_COST_PER_1M = Number(
+    Deno.env.get('VISION_HELPER_INPUT_COST_PER_1M') ?? '0',
+);
+const VISION_OUTPUT_COST_PER_1M = Number(
+    Deno.env.get('VISION_HELPER_OUTPUT_COST_PER_1M') ?? '0',
+);
 
 const VISION_SYSTEM_PROMPT = `You are a vision-perception helper working silently behind the scenes for another AI assistant. You will receive image(s) the user attached to their current message, plus recent conversation context.
 
@@ -73,74 +83,94 @@ Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
+    const startedAt = Date.now();
+    const accounting = {
+        finalized: false,
+        userId: null as string | null,
+        requestId: null as string | null,
+        parentRequestId: null as string | null,
+        conversationId: null as string | null,
+        messageId: null as string | null,
+        modelId: null as string | null,
+        status: 'completed' as UsageStatus,
+        statusReason: null as string | null,
+        errorMessage: null as string | null,
+        promptTokens: 0,
+        completionTokens: 0,
+        reasoningTokens: 0,
+        imageTokens: 0,
+        textCredits: 0,
+        imageCredits: 0,
+        totalCredits: 0,
+    };
+
+    const fail = async (
+        status: UsageStatus,
+        httpStatus: number,
+        message: string,
+        statusReason: string | null = null,
+    ): Promise<Response> => {
+        accounting.finalized = true;
+        accounting.status = status;
+        accounting.errorMessage = message;
+        accounting.statusReason = statusReason;
+        await recordUsage({
+            userId: accounting.userId ?? 'unknown',
+            conversationId: accounting.conversationId,
+            messageId: accounting.messageId,
+            requestId: accounting.requestId,
+            parentRequestId: accounting.parentRequestId,
+            callKind: 'describe_image',
+            status,
+            statusReason,
+            errorMessage: message,
+            modelId: accounting.modelId,
+            durationMs: Date.now() - startedAt,
+            imageTokens: accounting.imageTokens,
+            inputCostPer1M: VISION_INPUT_COST_PER_1M,
+            outputCostPer1M: VISION_OUTPUT_COST_PER_1M,
+        });
+        return new Response(JSON.stringify({ error: message }), {
+            status: httpStatus,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+        });
+    };
+
     try {
         const authHeader = req.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(
-                JSON.stringify({ error: 'Missing Authorization header' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
+        if (!authHeader) return await fail('auth_error', 401, 'Missing Authorization header');
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
         const visionModel = Deno.env.get('VISION_HELPER_MODEL');
 
-        if (!openrouterApiKey) {
-            return new Response(
-                JSON.stringify({ error: 'OpenRouter API key not configured on server' }),
-                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
-        if (!visionModel) {
-            return new Response(
-                JSON.stringify({ error: 'VISION_HELPER_MODEL is not configured on the server' }),
-                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
+        if (!openrouterApiKey) return await fail('client_error', 500, 'OpenRouter API key not configured on server');
+        if (!visionModel) return await fail('client_error', 500, 'VISION_HELPER_MODEL is not configured on the server');
+
+        accounting.modelId = visionModel;
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        if (!token || token.split('.').length !== 3) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid token format' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
+        if (!token || token.split('.').length !== 3) return await fail('auth_error', 401, 'Invalid token format');
 
         let claims: Record<string, unknown>;
         try {
             claims = decodeJwtPayload(token);
         } catch {
-            return new Response(
-                JSON.stringify({ error: 'Malformed JWT' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'Malformed JWT');
         }
 
         const userId = claims.sub as string;
         const expiry = claims.exp as number;
-        if (!userId) {
-            return new Response(
-                JSON.stringify({ error: 'JWT missing sub claim' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
+        if (!userId) return await fail('auth_error', 401, 'JWT missing sub claim');
+        accounting.userId = userId;
         if (expiry && expiry < Math.floor(Date.now() / 1000)) {
-            return new Response(
-                JSON.stringify({ error: 'Token expired' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'Token expired');
         }
 
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
-        if (adminError || !adminUser?.user) {
-            return new Response(
-                JSON.stringify({ error: 'User not found' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
+        if (adminError || !adminUser?.user) return await fail('auth_error', 401, 'User not found');
         const user = adminUser.user;
 
         // ─── Parse body ──────────────────────────────────────────────────────
@@ -149,16 +179,19 @@ Deno.serve(async (req: Request) => {
         const rawRecent: IncomingMessage[] = Array.isArray(body?.recent_messages) ? body.recent_messages : [];
         const userText: string = typeof body?.user_text === 'string' ? body.user_text : '';
 
+        if (typeof body?.request_id === 'string') accounting.requestId = body.request_id;
+        if (typeof body?.parent_request_id === 'string') accounting.parentRequestId = body.parent_request_id;
+        if (typeof body?.conversation_id === 'string') accounting.conversationId = body.conversation_id;
+        if (typeof body?.message_id === 'string') accounting.messageId = body.message_id;
+
         const images = rawImages
             .filter((img) => img && typeof img.dataUrl === 'string' && img.dataUrl.startsWith('data:'))
             .slice(0, MAX_IMAGES_PER_CALL);
 
         if (images.length === 0) {
-            return new Response(
-                JSON.stringify({ error: 'No valid images provided' }),
-                { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('client_error', 400, 'No valid images provided');
         }
+        accounting.imageTokens = images.length;
 
         // ─── Credit gate ─────────────────────────────────────────────────────
         await supabaseAdmin.rpc('ensure_user_credits', {
@@ -171,16 +204,10 @@ Deno.serve(async (req: Request) => {
             .eq('user_id', user.id)
             .single();
         if (creditsErr || !creditsRow) {
-            return new Response(
-                JSON.stringify({ error: 'Failed to load user credits' }),
-                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('upstream_error', 500, 'Failed to load user credits');
         }
         if (typeof creditsRow.remaining_credits === 'number' && creditsRow.remaining_credits <= 0) {
-            return new Response(
-                JSON.stringify({ error: 'Insufficient credits' }),
-                { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('insufficient_credits', 402, 'Insufficient credits');
         }
 
         // ─── Build prompt for vision model ───────────────────────────────────
@@ -235,19 +262,18 @@ Deno.serve(async (req: Request) => {
         if (!openrouterResponse.ok) {
             const errBody = await openrouterResponse.text();
             console.error(`[describe-image] OpenRouter error ${openrouterResponse.status}:`, errBody.slice(0, 500));
-            return new Response(
-                JSON.stringify({ error: `Vision API Error ${openrouterResponse.status}` }),
-                { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+            return await fail(
+                'upstream_error',
+                502,
+                `Vision API Error ${openrouterResponse.status}`,
+                errBody.slice(0, 500),
             );
         }
 
         const json = await openrouterResponse.json();
         const description = String(json?.choices?.[0]?.message?.content || '').trim();
         if (!description) {
-            return new Response(
-                JSON.stringify({ error: 'Vision helper returned empty description' }),
-                { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('upstream_error', 502, 'Vision helper returned empty description');
         }
 
         // ─── Credit accounting ───────────────────────────────────────────────
@@ -264,29 +290,44 @@ Deno.serve(async (req: Request) => {
         const imageCost = images.length * CREDITS_PER_IMAGE;
         const totalCost = textCost + imageCost;
 
+        accounting.promptTokens = promptTokens;
+        accounting.completionTokens = completionTokens;
+        accounting.reasoningTokens = reasoningTokens;
+        accounting.textCredits = textCost;
+        accounting.imageCredits = imageCost;
+        accounting.totalCredits = totalCost;
+
         try {
             await supabaseAdmin.rpc('deduct_user_credits', {
                 p_user_id: user.id,
                 p_amount: totalCost,
             });
-            await supabaseAdmin.from('usage_logs').insert({
-                user_id: user.id,
-                prompt_tokens: promptTokens,
-                completion_tokens: completionTokens,
-                reasoning_tokens: reasoningTokens,
-                total_credits_deducted: totalCost,
-                model_id: visionModel,
-                web_search_enabled: false,
-                web_search_engine: null,
-                web_search_max_results: null,
-                web_search_results_billed: null,
-                text_credits: textCost,
-                image_credits: imageCost,
-                web_search_credits: 0,
-            });
         } catch (dbErr) {
-            console.error('[describe-image] credit accounting failed:', dbErr);
+            console.error('[describe-image] credit deduction failed:', dbErr);
         }
+
+        accounting.finalized = true;
+        accounting.status = 'completed';
+        await recordUsage({
+            userId: user.id,
+            conversationId: accounting.conversationId,
+            messageId: accounting.messageId,
+            requestId: accounting.requestId,
+            parentRequestId: accounting.parentRequestId,
+            callKind: 'describe_image',
+            status: 'completed',
+            modelId: visionModel,
+            durationMs: Date.now() - startedAt,
+            promptTokens,
+            completionTokens,
+            reasoningTokens,
+            imageTokens: images.length,
+            textCredits: textCost,
+            imageCredits: imageCost,
+            totalCreditsDeducted: totalCost,
+            inputCostPer1M: VISION_INPUT_COST_PER_1M,
+            outputCostPer1M: VISION_OUTPUT_COST_PER_1M,
+        });
 
         return new Response(
             JSON.stringify({
@@ -299,6 +340,26 @@ Deno.serve(async (req: Request) => {
         );
     } catch (err) {
         console.error('describe-image error:', err);
+        if (!accounting.finalized) {
+            accounting.finalized = true;
+            accounting.status = 'upstream_error';
+            accounting.errorMessage = err instanceof Error ? err.message : 'Internal server error';
+            await recordUsage({
+                userId: accounting.userId ?? 'unknown',
+                conversationId: accounting.conversationId,
+                messageId: accounting.messageId,
+                requestId: accounting.requestId,
+                parentRequestId: accounting.parentRequestId,
+                callKind: 'describe_image',
+                status: accounting.status,
+                errorMessage: accounting.errorMessage,
+                modelId: accounting.modelId,
+                durationMs: Date.now() - startedAt,
+                imageTokens: accounting.imageTokens,
+                inputCostPer1M: VISION_INPUT_COST_PER_1M,
+                outputCostPer1M: VISION_OUTPUT_COST_PER_1M,
+            });
+        }
         return new Response(
             JSON.stringify({ error: err instanceof Error ? err.message : 'Internal server error' }),
             { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }

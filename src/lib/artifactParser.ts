@@ -55,9 +55,17 @@ export interface ParseResult {
  *
  * Artifact IDs are deterministic (messageId + index) for render stability.
  */
+/**
+ * @param forceClose If true, any partial (unclosed) artifact tag is treated
+ * as complete — the artifact is emitted with `isStreaming: false` and the
+ * already-streamed content, so a truncated response still renders a usable
+ * card instead of staying in a half-parsed streaming state. Pass `true` when
+ * the owning message.isStreaming has flipped to false.
+ */
 export function parseArtifacts(
   content: string,
-  messageId: string
+  messageId: string,
+  forceClose = false
 ): ParseResult {
   if (!content || !content.includes('<lucen_artifact')) {
     return { cleanContent: content, artifacts: [] };
@@ -102,7 +110,10 @@ export function parseArtifacts(
       filename,
       content: (partialCode || '').trim(),
       messageId,
-      isStreaming: true,
+      // When forceClose is true (message stream has ended but the model
+      // never emitted a </lucen_artifact>), mark the synthesized artifact
+      // as NOT streaming so it renders as a complete — if truncated — card.
+      isStreaming: !forceClose,
     });
     cleanContent = cleanContent.slice(0, cleanContent.indexOf(fullMatch));
   } else {

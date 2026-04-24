@@ -1,12 +1,25 @@
 import type { Message } from '../types';
-import { getActiveModel } from '../config/models';
+import {
+    getActiveModel,
+    STREAM_IDLE_TIMEOUT_MS,
+    CONTINUATION_MAX_CHUNKS_ARTIFACT,
+    CONTINUATION_MAX_CHUNKS_CHAT,
+    ABSOLUTE_OUTPUT_CEILING,
+} from '../config/models';
 import { formatFileSize } from './fileProcessor';
 import { TEMPLATES, BASE_SYSTEM_PROMPT } from '../config/prompts';
 import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import { useTokenStore } from '../store/tokenStore';
 import { useChatStore } from '../store/chatStore';
-import { detectResponseMode, getPerCallOutput, type ResponseMode } from './outputBudget';
+import {
+    detectResponseMode,
+    getPerCallOutput,
+    narrowForInput,
+    SAFETY_HEADROOM as BUDGET_SAFETY_HEADROOM,
+    MIN_PER_CALL_OUTPUT,
+    type ResponseMode,
+} from './outputBudget';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
@@ -29,10 +42,32 @@ interface StreamOptions {
     isSideChat?: boolean;
     webSearchEnabled?: boolean;
     conversationId?: string;
+    /**
+     * The assistant message id being populated by this call. Threaded into
+     * the chat-proxy request so usage_logs rows can be correlated back to a
+     * specific chat turn.
+     */
+    messageId?: string;
     // Manual continuation: resume a truncated assistant reply using the same
     // structured protocol the auto-continue loop uses. `priorAssistantText`
     // should be the partial content already shown to the user.
     continuation?: { priorAssistantText: string };
+}
+
+/**
+ * Accounting metadata threaded through every chat-proxy call. Populated
+ * once per user turn by `streamChat` and then recursed through the
+ * continuation wrapper. Each continuation chunk gets its own `requestId`
+ * but shares the same `parentRequestId` — that's what links them in the
+ * Usage UI.
+ */
+interface CallAccounting {
+    parentRequestId: string;
+    messageId?: string;
+    conversationId?: string;
+    callKind: 'chat' | 'chat_continuation';
+    inputCostPer1M: number;
+    outputCostPer1M: number;
 }
 
 /**
@@ -410,28 +445,17 @@ function buildApiMessages(
     ];
 }
 
-// ─── Token Budget Constants ─────────────────────────────────────────────────
-// MIN_OUTPUT_BUDGET: Never go below this — ensures even very long conversations
-// can still receive a complete, useful reply.
-const MIN_OUTPUT_BUDGET = 2048;
-
-// SAFETY_HEADROOM: Reserved gap accounting for tokenizer approximation error
-// and per-request model overhead (e.g. BOS/EOS, role tags).
-const SAFETY_HEADROOM = 512;
+// Re-export for any callers that imported from here historically.
+const SAFETY_HEADROOM = BUDGET_SAFETY_HEADROOM;
 
 /**
  * Compute how many output tokens are safely available for this request.
  *
- * The per-call cap is fixed by the response mode (artifact = 2048, chat = 6144)
- * and enforced on both client and server. This function exists only to shrink
- * that cap further when the conversation is so long that we need to leave room
- * for input. It never *expands* the cap beyond `perCallCap`.
- *
- *   remaining = contextWindow - inputTokens - SAFETY_HEADROOM
- *   budget    = clamp(remaining, MIN_OUTPUT_BUDGET, perCallCap)
- *
- * Anything longer than `perCallCap` is produced via the structured
- * continuation protocol in streamViaEdgeFunctionWrapper.
+ * The per-call cap is already a dynamic value derived from the model's
+ * real capability + the Supabase wall-clock budget (see
+ * `outputBudget.getPerCallOutput`). This function only SHRINKS it further
+ * when the input is so large there's not enough context-window headroom
+ * for a full call. It never expands beyond `perCallCap`.
  */
 async function computeOutputBudget(
     apiMessages: Array<Record<string, unknown>>,
@@ -439,8 +463,8 @@ async function computeOutputBudget(
     perCallCap: number
 ): Promise<number> {
     try {
-        // Serialize all messages to a single string for token counting.
-        // We only count text parts — image parts are approximated by the safety headroom.
+        // Serialize text parts for token counting. Image parts are
+        // approximated by the safety headroom.
         const serialized = apiMessages
             .map((m) => {
                 const content = m.content;
@@ -458,15 +482,15 @@ async function computeOutputBudget(
         const { countAsync } = useTokenStore.getState();
         const inputTokens = await countAsync(serialized);
 
-        const remaining = contextWindow - inputTokens - SAFETY_HEADROOM;
-        const budget = Math.max(MIN_OUTPUT_BUDGET, Math.min(perCallCap, remaining));
+        const budget = narrowForInput(perCallCap, inputTokens, contextWindow);
 
-        console.debug(`[TokenBudget] input=${inputTokens} ctx=${contextWindow} cap=${perCallCap} → budget=${budget}`);
+        console.debug(
+            `[TokenBudget] input=${inputTokens} ctx=${contextWindow} cap=${perCallCap} → budget=${budget}`,
+        );
         return budget;
     } catch (err) {
-        // If token counting fails for any reason, fall back to the per-call cap.
         console.warn('[TokenBudget] Counting failed, using fallback:', err);
-        return perCallCap;
+        return Math.max(MIN_PER_CALL_OUTPUT, perCallCap);
     }
 }
 
@@ -628,16 +652,18 @@ export async function streamChat(
 
     // ─── Per-request output policy ──────────────────────────────────────────
     // Side chat never produces artifacts, so it always uses chat-mode budget.
-    // Manual continuations inherit 'artifact' mode conservatively so the
-    // per-call cap is predictable (2048 tokens) regardless of what the original
-    // turn looked like.
+    // Manual continuations inherit 'artifact' mode because if the user had to
+    // press Continue, the response was clearly long-form — give it the bigger
+    // cap so the resume pass actually completes the work.
     const isContinuation = !!options.continuation;
     const mode: ResponseMode = options.isSideChat
         ? 'chat'
         : isContinuation
             ? 'artifact'
             : detectResponseMode(messages);
-    const perCallCap = getPerCallOutput(mode);
+    // Dynamic per-call cap — depends on the model's throughput, reasoning
+    // leak profile, and context window. See outputBudget.ts.
+    const perCallCap = getPerCallOutput(mode, model);
 
     // ─── Token-aware context pruning ────────────────────────────────────────
     // Reserve room for:
@@ -662,29 +688,42 @@ export async function streamChat(
         perCallCap
     );
 
-    // Background instruction: for a fresh turn the "finish cleanly" soft note
-    // is enough. For a manual continuation we append the full structured
-    // continuation protocol instead (prior assistant text + resume marker).
-    const trailingSystemNotes: Array<Record<string, unknown>> = isContinuation
-        ? [
-            { role: 'assistant', content: options.continuation!.priorAssistantText },
-            buildContinuationProtocolMessage(options.continuation!.priorAssistantText),
-        ]
+    // Manual continuation: build the ChatGPT-style resume payload (prior
+    // assistant text as an `assistant` message + short `user` nudge). The
+    // auto-continuation path inside streamViaEdgeFunctionWrapper uses the
+    // exact same helper.
+    // Fresh turn: append a quiet "finish cleanly" note so the model doesn't
+    // write "…continued below" or similar meta-commentary.
+    const messagesWithBudget: Array<Record<string, unknown>> = isContinuation
+        ? buildContinuationMessages(apiMessages, options.continuation!.priorAssistantText)
         : [
+            ...apiMessages,
             {
                 role: 'system',
-                content: "[System Note: Finish what you need to say within this single response. If the full answer truly will not fit, stop at a clean line boundary and the system will auto-continue your reply. Do NOT write phrases like 'continued below', 'I'll continue in the next message', '...', or any meta-commentary about length. Never mention tokens, budgets, limits, or chunking in your response. Just answer naturally.]",
+                content:
+                    "[System Note: Finish what you need to say within this single response. If the full answer truly will not fit, stop at a clean line boundary and the system will auto-continue your reply. Do NOT write phrases like 'continued below', 'I'll continue in the next message', '...', or any meta-commentary about length. Never mention tokens, budgets, limits, or chunking in your response. Just answer naturally.]",
             },
         ];
 
-    const messagesWithBudget: Array<Record<string, unknown>> = [
-        ...apiMessages,
-        ...trailingSystemNotes,
-    ];
-
     const isReasoningEnabled = options.isSideChat ? false : model.supportsReasoning;
+
+    // Accounting: one parent id per user turn. All continuation chunks share
+    // this parent so the Usage UI can group them under the original turn.
+    const accounting: CallAccounting = {
+        parentRequestId: generateRequestId(),
+        messageId: options.messageId,
+        conversationId: options.conversationId,
+        callKind: isContinuation ? 'chat_continuation' : 'chat',
+        inputCostPer1M: model.inputCostPer1m || 0,
+        outputCostPer1M: model.outputCostPer1m || 0,
+    };
+
     // IMPORTANT: we always stream so the UX stays responsive.
     // If a provider doesn't stream reasoning, `message.reasoning` may be empty.
+    //
+    // Seed `accumulated` with the prior assistant text on manual continuation
+    // so the output-ceiling check and repetition guard see the true running
+    // total, not just the chars produced in this pass.
     await streamViaEdgeFunctionWrapper(
         messagesWithBudget,
         model,
@@ -695,7 +734,18 @@ export async function streamChat(
         options.webSearchEnabled,
         options.signal,
         mode,
+        0,
+        isContinuation ? options.continuation!.priorAssistantText : '',
+        accounting,
     );
+}
+
+function generateRequestId(): string {
+    // Fast UUID-ish id — good enough for correlation (collisions astronomically
+    // unlikely at chat-request scale). Kept dependency-free.
+    const c = globalThis.crypto;
+    if (c && 'randomUUID' in c) return c.randomUUID();
+    return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 // ─── Structured continuation protocol ────────────────────────────────────────
@@ -704,64 +754,120 @@ export async function streamChat(
 // WITHOUT re-emitting the artifact opening tag or repeating prior content. The
 // client concatenates chunks so the user sees one continuous stream.
 
-const MAX_CHUNKS = 6;                // up to ~6 continuations = ~12k–36k tokens
-const RESUME_MARKER_CHARS = 200;     // trailing chars shown to the model
-const STALL_MIN_CONTINUATION_CHARS = 8; // below this, we treat pass as stalled
+// ─── Continuation policy constants (env-driven; see src/config/models.ts) ──
+// These values are intentionally generous — the real safety net is the
+// per-call output cap from outputBudget.ts, which already keeps each call
+// under Supabase's 150s idle timeout.
+const STALL_MIN_CONTINUATION_CHARS = 8;          // below this, pass is stalled
+const REPETITION_WINDOW = 500;                   // chars compared for overlap
+const REPETITION_THRESHOLD = 0.7;                // >70% overlap = model is stuck
+const NETWORK_RETRY_DELAYS_MS = [500, 1000, 2000]; // exponential backoff per pass
 
-function buildContinuationProtocolMessage(priorAssistantText: string): Record<string, unknown> {
-    const tail = priorAssistantText.slice(-RESUME_MARKER_CHARS);
-    const insideArtifact = PARTIAL_OPEN_RE.test(priorAssistantText)
-        || INCOMPLETE_TAG_RE.test(priorAssistantText)
-        || (priorAssistantText.lastIndexOf('<lucen_artifact') >
-            priorAssistantText.lastIndexOf('</lucen_artifact>'));
-
-    const artifactRule = insideArtifact
-        ? "You are CURRENTLY INSIDE a <lucen_artifact> tag. Do NOT re-emit the opening <lucen_artifact ...> tag. Continue the body character-by-character from exactly where you stopped. Emit </lucen_artifact> only once the artifact body is complete."
-        : "Continue the prose/code naturally. Do not greet. Do not restart.";
-
-    return {
-        role: 'system',
-        content: [
-            '<continuation_protocol>',
-            'You were mid-response and hit the per-call token limit. The text below has ALREADY been shown to the user.',
-            'Resume EXACTLY where you stopped. Do NOT greet, do NOT acknowledge the cut, do NOT repeat any prior line or sentence, do NOT summarize.',
-            artifactRule,
-            `Last ~${RESUME_MARKER_CHARS} characters you emitted (resume immediately after the final character):`,
-            '<<<',
-            tail,
-            '>>>',
-            '</continuation_protocol>',
-        ].join('\n'),
-    };
+function getMaxChunksForMode(mode: ResponseMode): number {
+    // These are imported as named exports from models.ts and refer to the
+    // env-driven ceilings. Artifact mode gets more chunks because long-form
+    // content (stories, code files, reports) benefits from multiple passes.
+    return mode === 'artifact'
+        ? CONTINUATION_MAX_CHUNKS_ARTIFACT
+        : CONTINUATION_MAX_CHUNKS_CHAT;
 }
 
 /**
- * Build the message array used for a continuation call.
- * Exposed for reuse by the manual `Continue generating` button in ChatArea.
+ * Detect whether the model is inside an unclosed <lucen_artifact> tag.
+ * When true, the continuation must NOT re-emit the opening tag — the
+ * content should resume inside the body.
+ */
+function isInsideArtifact(priorAssistantText: string): boolean {
+    if (PARTIAL_OPEN_RE.test(priorAssistantText)) return true;
+    if (INCOMPLETE_TAG_RE.test(priorAssistantText)) return true;
+    const lastOpen = priorAssistantText.lastIndexOf('<lucen_artifact');
+    const lastClose = priorAssistantText.lastIndexOf('</lucen_artifact>');
+    return lastOpen > lastClose;
+}
+
+/**
+ * Repetition guard: if the new pass starts by re-emitting most of the last
+ * N characters of the prior response, the model has lost its place. This
+ * happens rarely with ChatGPT-style payloads but is a strong signal to
+ * stop the loop rather than keep piling on repeated text.
+ *
+ * Returns `true` when the overlap ratio is above REPETITION_THRESHOLD.
+ */
+function isRepeatingLastWindow(prior: string, pass: string): boolean {
+    if (!prior || !pass) return false;
+    const tail = prior.slice(-REPETITION_WINDOW);
+    const head = pass.slice(0, REPETITION_WINDOW);
+    if (tail.length < 40 || head.length < 40) return false;
+
+    // Count longest common prefix-ish overlap by sliding window.
+    let longestOverlap = 0;
+    const maxLen = Math.min(tail.length, head.length);
+    for (let n = maxLen; n >= 40; n--) {
+        if (tail.slice(tail.length - n) === head.slice(0, n)) {
+            longestOverlap = n;
+            break;
+        }
+    }
+    const ratio = longestOverlap / Math.min(tail.length, head.length);
+    return ratio >= REPETITION_THRESHOLD;
+}
+
+/**
+ * Build the message array for a continuation pass.
+ *
+ * This follows the same pattern ChatGPT's "Continue generating" uses: feed
+ * the accumulated assistant output back verbatim as an `assistant` message,
+ * then add a brief `user` nudge to continue without repetition. No
+ * "system_continuation_protocol" block — it confuses smaller models and
+ * isn't needed with modern instruction-tuned LLMs.
+ *
+ * For artifact mode we add a tiny system note if the model is in the
+ * middle of an unclosed <lucen_artifact> tag, since that's app-specific.
  */
 export function buildContinuationMessages(
     apiMessages: Array<Record<string, unknown>>,
     priorAssistantText: string,
 ): Array<Record<string, unknown>> {
-    return [
+    const insideArtifact = isInsideArtifact(priorAssistantText);
+
+    const messages: Array<Record<string, unknown>> = [
         ...apiMessages,
         { role: 'assistant', content: priorAssistantText },
-        buildContinuationProtocolMessage(priorAssistantText),
     ];
+
+    if (insideArtifact) {
+        messages.push({
+            role: 'system',
+            content:
+                'You are mid-stream inside an unclosed <lucen_artifact> tag. Do NOT re-emit the opening tag. Continue the artifact body exactly where it left off. Emit </lucen_artifact> once the content is complete.',
+        });
+    }
+
+    messages.push({
+        role: 'user',
+        content:
+            'Continue from exactly where you stopped. Do not repeat anything, do not add any preamble, do not acknowledge the cut, do not summarize.',
+    });
+
+    return messages;
 }
 
 /**
- * Wrapper for streamViaEdgeFunction that implements auto-continuation.
+ * Wrapper for streamViaEdgeFunction that implements robust auto-continuation.
  *
- * Trigger: server-reported `finish_reason === 'length'` (surfaced as
- * `truncated === true` in onDone). Manual continuation (user button) uses the
- * same `buildContinuationMessages` helper.
+ * Triggers retry on ANY of:
+ *   - `finish_reason === 'length'` (per-call cap hit)
+ *   - `finish_reason === 'error'` or top-level stream error
+ *   - EOF without `[DONE]` and no natural finish
+ *   - Watchdog timeout (STREAM_IDLE_TIMEOUT_MS of silence)
  *
- * Stop conditions:
- *   - finish_reason === 'stop'  → done
- *   - continuationCount >= MAX_CHUNKS → cap reached, surface as truncated
- *   - this pass produced < STALL_MIN_CONTINUATION_CHARS → model stalled, stop
- *   - aborted via signal → honour abort
+ * Stops on:
+ *   - `finish_reason === 'stop'` + `[DONE]` (happy path)
+ *   - User abort (signal.aborted === true with no watchdog)
+ *   - `continuationCount >= maxChunks` (ceiling reached — surface truncated)
+ *   - Pass produced < STALL_MIN_CONTINUATION_CHARS (model stalled)
+ *   - Repetition guard (>70% overlap — model is stuck, surface truncated)
+ *   - Accumulated output >= ABSOLUTE_OUTPUT_CEILING (safety cap)
  */
 async function streamViaEdgeFunctionWrapper(
     apiMessages: Array<Record<string, unknown>>,
@@ -775,35 +881,61 @@ async function streamViaEdgeFunctionWrapper(
     mode: ResponseMode = 'chat',
     continuationCount = 0,
     accumulated = '',
+    accounting?: CallAccounting,
 ): Promise<void> {
     let passChars = 0;
+    let passText = '';
     let fullResponse = accumulated;
+    const maxChunks = getMaxChunksForMode(mode);
 
     const innerCallbacks: StreamCallbacks = {
         ...callbacks,
         onChunk: (chunk, isContinuation) => {
             passChars += chunk.length;
+            passText += chunk;
             fullResponse += chunk;
             callbacks.onChunk(chunk, isContinuation || continuationCount > 0);
         },
         onDone: async (truncated) => {
-            const aborted = signal?.aborted === true;
+            const userAborted = signal?.aborted === true;
+            const hitChunkCeiling = continuationCount >= maxChunks;
+            const stalled = passChars < STALL_MIN_CONTINUATION_CHARS;
+            const hitOutputCeiling = fullResponse.length >= ABSOLUTE_OUTPUT_CEILING * 8; // ~8 chars/token
+            const repeating =
+                continuationCount > 0 &&
+                isRepeatingLastWindow(accumulated, passText);
+
             const shouldContinue =
                 truncated === true
-                && !aborted
-                && continuationCount < MAX_CHUNKS
-                && passChars >= STALL_MIN_CONTINUATION_CHARS;
+                && !userAborted
+                && !hitChunkCeiling
+                && !stalled
+                && !repeating
+                && !hitOutputCeiling;
 
             if (!shouldContinue) {
-                // If we stopped because we hit our internal chunk ceiling,
-                // surface that as truncation so the UI can expose the manual
-                // "Continue generating" button.
-                const hitChunkCeiling = truncated === true && continuationCount >= MAX_CHUNKS;
-                callbacks.onDone(hitChunkCeiling || (truncated === true && passChars < STALL_MIN_CONTINUATION_CHARS));
+                // Surface truncated=true to the UI whenever the model ran into
+                // a ceiling (chunk cap, stall, repetition, output cap). This
+                // exposes the manual "Continue generating" button.
+                const surfaceTruncated =
+                    truncated === true &&
+                    (hitChunkCeiling || stalled || repeating || hitOutputCeiling);
+                if (repeating) {
+                    console.warn('[Continuation] repetition detected — stopping loop');
+                } else if (stalled && truncated) {
+                    console.warn('[Continuation] pass produced too few chars — stalled');
+                } else if (hitChunkCeiling) {
+                    console.info(`[Continuation] max chunks reached (${maxChunks}) — stopping`);
+                } else if (hitOutputCeiling) {
+                    console.info('[Continuation] absolute output ceiling reached — stopping');
+                }
+                callbacks.onDone(surfaceTruncated);
                 return;
             }
 
-            console.info(`[Continuation] truncated → auto-continue (${continuationCount + 1}/${MAX_CHUNKS})`);
+            console.info(
+                `[Continuation] truncated → auto-continue (${continuationCount + 1}/${maxChunks})`,
+            );
             const continuationMessages = buildContinuationMessages(apiMessages, fullResponse);
 
             await streamViaEdgeFunctionWrapper(
@@ -818,7 +950,89 @@ async function streamViaEdgeFunctionWrapper(
                 mode,
                 continuationCount + 1,
                 fullResponse,
+                accounting
+                    ? { ...accounting, callKind: 'chat_continuation' }
+                    : undefined,
             );
+        },
+    };
+
+    // ─── Network-retry with exponential backoff ──────────────────────────
+    // streamViaEdgeFunction can throw on transient network failures before
+    // any SSE bytes arrive (DNS, TLS, 5xx from edge). Retry up to 3 times
+    // with backoff before propagating the error to the caller's onError.
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt <= NETWORK_RETRY_DELAYS_MS.length; attempt++) {
+        if (signal?.aborted) {
+            callbacks.onDone(false);
+            return;
+        }
+        try {
+            await streamViaEdgeFunctionWithInnerCallbacks(
+                apiMessages,
+                model,
+                accessToken,
+                innerCallbacks,
+                outputBudget,
+                isReasoningEnabled,
+                webSearchEnabled,
+                signal,
+                mode,
+                accounting,
+            );
+            return; // success path handled inside innerCallbacks.onDone
+        } catch (err) {
+            lastErr = err;
+            if (signal?.aborted) {
+                callbacks.onDone(false);
+                return;
+            }
+            const delay = NETWORK_RETRY_DELAYS_MS[attempt];
+            if (delay === undefined) break;
+            console.warn(
+                `[Continuation] network error on attempt ${attempt + 1} — retrying in ${delay}ms`,
+                err,
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+    }
+    callbacks.onError(
+        lastErr instanceof Error ? lastErr.message : 'Streaming failed after retries',
+    );
+}
+
+/**
+ * Thin wrapper over streamViaEdgeFunction that re-throws network-level
+ * errors (fetch failures, non-ok status) so the continuation wrapper can
+ * retry them with exponential backoff. Protocol-level errors that arrive
+ * through the SSE stream itself are still delivered via callbacks.onDone.
+ */
+async function streamViaEdgeFunctionWithInnerCallbacks(
+    apiMessages: Array<Record<string, unknown>>,
+    model: ReturnType<typeof getActiveModel>,
+    accessToken: string,
+    innerCallbacks: StreamCallbacks,
+    outputBudget: number,
+    isReasoningEnabled: boolean,
+    webSearchEnabled?: boolean,
+    signal?: AbortSignal,
+    mode: ResponseMode = 'chat',
+    accounting?: CallAccounting,
+): Promise<void> {
+    // We wrap onError so we can distinguish: transient network vs. stream
+    // content error. Transient errors throw so the retry loop can catch them.
+    let networkError: Error | null = null;
+    const wrappedCallbacks: StreamCallbacks = {
+        ...innerCallbacks,
+        onError: (msg) => {
+            // Retry-worthy if the message suggests infrastructure failure.
+            const retryable =
+                /network|fetch|timeout|econn|abort|5\d\d|gateway|unavailable/i.test(msg);
+            if (retryable && !signal?.aborted) {
+                networkError = new Error(msg);
+                return;
+            }
+            innerCallbacks.onError(msg);
         },
     };
 
@@ -826,13 +1040,21 @@ async function streamViaEdgeFunctionWrapper(
         apiMessages,
         model,
         accessToken,
-        innerCallbacks,
+        wrappedCallbacks,
         outputBudget,
         isReasoningEnabled,
         webSearchEnabled,
         signal,
         mode,
+        accounting,
     );
+
+    // If the underlying function captured a retry-worthy error without
+    // throwing, re-throw here so the continuation wrapper's backoff loop
+    // picks it up.
+    if (networkError) {
+        throw networkError;
+    }
 }
 
 /**
@@ -946,6 +1168,7 @@ async function streamViaEdgeFunction(
     webSearchEnabled?: boolean,
     signal?: AbortSignal,
     mode: ResponseMode = 'chat',
+    accounting?: CallAccounting,
 ): Promise<void> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -956,6 +1179,11 @@ async function streamViaEdgeFunction(
         console.error('[OpenRouter] VITE_SUPABASE_ANON_KEY is missing. Edge Function call will likely fail.');
     }
 
+    const perCallRequestId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
     const requestPayload: Record<string, unknown> = {
         messages: apiMessages,
         model: model.id,
@@ -963,6 +1191,13 @@ async function streamViaEdgeFunction(
         mode,
         is_reasoning: isReasoning,
         template_mode: templateMode,
+        request_id: perCallRequestId,
+        parent_request_id: accounting?.parentRequestId,
+        conversation_id: accounting?.conversationId,
+        message_id: accounting?.messageId,
+        call_kind: accounting?.callKind ?? 'chat',
+        input_cost_per_1m: accounting?.inputCostPer1M ?? model.inputCostPer1m,
+        output_cost_per_1m: accounting?.outputCostPer1M ?? model.outputCostPer1m,
     };
 
     if (webSearchEnabled) {
@@ -1085,15 +1320,25 @@ async function streamViaEdgeFunction(
         return;
     }
 
-    await processStream(response, callbacks);
+    await processStream(response, callbacks, signal);
 }
 
 /**
  * Process an SSE stream from the Edge Function.
+ *
+ * The stream finishes in one of four ways:
+ *
+ *  1. `[DONE]` sentinel received (happy path).
+ *  2. Natural EOF without `[DONE]` but after a `finish_reason` (also happy path).
+ *  3. EOF without any `finish_reason` → treated as truncated (socket was cut).
+ *  4. Watchdog timeout (>STREAM_IDLE_TIMEOUT_MS of silence) → treated as truncated
+ *     so the continuation loop resumes from the last saved character.
+ *  5. User abort (via `signal`) → `onDone(false)`, no resume.
  */
 async function processStream(
     response: Response,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    signal?: AbortSignal,
 ): Promise<void> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -1104,12 +1349,9 @@ async function processStream(
     const decoder = new TextDecoder();
     let buffer = '';
     let wasTruncated = false;
-    // Track whether the upstream explicitly told us it finished. If we reach
-    // EOF without ever seeing a natural-finish reason (e.g. 'stop',
-    // 'content_filter', 'tool_calls'), we treat it as truncation — the socket
-    // was likely cut (Supabase wall-clock timeout, provider disconnect, etc.)
-    // and the auto-continuation loop should try to resume.
     let sawNaturalFinish = false;
+    let watchdogFired = false;
+    let lastDataAt = Date.now();
 
     // Debug tracking: capture last delta route so we can see whether text is
     // arriving via `delta.content` or `delta.reasoning*`.
@@ -1123,12 +1365,13 @@ async function processStream(
     const reasoningSamples: string[] = [];
     const contentSamples: string[] = [];
 
-    const logStreamSummary = (why: 'done' | 'eof' | 'abort' | 'error') => {
+    const logStreamSummary = (why: 'done' | 'eof' | 'abort' | 'error' | 'watchdog') => {
         // eslint-disable-next-line no-console
         console.log('[OpenRouterDebug] streamSummary', {
             why,
             truncated: wasTruncated,
             sawNaturalFinish,
+            watchdogFired,
             chunkCount,
             reasoningChunkCount,
             contentChunkCount,
@@ -1144,6 +1387,35 @@ async function processStream(
             console.log('[OpenRouterDebug] rawSseTail', rawSse);
         }
     };
+
+    // ─── Idle watchdog ───────────────────────────────────────────────────
+    // If the upstream goes silent (no SSE line, not even keepalive) for
+    // STREAM_IDLE_TIMEOUT_MS, cancel the reader so the outer loop exits.
+    // We flip `watchdogFired` first so the catch branch can tell this apart
+    // from a user-triggered abort and resume via the continuation loop.
+    const watchdogTimer = setInterval(() => {
+        if (Date.now() - lastDataAt <= STREAM_IDLE_TIMEOUT_MS) return;
+        watchdogFired = true;
+        try {
+            // Cause the pending reader.read() to reject, unwinding the loop.
+            reader.cancel('watchdog-idle-timeout').catch(() => {});
+        } catch {
+            // ignore
+        }
+    }, Math.max(1000, Math.floor(STREAM_IDLE_TIMEOUT_MS / 4)));
+
+    // ─── User-abort listener ─────────────────────────────────────────────
+    // The fetch() call already observes `signal`, but once the response body
+    // is being read we need to explicitly cancel the reader when the signal
+    // aborts — otherwise reader.read() just hangs forever.
+    const onAbort = () => {
+        try {
+            reader.cancel('user-abort').catch(() => {});
+        } catch {
+            // ignore
+        }
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     function sanitizeAssistantOutput(text: string): string {
         if (!text) return text;
@@ -1171,6 +1443,11 @@ async function processStream(
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+
+            // Any bytes received — even keepalive comments — reset the
+            // watchdog timer. This is what keeps a slow-but-alive stream
+            // from being killed prematurely.
+            lastDataAt = Date.now();
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -1271,12 +1548,28 @@ async function processStream(
         callbacks.onDone(eofTruncated);
         logStreamSummary('eof');
     } catch (err: unknown) {
-        if (err instanceof Error && err.name === 'AbortError') {
+        // Distinguish the three abort flavours so the continuation loop can
+        // decide whether to resume or stop.
+        const userAborted = signal?.aborted === true && !watchdogFired;
+        if (watchdogFired) {
+            // Silent stream → treat as truncated so we resume from the last
+            // saved character in the assistant message.
+            // eslint-disable-next-line no-console
+            console.log('[OpenRouterDebug] watchdog fired — treating as truncated', {
+                contentChunkCount,
+                idleMs: Date.now() - lastDataAt,
+            });
+            callbacks.onDone(true);
+            logStreamSummary('watchdog');
+        } else if (userAborted || (err instanceof Error && err.name === 'AbortError')) {
             callbacks.onDone(false);
             logStreamSummary('abort');
         } else {
             callbacks.onError(err instanceof Error ? err.message : 'Unknown error');
             logStreamSummary('error');
         }
+    } finally {
+        clearInterval(watchdogTimer);
+        signal?.removeEventListener('abort', onAbort);
     }
 }

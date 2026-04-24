@@ -4,6 +4,59 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Conversation, Message } from '../types';
 import { hasActiveSessionSync, supabase } from '../lib/supabase';
 import * as db from '../services/database';
+import { MIDSTREAM_PERSIST_MS } from '../config/models';
+
+// ─── Mid-stream persistence throttler ────────────────────────────────────
+// During streaming we don't want to hit the DB on every token. This module-
+// level map tracks, per message id, the last time we flushed content and
+// whether a trailing write is pending. Entries are removed when the stream
+// completes (isStreaming flips to false) so the map stays small.
+const midstreamState = new Map<string, { lastFlushAt: number; pendingTimer: number | null }>();
+
+function scheduleMidstreamFlush(
+    convId: string,
+    msgId: string,
+    getMessage: () => Message | undefined,
+): void {
+    if (!hasActiveSessionSync()) return;
+    const now = Date.now();
+    const state = midstreamState.get(msgId) ?? { lastFlushAt: 0, pendingTimer: null };
+
+    const elapsed = now - state.lastFlushAt;
+
+    const flush = () => {
+        state.pendingTimer = null;
+        state.lastFlushAt = Date.now();
+        midstreamState.set(msgId, state);
+        const msg = getMessage();
+        if (!msg || msg.role !== 'assistant') return;
+        db.upsertStreamingMessage(convId, msg).catch((err) =>
+            console.warn('[Midstream] flush failed (will retry on next tick):', err),
+        );
+    };
+
+    if (elapsed >= MIDSTREAM_PERSIST_MS) {
+        flush();
+        return;
+    }
+
+    // A pending timer is already covering this window — no-op.
+    if (state.pendingTimer !== null) {
+        midstreamState.set(msgId, state);
+        return;
+    }
+
+    state.pendingTimer = window.setTimeout(flush, MIDSTREAM_PERSIST_MS - elapsed);
+    midstreamState.set(msgId, state);
+}
+
+function cancelMidstreamFlush(msgId: string): void {
+    const state = midstreamState.get(msgId);
+    if (state?.pendingTimer !== null && state?.pendingTimer !== undefined) {
+        clearTimeout(state.pendingTimer);
+    }
+    midstreamState.delete(msgId);
+}
 
 interface ChatStore {
     conversations: Conversation[];
@@ -185,8 +238,11 @@ export const useChatStore = create<ChatStore>()(
                     }),
                 }));
 
-                // Save message to Supabase (skip streaming placeholders)
-                if (hasActiveSessionSync() && !message.isStreaming) {
+                // Save message to Supabase. For streaming assistant placeholders
+                // we still persist the row (empty content) so a page refresh
+                // during generation can resume from the DB — matches the
+                // behavior of ChatGPT / Claude / Gemini.
+                if (hasActiveSessionSync()) {
                     const syncToDb = async () => {
                         try {
                             // If this is the absolute first message, ensure the conversation row exists first
@@ -199,7 +255,13 @@ export const useChatStore = create<ChatStore>()(
                                 await db.createConversation(convId, currentTitle);
                             }
 
-                            // Now safe to save the message
+                            // Now safe to save the message. Streaming placeholders
+                            // go through upsertStreamingMessage so subsequent
+                            // throttled writes can find the row via ON CONFLICT.
+                            if (message.isStreaming) {
+                                await db.upsertStreamingMessage(convId, message);
+                                return;
+                            }
                             await db.saveMessage(convId, message);
 
                             // --- NEW RAG LOGIC: Vectorize files ONLY after message is saved ---
@@ -258,21 +320,42 @@ export const useChatStore = create<ChatStore>()(
                     }),
                 }));
 
-                // Sync final message content to Supabase when streaming completes
-                if (hasActiveSessionSync() && updates.isStreaming === false) {
+                if (!hasActiveSessionSync()) return;
+
+                // Stream finished → cancel any pending mid-stream flush, then
+                // write the final content authoritatively.
+                if (updates.isStreaming === false) {
+                    cancelMidstreamFlush(msgId);
                     const conv = get().conversations.find((c) => c.id === convId);
                     const msg = conv?.messages.find((m) => m.id === msgId);
                     if (msg) {
-                        // Save the full message if it's brand new, or update if it already exists
-                        db.saveMessage(convId, { ...msg, ...updates }).catch(() => {
-                            // If insert fails (duplicate), try update
-                            db.updateMessageInDb(msgId, {
-                                content: updates.content ?? msg.content,
-                                reasoning: updates.reasoning ?? msg.reasoning,
-                                isTruncated: updates.isTruncated ?? msg.isTruncated,
+                        db.updateMessageInDb(msgId, {
+                            content: updates.content ?? msg.content,
+                            reasoning: updates.reasoning ?? msg.reasoning,
+                            isTruncated: updates.isTruncated ?? msg.isTruncated,
+                            isStreaming: false,
+                        }).catch(() => {
+                            // Row didn't exist yet — insert it.
+                            db.saveMessage(convId, {
+                                ...msg,
+                                ...updates,
+                                isStreaming: false,
                             }).catch(console.error);
                         });
                     }
+                    return;
+                }
+
+                // Mid-stream write: only content/reasoning changes are worth
+                // persisting. Throttle to MIDSTREAM_PERSIST_MS so we don't
+                // hammer the DB on every token.
+                const isContentTouch =
+                    updates.content !== undefined || updates.reasoning !== undefined;
+                if (isContentTouch) {
+                    scheduleMidstreamFlush(convId, msgId, () => {
+                        const conv = get().conversations.find((c) => c.id === convId);
+                        return conv?.messages.find((m) => m.id === msgId);
+                    });
                 }
             },
 

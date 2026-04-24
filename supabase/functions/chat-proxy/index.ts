@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { recordUsage, type UsageStatus, type UsageCallKind } from '../_shared/usage.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const WEB_PLUGIN_ID = 'web';
@@ -16,6 +17,15 @@ const WEBSEARCH_USD_PER_1K_RESULTS = 4;
 const WEBSEARCH_DEFAULT_ENGINE = 'exa';
 const WEBSEARCH_DEFAULT_MAX_RESULTS = 5;
 const WEBSEARCH_MAX_RESULTS_CAP = 5;
+
+// ─── Server-side output policy ──────────────────────────────────────────
+// Mirrors src/services/outputBudget.ts + src/config/models.ts so a malicious
+// client can't request more tokens than our platform can safely serve.
+// ABSOLUTE_OUTPUT_CEILING is the hard safety cap regardless of model.
+const ABSOLUTE_OUTPUT_CEILING = Number(
+    Deno.env.get('ABSOLUTE_OUTPUT_CEILING') ?? '32768',
+);
+const MIN_OUTPUT = 512;
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
     const base64 = token.split('.')[1];
@@ -95,7 +105,6 @@ function sanitizeWebPlugins(plugins: unknown): Array<Record<string, unknown>> | 
         : WEBSEARCH_DEFAULT_MAX_RESULTS;
     const max_results = Math.min(Math.max(1, maxResultsNum), WEBSEARCH_MAX_RESULTS_CAP);
 
-    // Keep accounting deterministic by forcing Exa unless you explicitly want otherwise.
     const engine = WEBSEARCH_DEFAULT_ENGINE;
 
     const include_domains = sanitizeDomainList(raw.include_domains, 10);
@@ -109,24 +118,86 @@ function sanitizeWebPlugins(plugins: unknown): Array<Record<string, unknown>> | 
 }
 
 function computeWebSearchCredits(maxResults: number): number {
-    // $4 / 1000 results, then converted to LC via LC_PER_USD
     const usd = (Math.max(0, maxResults) / 1000) * WEBSEARCH_USD_PER_1K_RESULTS;
     return usd * LC_PER_USD;
 }
 
+// ─── Main handler ────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: cors });
     }
 
+    // Every exit path populates this shared `accounting` object; a single
+    // `recordUsage` call at the very end writes it. Streaming responses set
+    // `accounting.finalized = true` from inside the async pump so we don't
+    // double-log from the outer finally.
+    const accounting = {
+        finalized: false,
+        status: 'completed' as UsageStatus,
+        statusReason: null as string | null,
+        errorMessage: null as string | null,
+        callKind: 'chat' as UsageCallKind,
+        userId: null as string | null,
+        requestId: null as string | null,
+        parentRequestId: null as string | null,
+        conversationId: null as string | null,
+        messageId: null as string | null,
+        modelId: null as string | null,
+        promptTokens: 0,
+        completionTokens: 0,
+        reasoningTokens: 0,
+        imageTokens: 0,
+        textCredits: 0,
+        imageCredits: 0,
+        webSearchCredits: 0,
+        totalCredits: 0,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        webSearchEnabled: false,
+        webSearchEngine: null as string | null,
+        webSearchMaxResults: null as number | null,
+        webSearchResultsBilled: null as number | null,
+    };
+    const startedAt = Date.now();
+
+    // Helper: short-circuit with a JSON error AND record the usage row.
+    const fail = async (
+        status: UsageStatus,
+        httpStatus: number,
+        message: string,
+        statusReason: string | null = null,
+    ): Promise<Response> => {
+        accounting.finalized = true;
+        accounting.status = status;
+        accounting.errorMessage = message;
+        accounting.statusReason = statusReason;
+        await recordUsage({
+            userId: accounting.userId ?? 'unknown',
+            conversationId: accounting.conversationId,
+            messageId: accounting.messageId,
+            callKind: accounting.callKind,
+            status,
+            statusReason,
+            errorMessage: message,
+            requestId: accounting.requestId,
+            parentRequestId: accounting.parentRequestId,
+            modelId: accounting.modelId,
+            durationMs: Date.now() - startedAt,
+            inputCostPer1M: accounting.inputCostPer1M,
+            outputCostPer1M: accounting.outputCostPer1M,
+        });
+        return new Response(JSON.stringify({ error: message }), {
+            status: httpStatus,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+        });
+    };
+
     try {
         const authHeader = req.headers.get('Authorization');
         if (!authHeader) {
-            return new Response(
-                JSON.stringify({ error: 'Missing Authorization header' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'Missing Authorization header');
         }
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -134,78 +205,85 @@ Deno.serve(async (req: Request) => {
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
 
         if (!openrouterApiKey) {
-            return new Response(
-                JSON.stringify({ error: 'OpenRouter API key not configured on server' }),
-                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('client_error', 500, 'OpenRouter API key not configured on server');
         }
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
         if (!token || token.split('.').length !== 3) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid token format' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'Invalid token format');
         }
 
-        // Decode JWT and verify claims
         let claims: Record<string, unknown>;
         try {
             claims = decodeJwtPayload(token);
         } catch {
-            return new Response(
-                JSON.stringify({ error: 'Malformed JWT' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'Malformed JWT');
         }
 
         const userId = claims.sub as string;
         const expiry = claims.exp as number;
         if (!userId) {
-            return new Response(
-                JSON.stringify({ error: 'JWT missing sub claim' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'JWT missing sub claim');
         }
+        accounting.userId = userId;
         if (expiry && expiry < Math.floor(Date.now() / 1000)) {
-            return new Response(
-                JSON.stringify({ error: 'Token expired' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'Token expired');
         }
 
-        // Verify user exists via admin API (bypasses the broken getUser(token) flow)
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
         const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
-
         if (adminError || !adminUser?.user) {
-            return new Response(
-                JSON.stringify({ error: 'User not found', user_id: userId }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('auth_error', 401, 'User not found');
         }
-
         const user = adminUser.user;
-        console.log(`[Auth OK] ${user.id} (${user.email})`);
 
         // ─── Parse request body ───
-        const { messages, model, max_tokens, mode, is_reasoning, stream, plugins, __bg_description } = await req.json();
+        const body = await req.json();
+        const {
+            messages,
+            model,
+            max_tokens,
+            mode,
+            is_reasoning,
+            stream,
+            plugins,
+            __bg_description,
+            // Accounting metadata (all optional, client-generated):
+            request_id,
+            parent_request_id,
+            conversation_id,
+            message_id,
+            call_kind,
+            input_cost_per_1m,
+            output_cost_per_1m,
+        } = body ?? {};
+
+        if (typeof request_id === 'string') accounting.requestId = request_id;
+        if (typeof parent_request_id === 'string') accounting.parentRequestId = parent_request_id;
+        if (typeof conversation_id === 'string') accounting.conversationId = conversation_id;
+        if (typeof message_id === 'string') accounting.messageId = message_id;
+        if (typeof call_kind === 'string') {
+            accounting.callKind = call_kind as UsageCallKind;
+        }
+        if (typeof input_cost_per_1m === 'number' && Number.isFinite(input_cost_per_1m)) {
+            accounting.inputCostPer1M = input_cost_per_1m;
+        }
+        if (typeof output_cost_per_1m === 'number' && Number.isFinite(output_cost_per_1m)) {
+            accounting.outputCostPer1M = output_cost_per_1m;
+        }
 
         if (!messages || !Array.isArray(messages)) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid request: messages array required' }),
-                { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('client_error', 400, 'Invalid request: messages array required');
+        }
+        if (!model || typeof model !== 'string') {
+            return await fail('client_error', 400, 'model is required');
         }
 
-        if (!model || typeof model !== 'string') {
-            return new Response(
-                JSON.stringify({ error: 'model is required' }),
-                { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
+        accounting.modelId = model;
 
         const imageCount = countImagesInMessages(messages);
+        accounting.imageTokens = imageCount;
+
         const requestedWebSearch = hasWebPlugin(plugins);
         const sanitizedWebPlugins = requestedWebSearch ? sanitizeWebPlugins(plugins) : undefined;
         const webSearchMaxResults =
@@ -217,19 +295,25 @@ Deno.serve(async (req: Request) => {
                 ? (sanitizedWebPlugins[0].engine as string)
                 : (requestedWebSearch ? WEBSEARCH_DEFAULT_ENGINE : '');
 
+        accounting.webSearchEnabled = requestedWebSearch;
+        accounting.webSearchEngine = requestedWebSearch ? webSearchEngine : null;
+        accounting.webSearchMaxResults = requestedWebSearch ? webSearchMaxResults : null;
+
         let effectiveModel = model as string;
         if (requestedWebSearch) {
             const onlineModel = Deno.env.get('OPENROUTER_ONLINE_MODEL');
             if (!onlineModel) {
-                return new Response(
-                    JSON.stringify({ error: 'Server not configured for web search (missing OPENROUTER_ONLINE_MODEL)' }),
-                    { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+                return await fail(
+                    'client_error',
+                    500,
+                    'Server not configured for web search (missing OPENROUTER_ONLINE_MODEL)',
                 );
             }
             effectiveModel = onlineModel;
+            accounting.modelId = effectiveModel;
         }
 
-        // ─── Pre-flight: fetch subscription + balance before OpenRouter ───
+        // ─── Pre-flight: fetch subscription + balance ───────────────────
         await supabaseAdmin.rpc('ensure_user_credits', {
             p_user_id: user.id,
             p_initial_credits: 100,
@@ -242,10 +326,7 @@ Deno.serve(async (req: Request) => {
             .single();
 
         if (creditsErr || !creditsRow) {
-            return new Response(
-                JSON.stringify({ error: 'Failed to load user credits' }),
-                { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('upstream_error', 500, 'Failed to load user credits');
         }
 
         const subscriptionStatus = (creditsRow.subscription_status || 'free') as string;
@@ -254,61 +335,37 @@ Deno.serve(async (req: Request) => {
             ? ((creditsRow as Record<string, unknown>).free_searches_used as number)
             : 0;
 
-        // Background description calls use cheap model and minimal credits — skip credit gate
         if (remainingCredits <= 0 && !__bg_description) {
-            return new Response(
-                JSON.stringify({ error: 'Insufficient credits' }),
-                { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
+            return await fail('insufficient_credits', 402, 'Insufficient credits');
         }
 
-        // ─── Tier 0 (free) constraints ───
         const effectivePlugins: unknown = sanitizedWebPlugins;
         if (subscriptionStatus === 'free') {
-            // Vision override: force all images to low detail.
             forceImageDetailLow(messages);
-
-            // Web search limit enforcement.
             if (requestedWebSearch && freeSearchesUsed >= FREE_TIER_MAX_SEARCHES) {
-                // Soft error asking for upgrade (do not call OpenRouter).
-                return new Response(
-                    JSON.stringify({
-                        error: 'Free tier web search limit reached. Upgrade to Regular or Pro for unlimited web search.',
-                        code: 'FREE_SEARCH_LIMIT_REACHED',
-                    }),
-                    { status: 402, headers: { ...cors, 'Content-Type': 'application/json' } }
+                return await fail(
+                    'insufficient_credits',
+                    402,
+                    'Free tier web search limit reached. Upgrade to Regular or Pro for unlimited web search.',
+                    'FREE_SEARCH_LIMIT_REACHED',
                 );
             }
         }
 
-        // If we want to silently strip the plugin instead of blocking:
-        // effectivePlugins = subscriptionStatus === 'free' ? stripWebPlugin(effectivePlugins) : effectivePlugins;
-
-        // ─── Server-side output policy ─────────────────────────────────────
-        // Single source of truth for per-request output cap (keep in sync with
-        // src/services/outputBudget.ts on the client). Anything longer than a
-        // single cap is produced via the client-side continuation loop.
-        const PER_CALL_OUTPUT: Record<string, number> = {
-            artifact: 2048,
-            chat: 6144,
-        };
-        const ABSOLUTE_CEILING = 8192;
-        const MIN_OUTPUT = 512;
-
-        const normalizedMode: 'artifact' | 'chat' =
-            mode === 'artifact' ? 'artifact' : 'chat';
-        const modeCap = PER_CALL_OUTPUT[normalizedMode];
-
+        // ─── Per-call output cap ────────────────────────────────────────
+        // Client is source of truth for the per-mode cap (it has the
+        // model's real spec). We only enforce the absolute safety ceiling
+        // here so a malicious client can't demand 500k tokens.
         const resolvedMaxTokens = __bg_description
             ? 200
             : Math.min(
-                Math.max(MIN_OUTPUT, Number(max_tokens) || modeCap),
-                modeCap,
-                ABSOLUTE_CEILING,
+                Math.max(MIN_OUTPUT, Number(max_tokens) || 4096),
+                ABSOLUTE_OUTPUT_CEILING,
             );
 
         const shouldStream = stream !== false;
 
+        // ─── Dispatch to OpenRouter ─────────────────────────────────────
         const openrouterResponse = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: {
@@ -323,6 +380,7 @@ Deno.serve(async (req: Request) => {
                 stream: shouldStream,
                 max_tokens: resolvedMaxTokens,
                 include_usage: true,
+                ...(requestedWebSearch && effectivePlugins ? { plugins: effectivePlugins } : {}),
                 ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
             }),
         });
@@ -330,13 +388,15 @@ Deno.serve(async (req: Request) => {
         if (!openrouterResponse.ok) {
             const errBody = await openrouterResponse.text();
             console.error(`[OpenRouter Error] ${openrouterResponse.status}:`, errBody);
-            return new Response(
-                JSON.stringify({ error: `OpenRouter API Error ${openrouterResponse.status}`, details: errBody }),
-                { status: openrouterResponse.status, headers: { ...cors, 'Content-Type': 'application/json' } }
+            return await fail(
+                'upstream_error',
+                openrouterResponse.status,
+                `OpenRouter API Error ${openrouterResponse.status}`,
+                errBody.slice(0, 500),
             );
         }
 
-        // ─── Non-stream mode ───
+        // ─── Non-stream mode ─────────────────────────────────────────────
         if (!shouldStream) {
             const json = await openrouterResponse.json();
             const usage = json?.usage || {};
@@ -344,7 +404,9 @@ Deno.serve(async (req: Request) => {
             const completionTokens = usage?.completion_tokens || 0;
             const reasoningTokens = getReasoningTokens(usage);
             const totalTokens = usage?.total_tokens ?? (promptTokens + completionTokens);
-            const totalTokensNum = typeof totalTokens === 'number' && Number.isFinite(totalTokens) ? totalTokens : (promptTokens + completionTokens);
+            const totalTokensNum = typeof totalTokens === 'number' && Number.isFinite(totalTokens)
+                ? totalTokens
+                : (promptTokens + completionTokens);
 
             const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
             const imageCost = imageCount * CREDITS_PER_IMAGE;
@@ -363,32 +425,53 @@ Deno.serve(async (req: Request) => {
                         .update({ free_searches_used: freeSearchesUsed + 1 })
                         .eq('user_id', user.id);
                 }
-
-                await supabaseAdmin.from('usage_logs').insert({
-                    user_id: user.id,
-                    prompt_tokens: promptTokens,
-                    completion_tokens: completionTokens,
-                    reasoning_tokens: reasoningTokens,
-                    total_credits_deducted: totalCost,
-                    model_id: effectiveModel,
-                    web_search_enabled: requestedWebSearch,
-                    web_search_engine: requestedWebSearch ? webSearchEngine : null,
-                    web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
-                    web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
-                    text_credits: textCost,
-                    image_credits: imageCost,
-                    web_search_credits: searchCost,
-                });
             } catch (dbErr) {
-                console.error('Failed to deduct credits or log usage:', dbErr);
+                console.error('Failed to deduct credits:', dbErr);
             }
+
+            accounting.finalized = true;
+            accounting.status = 'completed';
+            accounting.promptTokens = promptTokens;
+            accounting.completionTokens = completionTokens;
+            accounting.reasoningTokens = reasoningTokens;
+            accounting.textCredits = textCost;
+            accounting.imageCredits = imageCost;
+            accounting.webSearchCredits = searchCost;
+            accounting.totalCredits = totalCost;
+            accounting.webSearchResultsBilled = requestedWebSearch ? webSearchMaxResults : null;
+
+            await recordUsage({
+                userId: user.id,
+                conversationId: accounting.conversationId,
+                messageId: accounting.messageId,
+                callKind: accounting.callKind,
+                status: 'completed',
+                requestId: accounting.requestId,
+                parentRequestId: accounting.parentRequestId,
+                modelId: accounting.modelId,
+                durationMs: Date.now() - startedAt,
+                promptTokens,
+                completionTokens,
+                reasoningTokens,
+                imageTokens: imageCount,
+                textCredits: textCost,
+                imageCredits: imageCost,
+                webSearchCredits: searchCost,
+                totalCreditsDeducted: totalCost,
+                inputCostPer1M: accounting.inputCostPer1M,
+                outputCostPer1M: accounting.outputCostPer1M,
+                webSearchEnabled: requestedWebSearch,
+                webSearchEngine: accounting.webSearchEngine,
+                webSearchMaxResults: accounting.webSearchMaxResults,
+                webSearchResultsBilled: accounting.webSearchResultsBilled,
+            });
 
             return new Response(JSON.stringify(json), {
                 headers: { ...cors, 'Content-Type': 'application/json' },
             });
         }
 
-        // ─── Stream response back to client ───
+        // ─── Stream mode ────────────────────────────────────────────────
         const { readable, writable } = new TransformStream();
         const writer = writable.getWriter();
         const reader = openrouterResponse.body!.getReader();
@@ -398,17 +481,21 @@ Deno.serve(async (req: Request) => {
         let completionTokens = 0;
         let reasoningTokens = 0;
         let totalTokensNum = 0;
+        let finishReason: string | null = null;
+        let sawDone = false;
+        let streamError: string | null = null;
 
         (async () => {
             let lastChunkTime = Date.now();
-
             const keepaliveInterval = setInterval(async () => {
                 try {
                     if (Date.now() - lastChunkTime > 8000) {
                         const keepalive = new TextEncoder().encode(': keepalive\n\n');
                         await writer.write(keepalive);
                     }
-                } catch { clearInterval(keepaliveInterval); }
+                } catch {
+                    clearInterval(keepaliveInterval);
+                }
             }, 8000);
 
             try {
@@ -422,33 +509,52 @@ Deno.serve(async (req: Request) => {
                     const lines = text.split('\n');
                     for (const line of lines) {
                         const trimmed = line.trim();
-                        if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
-                            try {
-                                const parsed = JSON.parse(trimmed.slice(6));
-                                if (parsed.usage) {
-                                    totalTokensNum = parsed.usage.total_tokens || totalTokensNum;
-                                    promptTokens = parsed.usage.prompt_tokens || promptTokens;
-                                    completionTokens = parsed.usage.completion_tokens || completionTokens;
-                                    reasoningTokens = getReasoningTokens(parsed.usage) || reasoningTokens;
-                                }
-                            } catch { }
+                        if (!trimmed.startsWith('data: ')) continue;
+                        const dataStr = trimmed.slice(6);
+                        if (dataStr === '[DONE]') {
+                            sawDone = true;
+                            continue;
+                        }
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            if (parsed.usage) {
+                                totalTokensNum = parsed.usage.total_tokens || totalTokensNum;
+                                promptTokens = parsed.usage.prompt_tokens || promptTokens;
+                                completionTokens = parsed.usage.completion_tokens || completionTokens;
+                                reasoningTokens = getReasoningTokens(parsed.usage) || reasoningTokens;
+                            }
+                            const choice = parsed?.choices?.[0];
+                            if (choice?.finish_reason) {
+                                finishReason = String(choice.finish_reason);
+                            }
+                            if (parsed?.error) {
+                                streamError = typeof parsed.error === 'string'
+                                    ? parsed.error
+                                    : (parsed.error?.message ?? 'stream error');
+                            }
+                        } catch {
+                            // Non-JSON SSE line — skip.
                         }
                     }
                 }
-            } catch (e) {} finally {
+            } catch (e) {
+                streamError = e instanceof Error ? e.message : 'stream pump failed';
+            } finally {
                 clearInterval(keepaliveInterval);
-                await writer.close();
-                
-                // Fallback calculations
+                try { await writer.close(); } catch { /* already closed */ }
+
                 totalTokensNum = totalTokensNum > 0 ? totalTokensNum : (promptTokens + completionTokens);
-                
+
                 const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
                 const imageCost = imageCount * CREDITS_PER_IMAGE;
                 const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
                 const totalCost = textCost + imageCost + searchCost;
 
                 try {
-                    await supabaseAdmin.rpc('deduct_user_credits', { p_user_id: user.id, p_amount: totalCost });
+                    await supabaseAdmin.rpc('deduct_user_credits', {
+                        p_user_id: user.id,
+                        p_amount: totalCost,
+                    });
 
                     if (subscriptionStatus === 'free' && requestedWebSearch) {
                         await supabaseAdmin
@@ -456,25 +562,73 @@ Deno.serve(async (req: Request) => {
                             .update({ free_searches_used: freeSearchesUsed + 1 })
                             .eq('user_id', user.id);
                     }
-
-                    await supabaseAdmin.from('usage_logs').insert({
-                        user_id: user.id,
-                        prompt_tokens: promptTokens,
-                        completion_tokens: completionTokens,
-                        reasoning_tokens: reasoningTokens,
-                        total_credits_deducted: totalCost,
-                        model_id: effectiveModel,
-                        web_search_enabled: requestedWebSearch,
-                        web_search_engine: requestedWebSearch ? webSearchEngine : null,
-                        web_search_max_results: requestedWebSearch ? webSearchMaxResults : null,
-                        web_search_results_billed: requestedWebSearch ? webSearchMaxResults : null,
-                        text_credits: textCost,
-                        image_credits: imageCost,
-                        web_search_credits: searchCost,
-                    });
                 } catch (dbErr) {
-                    console.error('Failed to deduct or log stream usage:', dbErr);
+                    console.error('Failed to deduct stream credits:', dbErr);
                 }
+
+                // Derive status from stream end state.
+                let status: UsageStatus;
+                let statusReason: string | null = null;
+                if (streamError) {
+                    status = 'upstream_error';
+                    statusReason = streamError.slice(0, 500);
+                } else if (finishReason === 'length') {
+                    status = 'truncated';
+                    statusReason = 'finish_reason=length';
+                } else if (finishReason === 'stop' && sawDone) {
+                    status = 'completed';
+                } else if (finishReason) {
+                    status = 'completed';
+                    statusReason = `finish_reason=${finishReason}`;
+                } else if (!sawDone) {
+                    // Stream ended without [DONE] — treat as aborted (client cut
+                    // or upstream hung up).
+                    status = 'aborted';
+                    statusReason = 'eof_without_done';
+                } else {
+                    status = 'completed';
+                }
+
+                accounting.finalized = true;
+                accounting.status = status;
+                accounting.statusReason = statusReason;
+                accounting.errorMessage = streamError;
+                accounting.promptTokens = promptTokens;
+                accounting.completionTokens = completionTokens;
+                accounting.reasoningTokens = reasoningTokens;
+                accounting.textCredits = textCost;
+                accounting.imageCredits = imageCost;
+                accounting.webSearchCredits = searchCost;
+                accounting.totalCredits = totalCost;
+                accounting.webSearchResultsBilled = requestedWebSearch ? webSearchMaxResults : null;
+
+                await recordUsage({
+                    userId: user.id,
+                    conversationId: accounting.conversationId,
+                    messageId: accounting.messageId,
+                    callKind: accounting.callKind,
+                    status,
+                    statusReason,
+                    errorMessage: streamError,
+                    requestId: accounting.requestId,
+                    parentRequestId: accounting.parentRequestId,
+                    modelId: accounting.modelId,
+                    durationMs: Date.now() - startedAt,
+                    promptTokens,
+                    completionTokens,
+                    reasoningTokens,
+                    imageTokens: imageCount,
+                    textCredits: textCost,
+                    imageCredits: imageCost,
+                    webSearchCredits: searchCost,
+                    totalCreditsDeducted: totalCost,
+                    inputCostPer1M: accounting.inputCostPer1M,
+                    outputCostPer1M: accounting.outputCostPer1M,
+                    webSearchEnabled: requestedWebSearch,
+                    webSearchEngine: accounting.webSearchEngine,
+                    webSearchMaxResults: accounting.webSearchMaxResults,
+                    webSearchResultsBilled: accounting.webSearchResultsBilled,
+                });
             }
         })();
 
@@ -488,6 +642,26 @@ Deno.serve(async (req: Request) => {
         });
     } catch (err) {
         console.error('chat-proxy error:', err);
+        if (!accounting.finalized) {
+            accounting.finalized = true;
+            accounting.status = 'upstream_error';
+            accounting.errorMessage = err instanceof Error ? err.message : 'Internal server error';
+            await recordUsage({
+                userId: accounting.userId ?? 'unknown',
+                conversationId: accounting.conversationId,
+                messageId: accounting.messageId,
+                callKind: accounting.callKind,
+                status: accounting.status,
+                statusReason: accounting.statusReason,
+                errorMessage: accounting.errorMessage,
+                requestId: accounting.requestId,
+                parentRequestId: accounting.parentRequestId,
+                modelId: accounting.modelId,
+                durationMs: Date.now() - startedAt,
+                inputCostPer1M: accounting.inputCostPer1M,
+                outputCostPer1M: accounting.outputCostPer1M,
+            });
+        }
         return new Response(
             JSON.stringify({ error: err instanceof Error ? err.message : 'Internal server error' }),
             { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }

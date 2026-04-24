@@ -395,6 +395,113 @@
     font-size: 13px;
 }
 
+.usage-logs-state--error {
+    color: #ef4444;
+}
+
+/* ── Filter chips ───────────────────────────────────────────── */
+.usage-filter-chips {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px 4px 20px;
+    flex-wrap: wrap;
+}
+
+.usage-filter-chip {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--divider);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.usage-filter-chip:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+}
+
+.usage-filter-chip--active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+/* ── Status badges ──────────────────────────────────────────── */
+.usage-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.usage-status--ok {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.12);
+}
+
+.usage-status--warn {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
+}
+
+.usage-status--err {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* ── Call kind badge ─────────────────────────────────────────── */
+.usage-kind-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Expand button for continuation groups ───────────────────── */
+.usage-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 6px;
+    padding: 0;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    vertical-align: middle;
+    transition: background 0.15s ease;
+}
+
+.usage-expand-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.usage-row--child {
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.usage-row--child td:first-child {
+    padding-left: 48px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
 /* Responsive Grid & Media Queries */
 .usage-summary-grid {
     display: grid;
