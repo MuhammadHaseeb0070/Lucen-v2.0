@@ -5,6 +5,7 @@ import type { Conversation, Message } from '../types';
 import { hasActiveSessionSync, supabase } from '../lib/supabase';
 import * as db from '../services/database';
 import { MIDSTREAM_PERSIST_MS } from '../config/models';
+import { captureCall } from './debugStore';
 
 // ─── Mid-stream persistence throttler ────────────────────────────────────
 // During streaming we don't want to hit the DB on every token. This module-
@@ -276,21 +277,49 @@ export const useChatStore = create<ChatStore>()(
                                         const contentToEmbed = att.textContent || att.aiDescription;
                                         
                                         if (contentToEmbed && contentToEmbed.length > 200) {
+                                            const embedRequestId =
+                                                typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                                                    ? crypto.randomUUID()
+                                                    : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                                            const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
+                                            const embedBody = {
+                                                text: contentToEmbed,
+                                                file_name: att.name,
+                                                message_id: message.id,
+                                                conversation_id: convId,
+                                                request_id: embedRequestId,
+                                            };
+                                            const finalizeEmbed = captureCall({
+                                                id: embedRequestId,
+                                                kind: 'embed',
+                                                endpoint: embedEndpoint,
+                                                request: embedBody,
+                                            });
+
                                             // Fire and forget so we don't slow down the chat UI
-                                            fetch(`${supabaseUrl}/functions/v1/embed`, {
+                                            fetch(embedEndpoint, {
                                                 method: 'POST',
                                                 headers: {
                                                     'Content-Type': 'application/json',
                                                     'Authorization': `Bearer ${session.access_token}`,
                                                     'apikey': anonKey || '',
                                                 },
-                                                body: JSON.stringify({
-                                                    text: contentToEmbed,
-                                                    file_name: att.name,
-                                                    message_id: message.id,      // Real Message ID
-                                                    conversation_id: convId,     // Real Conversation ID
-                                                }),
-                                            }).catch(err => console.error('[RAG Embed] Failed:', err));
+                                                body: JSON.stringify(embedBody),
+                                            })
+                                                .then(async (r) => {
+                                                    const text = await r.text().catch(() => '');
+                                                    finalizeEmbed({
+                                                        status: r.status,
+                                                        response: text.slice(0, 4000),
+                                                        error: r.ok ? undefined : `HTTP ${r.status}`,
+                                                    });
+                                                })
+                                                .catch((err) => {
+                                                    console.error('[RAG Embed] Failed:', err);
+                                                    finalizeEmbed({
+                                                        error: err instanceof Error ? err.message : 'unknown',
+                                                    });
+                                                });
                                         }
                                     }
                                 }

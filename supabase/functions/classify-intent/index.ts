@@ -1,5 +1,6 @@
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus } from '../_shared/usage.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
@@ -86,9 +87,89 @@ Deno.serve(async (req: Request) => {
         }
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        const claims = token ? decodeJwtPayload(token) : null;
-        const userId = (claims?.sub as string | undefined) ?? null;
-        if (userId) intentAccounting.userId = userId;
+        if (!token || token.split('.').length !== 3) {
+            intentAccounting.finalized = true;
+            await recordUsage({
+                userId: 'unknown',
+                callKind: 'classify_intent',
+                status: 'auth_error',
+                errorMessage: 'Invalid token format',
+                modelId: INTENT_MODEL,
+                durationMs: Date.now() - startedAt,
+            });
+            return new Response(JSON.stringify({ error: 'Invalid token' }), {
+                status: 401,
+                headers: { ...cors, 'Content-Type': 'application/json' },
+            });
+        }
+
+        const claims = decodeJwtPayload(token);
+        const claimUserId = (claims?.sub as string | undefined) ?? null;
+        const expiry = (claims?.exp as number | undefined) ?? 0;
+        if (!claimUserId) {
+            intentAccounting.finalized = true;
+            await recordUsage({
+                userId: 'unknown',
+                callKind: 'classify_intent',
+                status: 'auth_error',
+                errorMessage: 'JWT missing sub',
+                modelId: INTENT_MODEL,
+                durationMs: Date.now() - startedAt,
+            });
+            return new Response(JSON.stringify({ error: 'Invalid token' }), {
+                status: 401,
+                headers: { ...cors, 'Content-Type': 'application/json' },
+            });
+        }
+        if (expiry && expiry < Math.floor(Date.now() / 1000)) {
+            intentAccounting.finalized = true;
+            await recordUsage({
+                userId: claimUserId,
+                callKind: 'classify_intent',
+                status: 'auth_error',
+                errorMessage: 'Token expired',
+                modelId: INTENT_MODEL,
+                durationMs: Date.now() - startedAt,
+            });
+            return new Response(JSON.stringify({ error: 'Token expired' }), {
+                status: 401,
+                headers: { ...cors, 'Content-Type': 'application/json' },
+            });
+        }
+
+        // Validate against Supabase admin to make sure the JWT really belongs
+        // to a live user (revoked tokens still decode).
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+        let userId: string | null = claimUserId;
+        if (supabaseUrl && serviceKey) {
+            try {
+                const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+                const { data, error } = await admin.auth.admin.getUserById(claimUserId);
+                if (error || !data?.user) {
+                    userId = null;
+                }
+            } catch (err) {
+                console.warn('[classify-intent] admin.getUserById failed:', err);
+                // Fall through with decoded userId — logging still uses it.
+            }
+        }
+        if (!userId) {
+            intentAccounting.finalized = true;
+            await recordUsage({
+                userId: claimUserId,
+                callKind: 'classify_intent',
+                status: 'auth_error',
+                errorMessage: 'User not found',
+                modelId: INTENT_MODEL,
+                durationMs: Date.now() - startedAt,
+            });
+            return new Response(JSON.stringify({ error: 'User not found' }), {
+                status: 401,
+                headers: { ...cors, 'Content-Type': 'application/json' },
+            });
+        }
+        intentAccounting.userId = userId;
 
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
         const tavilyApiKey = Deno.env.get('TAVILY_API_KEY');
@@ -311,11 +392,9 @@ Deno.serve(async (req: Request) => {
             modelId: 'tavily',
             provider: 'tavily',
             durationMs: Date.now() - tavilyStartedAt,
-            // Tavily pricing is per-result so we express it via the
-            // inputCostPer1M channel by pre-computing it into the fake rate.
-            // Simpler: pass 0 rates but web_search_credits + a manual usdCost
-            // override would be cleaner. Since recordUsage computes usd_cost
-            // from tokens alone, we log credits only here.
+            // Tavily is a per-search product, not token-based. We bypass the
+            // tokens × rates computation by passing the USD cost directly.
+            fixedUsdCost: tavilyUsdCost,
             webSearchEnabled: true,
             webSearchEngine: 'tavily',
             webSearchMaxResults: TAVILY_MAX_RESULTS,
@@ -324,13 +403,6 @@ Deno.serve(async (req: Request) => {
             // this row is purely observational.
             webSearchCredits: 0,
         });
-        // Expose real USD cost separately for humans debugging the log.
-        console.log(
-            '[usage] web_search tavily usd_cost≈',
-            tavilyUsdCost.toFixed(6),
-            'max_results=',
-            TAVILY_MAX_RESULTS,
-        );
 
         return new Response(JSON.stringify({
             state: 'search',

@@ -21,6 +21,13 @@ import {
     type ResponseMode,
 } from './outputBudget';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
+import { captureCall } from '../store/debugStore';
+
+function newRequestId(): string {
+    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
 
 // OpenRouter is only called server-side via chat-proxy; no direct client calls.
 
@@ -208,25 +215,39 @@ async function retrieveRelevantChunks(
             return null;
         }
 
-        const response = await fetch(`${supabaseUrl}/functions/v1/retrieve-chunks`, {
+        const retrieveRequestId = newRequestId();
+        const retrieveEndpoint = `${supabaseUrl}/functions/v1/retrieve-chunks`;
+        const retrieveBody = {
+            query: lastUser.content,
+            conversation_id: conversationId,
+            top_k: 5,
+            request_id: retrieveRequestId,
+        };
+        const finalizeRetrieve = captureCall({
+            id: retrieveRequestId,
+            kind: 'retrieve',
+            endpoint: retrieveEndpoint,
+            request: retrieveBody,
+        });
+
+        const response = await fetch(retrieveEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`,
                 'apikey': anonKey || '',
             },
-            body: JSON.stringify({
-                query: lastUser.content,
-                conversation_id: conversationId,
-                top_k: 5,
-            }),
+            body: JSON.stringify(retrieveBody),
         });
 
         if (!response.ok) {
+            const t = await response.text().catch(() => '');
+            finalizeRetrieve({ status: response.status, response: t.slice(0, 4000), error: `HTTP ${response.status}` });
             console.log('[RAG Debug] Supabase error:', response.status);
             return null;
         }
         const data = await response.json();
+        finalizeRetrieve({ status: response.status, response: data });
         const chunks = data.chunks as Array<{ file_name: string; content: string; similarity: number }>;
 
         if (!chunks || chunks.length === 0) {
@@ -310,18 +331,24 @@ function pruneMessagesForContext(
 ): PruneResult {
     if (messages.length === 0) return { pruned: [], droppedCount: 0 };
 
+    // Always-kept messages: pinned + any message that is currently streaming.
+    // A streaming assistant message must never be pruned mid-flight — doing so
+    // would break mid-stream persistence and orphan the user's visible bubble.
     const pinnedIds = new Set(messages.filter((m) => m.isPinned).map((m) => m.id));
-    let pinnedCost = 0;
+    const streamingIds = new Set(messages.filter((m) => m.isStreaming).map((m) => m.id));
+    const alwaysKeptIds = new Set<string>([...pinnedIds, ...streamingIds]);
+
+    let fixedCost = 0;
     for (const m of messages) {
-        if (pinnedIds.has(m.id)) pinnedCost += messageCostApprox(m);
+        if (alwaysKeptIds.has(m.id)) fixedCost += messageCostApprox(m);
     }
-    const nonPinnedBudget = Math.max(0, inputBudgetTokens - pinnedCost);
+    const nonPinnedBudget = Math.max(0, inputBudgetTokens - fixedCost);
 
     const keptNonPinned = new Set<string>();
     let running = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i];
-        if (pinnedIds.has(m.id)) continue;
+        if (alwaysKeptIds.has(m.id)) continue;
         const c = messageCostApprox(m);
         if (running + c > nonPinnedBudget) break;
         keptNonPinned.add(m.id);
@@ -334,7 +361,7 @@ function pruneMessagesForContext(
     if (keptNonPinned.size === 0) {
         for (let i = messages.length - 1, kept = 0; i >= 0 && kept < 2; i--) {
             const m = messages[i];
-            if (pinnedIds.has(m.id)) continue;
+            if (alwaysKeptIds.has(m.id)) continue;
             keptNonPinned.add(m.id);
             kept++;
         }
@@ -343,7 +370,7 @@ function pruneMessagesForContext(
     const pruned: Message[] = [];
     let droppedCount = 0;
     for (const m of messages) {
-        if (pinnedIds.has(m.id) || keptNonPinned.has(m.id)) {
+        if (alwaysKeptIds.has(m.id) || keptNonPinned.has(m.id)) {
             pruned.push(m);
         } else {
             droppedCount++;
@@ -564,27 +591,41 @@ async function ensureImageContext(messages: Message[]): Promise<void> {
             return { role: m.role, content };
         });
 
+    const describeRequestId = newRequestId();
+    const describeEndpoint = `${supabaseUrl}/functions/v1/describe-image`;
+    const describeBody = {
+        images: needsDescribe.map((a) => ({ dataUrl: a.dataUrl, name: a.name })),
+        recent_messages,
+        user_text: currentMsg.content,
+        request_id: describeRequestId,
+    };
+    const finalizeDescribe = captureCall({
+        id: describeRequestId,
+        kind: 'describe_image',
+        endpoint: describeEndpoint,
+        request: describeBody,
+    });
+
     try {
-        const response = await fetch(`${supabaseUrl}/functions/v1/describe-image`, {
+        const response = await fetch(describeEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`,
                 'apikey': anonKey || '',
             },
-            body: JSON.stringify({
-                images: needsDescribe.map((a) => ({ dataUrl: a.dataUrl, name: a.name })),
-                recent_messages,
-                user_text: currentMsg.content,
-            }),
+            body: JSON.stringify(describeBody),
         });
 
         if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            finalizeDescribe({ status: response.status, response: errText.slice(0, 4000), error: `HTTP ${response.status}` });
             console.warn('[ensureImageContext] describe-image failed:', response.status);
             return;
         }
 
         const data = await response.json();
+        finalizeDescribe({ status: response.status, response: data });
         const description: string = typeof data?.description === 'string' ? data.description.trim() : '';
         if (!description) return;
 
@@ -599,6 +640,7 @@ async function ensureImageContext(messages: Message[]): Promise<void> {
         }
     } catch (err) {
         console.warn('[ensureImageContext] exception:', err);
+        finalizeDescribe({ error: err instanceof Error ? err.message : 'unknown' });
     }
 }
 
@@ -760,7 +802,13 @@ function generateRequestId(): string {
 // under Supabase's 150s idle timeout.
 const STALL_MIN_CONTINUATION_CHARS = 8;          // below this, pass is stalled
 const REPETITION_WINDOW = 500;                   // chars compared for overlap
-const REPETITION_THRESHOLD = 0.7;                // >70% overlap = model is stuck
+// Higher threshold (85%) + minimum overlap length (120 chars) together avoid
+// false-positives on deliberately repetitive content like song choruses,
+// structured lists, or TOC entries. A natural "common hook phrase" at the
+// start of a pass (e.g. "The key points are:") would be ~20-40 chars and
+// won't cross the 120-char floor.
+const REPETITION_THRESHOLD = 0.85;
+const REPETITION_MIN_OVERLAP_CHARS = 120;
 const NETWORK_RETRY_DELAYS_MS = [500, 1000, 2000]; // exponential backoff per pass
 
 function getMaxChunksForMode(mode: ResponseMode): number {
@@ -797,17 +845,18 @@ function isRepeatingLastWindow(prior: string, pass: string): boolean {
     if (!prior || !pass) return false;
     const tail = prior.slice(-REPETITION_WINDOW);
     const head = pass.slice(0, REPETITION_WINDOW);
-    if (tail.length < 40 || head.length < 40) return false;
+    if (tail.length < REPETITION_MIN_OVERLAP_CHARS || head.length < REPETITION_MIN_OVERLAP_CHARS) return false;
 
     // Count longest common prefix-ish overlap by sliding window.
     let longestOverlap = 0;
     const maxLen = Math.min(tail.length, head.length);
-    for (let n = maxLen; n >= 40; n--) {
+    for (let n = maxLen; n >= REPETITION_MIN_OVERLAP_CHARS; n--) {
         if (tail.slice(tail.length - n) === head.slice(0, n)) {
             longestOverlap = n;
             break;
         }
     }
+    if (longestOverlap < REPETITION_MIN_OVERLAP_CHARS) return false;
     const ratio = longestOverlap / Math.min(tail.length, head.length);
     return ratio >= REPETITION_THRESHOLD;
 }
@@ -1061,7 +1110,8 @@ async function streamViaEdgeFunctionWithInnerCallbacks(
  * Stream via Supabase Edge Function (chat-proxy).
  */
 async function resolveWebSearchContext(
-    apiMessages: Array<Record<string, unknown>>
+    apiMessages: Array<Record<string, unknown>>,
+    parentRequestId?: string,
 ): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null; searchResults?: string | null }> {
     const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null };
 
@@ -1093,20 +1143,40 @@ async function resolveWebSearchContext(
     const { data: { session } } = await supabase!.auth.getSession();
     if (!session?.access_token) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
 
+    const intentRequestId = newRequestId();
+    const intentEndpoint = `${supabaseUrl}/functions/v1/classify-intent`;
+    const intentBody = {
+        messages: contextMessages,
+        request_id: intentRequestId,
+        parent_request_id: parentRequestId ?? null,
+    };
+    const finalizeIntent = captureCall({
+        id: intentRequestId,
+        parentId: parentRequestId,
+        kind: 'classify_intent',
+        endpoint: intentEndpoint,
+        request: intentBody,
+    });
+
     try {
-        const intentResponse = await fetch(`${supabaseUrl}/functions/v1/classify-intent`, {
+        const intentResponse = await fetch(intentEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${session.access_token}`,
                 'apikey': anonKey || '',
             },
-            body: JSON.stringify({ messages: contextMessages }),
+            body: JSON.stringify(intentBody),
         });
 
-        if (!intentResponse.ok) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+        if (!intentResponse.ok) {
+            const text = await intentResponse.text().catch(() => '');
+            finalizeIntent({ status: intentResponse.status, response: text, error: `HTTP ${intentResponse.status}` });
+            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+        }
 
         const result = await intentResponse.json();
+        finalizeIntent({ status: intentResponse.status, response: result });
         console.log('[classify-intent] result:', JSON.stringify(result));
 
         if (result.state === 'skip') return noSearch;
@@ -1116,10 +1186,19 @@ async function resolveWebSearchContext(
         }
 
         if (result.state === 'search') {
-            // Format search results into clean context block
+            // Format search results into clean context block. If Tavily gave us
+            // nothing usable (no answerBox, no knowledge graph, no organic
+            // results) we still inject a short note so the main model knows a
+            // search was attempted and can respond honestly instead of
+            // hallucinating.
             let searchResultsText: string | null = null;
 
-            if (result.results) {
+            const hasAnswer = !!result.results?.answerBox;
+            const hasKnowledge = !!result.results?.knowledgeGraph?.description;
+            const organicCount = Array.isArray(result.results?.organic) ? result.results.organic.length : 0;
+            const anyResults = hasAnswer || hasKnowledge || organicCount > 0;
+
+            if (result.results && anyResults) {
                 const parts: string[] = [`Web search results for: "${result.query}"\n`];
 
                 if (result.results.answerBox) {
@@ -1129,13 +1208,18 @@ async function resolveWebSearchContext(
                 if (result.results.knowledgeGraph?.description) {
                     parts.push(`KNOWLEDGE: ${result.results.knowledgeGraph.description}`);
                 }
-                if (result.results.organic?.length > 0) {
+                if (organicCount > 0) {
                     parts.push('SEARCH RESULTS:');
                     for (const r of result.results.organic) {
                         parts.push(`- ${r.title}\n  ${r.snippet}\n  ${r.link}`);
                     }
                 }
                 searchResultsText = parts.join('\n');
+            } else if (result.results) {
+                // Search ran but produced no usable results.
+                searchResultsText =
+                    `Web search was performed for "${result.query}" but returned no usable results. ` +
+                    `Answer the user honestly from your training knowledge, and mention that the live search came back empty if relevance of real-time data matters.`;
             }
 
             return {
@@ -1151,6 +1235,7 @@ async function resolveWebSearchContext(
 
     } catch (err) {
         console.error('[classify-intent] FAILED:', err);
+        finalizeIntent({ error: err instanceof Error ? err.message : 'unknown' });
         return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
     }
 }
@@ -1200,8 +1285,32 @@ async function streamViaEdgeFunction(
         output_cost_per_1m: accounting?.outputCostPer1M ?? model.outputCostPer1m,
     };
 
+    // ── Web search (Tavily via classify-intent) ─────────────────────────
+    // Flow:
+    //   1. classify-intent (cheap model) decides search vs skip vs clarify.
+    //   2. If search: classify-intent runs Tavily and returns results.
+    //   3. We inject those results as a system message and the MAIN model
+    //      (MiniMax / whatever is in VITE_MAIN_CHAT_MODEL) answers.
+    //
+    // We NEVER forward OpenRouter's `plugins` to chat-proxy; that would
+    // swap the model to OPENROUTER_ONLINE_MODEL and run Tavily a second
+    // time. The server-side fallback to the online model only kicks in
+    // when we signal `web_search_fallback_requested=true`, which happens
+    // only if classify-intent itself crashed while the user was asking
+    // for a search.
+    let webSearchFallbackRequested = false;
+    let webSearchUsed = false;
     if (webSearchEnabled) {
-        const { shouldSearch, urls, clarificationNeeded, searchResults } = await resolveWebSearchContext(apiMessages);
+        let ctx: Awaited<ReturnType<typeof resolveWebSearchContext>>;
+        try {
+            ctx = await resolveWebSearchContext(apiMessages, perCallRequestId);
+        } catch (err) {
+            console.warn('[webSearch] classify-intent threw, will request server-side fallback:', err);
+            ctx = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null };
+            webSearchFallbackRequested = true;
+        }
+
+        const { shouldSearch, urls, clarificationNeeded, searchResults } = ctx;
 
         if (clarificationNeeded) {
             callbacks.onClarificationNeeded?.(clarificationNeeded);
@@ -1210,8 +1319,9 @@ async function streamViaEdgeFunction(
 
         if (shouldSearch && searchResults) {
             callbacks.onWebSearchUsed?.();
-            (requestPayload as any).plugins = [{ id: 'web', engine: 'tavily', max_results: 5 }];
-            // Inject real search results directly — no Exa plugin needed
+            webSearchUsed = true;
+            // Inject real search results directly — NO `plugins` field.
+            // The main model reads the system message and answers natively.
             requestPayload.messages = [
                 ...(requestPayload.messages as Array<Record<string, unknown>>),
                 {
@@ -1219,7 +1329,6 @@ async function streamViaEdgeFunction(
                     content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: Use these results to answer the user directly. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
                 },
             ];
-            // URLs mentioned by user
             if (urls.length > 0) {
                 requestPayload.messages = [
                     ...(requestPayload.messages as Array<Record<string, unknown>>),
@@ -1229,9 +1338,25 @@ async function streamViaEdgeFunction(
                     },
                 ];
             }
+        } else if (webSearchEnabled && !clarificationNeeded && !webSearchUsed) {
+            // Classify-intent did not produce usable results (either skip or
+            // search-failure). If the user explicitly asked for search AND
+            // classify-intent crashed, fall back to the server-side online
+            // model as a last resort.
+            if (webSearchFallbackRequested) {
+                console.warn('[webSearch] falling back to server-side online model');
+            }
         }
-        // No Exa plugin at all — Serper handles search in classify-intent
     }
+
+    // Signal to chat-proxy what actually happened client-side:
+    //   web_search_enabled   — user turned the toggle on
+    //   web_search_used      — classify-intent ran Tavily successfully
+    //   web_search_fallback  — classify-intent failed; server may swap to
+    //                          OPENROUTER_ONLINE_MODEL as last-resort
+    (requestPayload as any).web_search_enabled = !!webSearchEnabled;
+    (requestPayload as any).web_search_used = webSearchUsed;
+    (requestPayload as any).web_search_fallback_requested = webSearchFallbackRequested;
 
     // Debug: confirm this code path executed before we hit the Edge function.
     // eslint-disable-next-line no-console
@@ -1278,7 +1403,17 @@ async function streamViaEdgeFunction(
         console.log('[OpenRouterDebug] requestPayloadFullRedacted', safePayload);
     }
 
-    const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
+    const chatEndpoint = `${supabaseUrl}/functions/v1/chat-proxy`;
+    const finalizeChat = captureCall({
+        id: perCallRequestId,
+        parentId: accounting?.parentRequestId,
+        kind: (accounting?.callKind === 'chat_continuation' ? 'chat' : 'chat') as 'chat',
+        endpoint: chatEndpoint,
+        modelId: model.id,
+        request: { ...requestPayload, stream: true },
+    });
+
+    const response = await fetch(chatEndpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1294,6 +1429,7 @@ async function streamViaEdgeFunction(
 
     if (!response.ok) {
         const errBody = await response.text();
+        finalizeChat({ status: response.status, response: errBody.slice(0, 8000), error: `HTTP ${response.status}` });
         // eslint-disable-next-line no-console
         console.log('[OpenRouterDebug] edgeError', {
             status: response.status,
@@ -1320,7 +1456,12 @@ async function streamViaEdgeFunction(
         return;
     }
 
-    await processStream(response, callbacks, signal);
+    await processStream(response, callbacks, signal, (summary) => {
+        finalizeChat({
+            status: response.status,
+            response: summary,
+        });
+    });
 }
 
 /**
@@ -1335,16 +1476,46 @@ async function streamViaEdgeFunction(
  *     so the continuation loop resumes from the last saved character.
  *  5. User abort (via `signal`) → `onDone(false)`, no resume.
  */
+interface StreamFinalizeSummary {
+    endedWith: 'done' | 'eof' | 'abort' | 'error' | 'watchdog';
+    truncated: boolean;
+    sawNaturalFinish: boolean;
+    watchdogFired: boolean;
+    chunkCount: number;
+    reasoningChunkCount: number;
+    contentChunkCount: number;
+    content: string;   // accumulated content (capped)
+    reasoning: string; // accumulated reasoning (capped)
+    error?: string;
+}
+
 async function processStream(
     response: Response,
     callbacks: StreamCallbacks,
     signal?: AbortSignal,
+    onFinalize?: (summary: StreamFinalizeSummary) => void,
 ): Promise<void> {
     const reader = response.body?.getReader();
     if (!reader) {
         callbacks.onError('No response stream available');
+        onFinalize?.({
+            endedWith: 'error',
+            truncated: false,
+            sawNaturalFinish: false,
+            watchdogFired: false,
+            chunkCount: 0,
+            reasoningChunkCount: 0,
+            contentChunkCount: 0,
+            content: '',
+            reasoning: '',
+            error: 'no response stream',
+        });
         return;
     }
+
+    const FINALIZE_CONTENT_CAP = 120_000;
+    let accContent = '';
+    let accReasoning = '';
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -1462,6 +1633,17 @@ async function processStream(
                 if (data === '[DONE]') {
                     callbacks.onDone(wasTruncated);
                     logStreamSummary('done');
+                    onFinalize?.({
+                        endedWith: 'done',
+                        truncated: wasTruncated,
+                        sawNaturalFinish,
+                        watchdogFired,
+                        chunkCount,
+                        reasoningChunkCount,
+                        contentChunkCount,
+                        content: accContent,
+                        reasoning: accReasoning,
+                    });
                     return;
                 }
 
@@ -1513,6 +1695,9 @@ async function processStream(
                         }
                         reasoningChunkCount++;
                         lastReasoningTail = reasoningChunk.slice(-220);
+                        if (accReasoning.length < FINALIZE_CONTENT_CAP) {
+                            accReasoning += reasoningChunk;
+                        }
                         if (OPENROUTER_RAW_DEBUG && reasoningSamples.length < 6 && reasoningChunk.trim()) {
                             reasoningSamples.push(reasoningChunk.slice(0, 400));
                         }
@@ -1523,6 +1708,9 @@ async function processStream(
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                         contentChunkCount++;
                         lastContentTail = String(delta.content).slice(-220);
+                        if (accContent.length < FINALIZE_CONTENT_CAP) {
+                            accContent += String(delta.content);
+                        }
                         if (OPENROUTER_RAW_DEBUG && contentSamples.length < 6 && String(delta.content).trim()) {
                             contentSamples.push(String(delta.content).slice(0, 400));
                         }
@@ -1547,26 +1735,67 @@ async function processStream(
         }
         callbacks.onDone(eofTruncated);
         logStreamSummary('eof');
+        onFinalize?.({
+            endedWith: 'eof',
+            truncated: eofTruncated,
+            sawNaturalFinish,
+            watchdogFired,
+            chunkCount,
+            reasoningChunkCount,
+            contentChunkCount,
+            content: accContent,
+            reasoning: accReasoning,
+        });
     } catch (err: unknown) {
-        // Distinguish the three abort flavours so the continuation loop can
-        // decide whether to resume or stop.
         const userAborted = signal?.aborted === true && !watchdogFired;
         if (watchdogFired) {
-            // Silent stream → treat as truncated so we resume from the last
-            // saved character in the assistant message.
-            // eslint-disable-next-line no-console
             console.log('[OpenRouterDebug] watchdog fired — treating as truncated', {
                 contentChunkCount,
                 idleMs: Date.now() - lastDataAt,
             });
             callbacks.onDone(true);
             logStreamSummary('watchdog');
+            onFinalize?.({
+                endedWith: 'watchdog',
+                truncated: true,
+                sawNaturalFinish,
+                watchdogFired: true,
+                chunkCount,
+                reasoningChunkCount,
+                contentChunkCount,
+                content: accContent,
+                reasoning: accReasoning,
+            });
         } else if (userAborted || (err instanceof Error && err.name === 'AbortError')) {
             callbacks.onDone(false);
             logStreamSummary('abort');
+            onFinalize?.({
+                endedWith: 'abort',
+                truncated: false,
+                sawNaturalFinish,
+                watchdogFired,
+                chunkCount,
+                reasoningChunkCount,
+                contentChunkCount,
+                content: accContent,
+                reasoning: accReasoning,
+            });
         } else {
-            callbacks.onError(err instanceof Error ? err.message : 'Unknown error');
+            const msg = err instanceof Error ? err.message : 'Unknown error';
+            callbacks.onError(msg);
             logStreamSummary('error');
+            onFinalize?.({
+                endedWith: 'error',
+                truncated: false,
+                sawNaturalFinish,
+                watchdogFired,
+                chunkCount,
+                reasoningChunkCount,
+                contentChunkCount,
+                content: accContent,
+                reasoning: accReasoning,
+                error: msg,
+            });
         }
     } finally {
         clearInterval(watchdogTimer);

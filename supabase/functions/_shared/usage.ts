@@ -72,6 +72,13 @@ export interface RecordUsageInput {
     inputCostPer1M?: number;
     outputCostPer1M?: number;
 
+    /**
+     * Explicit USD cost, overrides the tokens-× rates computation. Use this
+     * for non-token-based calls whose cost model is per-unit (e.g. Tavily
+     * charges $4 per 1,000 searches regardless of token count).
+     */
+    fixedUsdCost?: number;
+
     // Web search metadata (optional).
     webSearchEnabled?: boolean;
     webSearchEngine?: string | null;
@@ -89,6 +96,11 @@ export interface RecordUsageInput {
  * are routed through describe-image which logs its own row.
  */
 function computeUsdCost(input: RecordUsageInput): number {
+    // Explicit per-unit cost (e.g. Tavily's $0.004/search) always wins.
+    if (typeof input.fixedUsdCost === 'number' && input.fixedUsdCost >= 0) {
+        return input.fixedUsdCost;
+    }
+
     const inRate = input.inputCostPer1M ?? 0;
     const outRate = input.outputCostPer1M ?? 0;
     if (!inRate && !outRate) return 0;

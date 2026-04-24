@@ -3,7 +3,18 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { planLabel, LC, formatLC } from '../config/subscriptionConfig';
-import { Database, CheckCircle2, AlertTriangle, XCircle, RotateCw, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+    Database,
+    CheckCircle2,
+    AlertTriangle,
+    XCircle,
+    RotateCw,
+    ChevronDown,
+    ChevronRight,
+    Eye,
+    X as XIcon,
+} from 'lucide-react';
+import { useDebugStore, DEBUG_CAPTURE_ENABLED, type DebugEntry } from '../store/debugStore';
 import './UserUsageTab.css';
 
 type UsageStatus =
@@ -130,6 +141,8 @@ const UserUsageTab: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<FilterChip>('all');
     const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+    const [payloadModal, setPayloadModal] = useState<{ log: UsageLog; entry: DebugEntry | undefined } | null>(null);
+    const debugEntries = useDebugStore(s => s.entries);
 
     useEffect(() => {
         if (!user) return;
@@ -276,6 +289,21 @@ const UserUsageTab: React.FC = () => {
                     </td>
                     <td className="usage-table__credits usage-table__credits--total">
                         -{toNumber(log.total_credits_deducted).toFixed(4)}
+                    </td>
+                    <td>
+                        {DEBUG_CAPTURE_ENABLED && log.request_id ? (
+                            <button
+                                type="button"
+                                className="usage-payload-btn"
+                                title="View request / response payload (dev only)"
+                                onClick={() => {
+                                    const entry = debugEntries.find(e => e.id === log.request_id);
+                                    setPayloadModal({ log, entry });
+                                }}
+                            >
+                                <Eye size={14} />
+                            </button>
+                        ) : null}
                     </td>
                 </tr>
                 {hasChildren && isExpanded && children!.map(child => renderRow(child, true))}
@@ -427,12 +455,100 @@ const UserUsageTab: React.FC = () => {
                                     <th>Duration</th>
                                     <th>USD Cost</th>
                                     <th>Total {LC.unit}</th>
+                                    {DEBUG_CAPTURE_ENABLED && <th>Payload</th>}
                                 </tr>
                             </thead>
                             <tbody>
                                 {topRows.map(log => renderRow(log, false))}
                             </tbody>
                         </table>
+                    </div>
+                )}
+            </div>
+
+            {payloadModal && (
+                <PayloadModal
+                    log={payloadModal.log}
+                    entry={payloadModal.entry}
+                    onClose={() => setPayloadModal(null)}
+                />
+            )}
+        </div>
+    );
+};
+
+/**
+ * Dev-only modal that shows the raw request + response JSON for a usage row.
+ * Data comes from the browser-only debugStore (session-scoped). If the page
+ * was refreshed after the call happened, the entry is gone and we show a
+ * helpful "not captured" message.
+ */
+const PayloadModal: React.FC<{
+    log: UsageLog;
+    entry: DebugEntry | undefined;
+    onClose: () => void;
+}> = ({ log, entry, onClose }) => {
+    const fmt = (v: unknown): string => {
+        try {
+            return JSON.stringify(v, null, 2);
+        } catch {
+            return String(v);
+        }
+    };
+
+    return (
+        <div className="usage-payload-modal__backdrop" onClick={onClose}>
+            <div className="usage-payload-modal" onClick={e => e.stopPropagation()}>
+                <div className="usage-payload-modal__head">
+                    <div>
+                        <h3 className="usage-payload-modal__title">
+                            {log.call_kind ?? 'chat'} — {log.model_id?.split('/').pop() ?? '—'}
+                        </h3>
+                        <div className="usage-payload-modal__meta">
+                            <span>request_id: <code>{log.request_id ?? '—'}</code></span>
+                            {log.parent_request_id && (
+                                <span>parent: <code>{log.parent_request_id}</code></span>
+                            )}
+                            <span>{new Date(log.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                    <button type="button" className="usage-payload-modal__close" onClick={onClose} aria-label="Close">
+                        <XIcon size={18} />
+                    </button>
+                </div>
+
+                {!entry ? (
+                    <div className="usage-payload-modal__empty">
+                        <p>
+                            No payload captured for this request in the current session.
+                        </p>
+                        <p>
+                            Payloads are kept only in memory for the current browser session
+                            (last 200 calls). Reloading the page clears them. Make sure
+                            <code>VITE_DEV_PAYLOAD_CAPTURE=true</code> is set, then reproduce
+                            the call to inspect it here.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="usage-payload-modal__body">
+                        <div className="usage-payload-modal__section">
+                            <div className="usage-payload-modal__sectionHead">
+                                <strong>Endpoint</strong>
+                                <code>{entry.endpoint}</code>
+                            </div>
+                        </div>
+                        <div className="usage-payload-modal__section">
+                            <strong>Request payload</strong>
+                            <pre>{fmt(entry.request)}</pre>
+                        </div>
+                        <div className="usage-payload-modal__section">
+                            <strong>
+                                Response {entry.status ? `(HTTP ${entry.status})` : ''}
+                                {entry.durationMs ? ` — ${entry.durationMs}ms` : ''}
+                                {entry.error ? ` — error: ${entry.error}` : ''}
+                            </strong>
+                            <pre>{entry.response === undefined ? '[no response captured]' : fmt(entry.response)}</pre>
+                        </div>
                     </div>
                 )}
             </div>

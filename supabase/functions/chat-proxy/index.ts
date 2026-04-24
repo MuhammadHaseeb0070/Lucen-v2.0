@@ -248,6 +248,17 @@ Deno.serve(async (req: Request) => {
             stream,
             plugins,
             __bg_description,
+            // Web search signals from client (authoritative):
+            //   web_search_enabled            — user toggled web search on
+            //   web_search_used               — classify-intent ran Tavily
+            //                                   successfully; results already
+            //                                   injected into `messages`
+            //   web_search_fallback_requested — classify-intent CRASHED; we
+            //                                   may switch to OPENROUTER_
+            //                                   ONLINE_MODEL as a last resort
+            web_search_enabled,
+            web_search_used,
+            web_search_fallback_requested,
             // Accounting metadata (all optional, client-generated):
             request_id,
             parent_request_id,
@@ -284,33 +295,61 @@ Deno.serve(async (req: Request) => {
         const imageCount = countImagesInMessages(messages);
         accounting.imageTokens = imageCount;
 
-        const requestedWebSearch = hasWebPlugin(plugins);
-        const sanitizedWebPlugins = requestedWebSearch ? sanitizeWebPlugins(plugins) : undefined;
-        const webSearchMaxResults =
-            (sanitizedWebPlugins && sanitizedWebPlugins[0] && typeof sanitizedWebPlugins[0].max_results === 'number')
+        // ── Web search policy ──────────────────────────────────────────
+        // The client is now authoritative:
+        //   - web_search_used        → Tavily already ran in classify-intent;
+        //                              we DO NOT forward plugins to OpenRouter
+        //                              and we DO NOT swap the model.
+        //   - web_search_fallback    → classify-intent crashed; only in this
+        //                              case do we fall back to the server-side
+        //                              online model + forward Tavily plugin.
+        //
+        // Legacy clients that still send a `plugins` array are honored as a
+        // one-turn fallback so we don't break old tabs; new client no longer
+        // sends it.
+        const legacyPluginRequested = hasWebPlugin(plugins);
+        const webSearchRequested = !!(web_search_enabled || legacyPluginRequested);
+        const webSearchFallback = !!web_search_fallback_requested || (legacyPluginRequested && !web_search_used);
+        const webSearchUsed = !!web_search_used;
+
+        const sanitizedWebPlugins = webSearchFallback && legacyPluginRequested
+            ? sanitizeWebPlugins(plugins)
+            : undefined;
+        const webSearchMaxResults = webSearchRequested
+            ? (sanitizedWebPlugins && sanitizedWebPlugins[0] && typeof sanitizedWebPlugins[0].max_results === 'number'
                 ? (sanitizedWebPlugins[0].max_results as number)
-                : (requestedWebSearch ? WEBSEARCH_DEFAULT_MAX_RESULTS : 0);
-        const webSearchEngine =
-            (sanitizedWebPlugins && sanitizedWebPlugins[0] && typeof sanitizedWebPlugins[0].engine === 'string')
+                : WEBSEARCH_DEFAULT_MAX_RESULTS)
+            : 0;
+        const webSearchEngine = webSearchRequested
+            ? (sanitizedWebPlugins && sanitizedWebPlugins[0] && typeof sanitizedWebPlugins[0].engine === 'string'
                 ? (sanitizedWebPlugins[0].engine as string)
-                : (requestedWebSearch ? WEBSEARCH_DEFAULT_ENGINE : '');
+                : WEBSEARCH_DEFAULT_ENGINE)
+            : '';
 
-        accounting.webSearchEnabled = requestedWebSearch;
-        accounting.webSearchEngine = requestedWebSearch ? webSearchEngine : null;
-        accounting.webSearchMaxResults = requestedWebSearch ? webSearchMaxResults : null;
+        accounting.webSearchEnabled = webSearchRequested;
+        accounting.webSearchEngine = webSearchRequested ? webSearchEngine : null;
+        accounting.webSearchMaxResults = webSearchRequested ? webSearchMaxResults : null;
 
+        // Decide the effective upstream model.
+        // Default: use the client-requested model (MAIN chat model).
+        // Only swap when we're in explicit fallback mode AND the env var is
+        // configured — otherwise stay on the main model so the user gets a
+        // consistent voice regardless of whether web search kicked in.
         let effectiveModel = model as string;
-        if (requestedWebSearch) {
+        if (webSearchFallback) {
             const onlineModel = Deno.env.get('OPENROUTER_ONLINE_MODEL');
-            if (!onlineModel) {
-                return await fail(
-                    'client_error',
-                    500,
-                    'Server not configured for web search (missing OPENROUTER_ONLINE_MODEL)',
-                );
+            if (onlineModel) {
+                effectiveModel = onlineModel;
+                accounting.modelId = effectiveModel;
+                accounting.statusReason = 'web_search_fallback_online_model';
+                console.warn('[chat-proxy] web_search_fallback_requested — switching to', onlineModel);
+            } else {
+                // No fallback configured — log a warning but still serve the
+                // turn with the main model. Search results are already in
+                // the messages array (classify-intent succeeded partially)
+                // or missing entirely.
+                console.warn('[chat-proxy] fallback requested but OPENROUTER_ONLINE_MODEL is not set; using main model');
             }
-            effectiveModel = onlineModel;
-            accounting.modelId = effectiveModel;
         }
 
         // ─── Pre-flight: fetch subscription + balance ───────────────────
@@ -339,10 +378,14 @@ Deno.serve(async (req: Request) => {
             return await fail('insufficient_credits', 402, 'Insufficient credits');
         }
 
-        const effectivePlugins: unknown = sanitizedWebPlugins;
+        // Only forward plugins to OpenRouter in the explicit fallback path.
+        // In the normal path, classify-intent already ran Tavily and the
+        // results are injected as a system message — forwarding the plugin
+        // would trigger a SECOND Tavily call and inflate the user's bill.
+        const effectivePlugins: unknown = webSearchFallback ? sanitizedWebPlugins : undefined;
         if (subscriptionStatus === 'free') {
             forceImageDetailLow(messages);
-            if (requestedWebSearch && freeSearchesUsed >= FREE_TIER_MAX_SEARCHES) {
+            if (webSearchRequested && freeSearchesUsed >= FREE_TIER_MAX_SEARCHES) {
                 return await fail(
                     'insufficient_credits',
                     402,
@@ -380,7 +423,10 @@ Deno.serve(async (req: Request) => {
                 stream: shouldStream,
                 max_tokens: resolvedMaxTokens,
                 include_usage: true,
-                ...(requestedWebSearch && effectivePlugins ? { plugins: effectivePlugins } : {}),
+                // Only forward plugins when we're in the explicit fallback
+                // path. In the normal path the main model reads the injected
+                // search results as plain system context.
+                ...(webSearchFallback && effectivePlugins ? { plugins: effectivePlugins } : {}),
                 ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
             }),
         });
@@ -410,7 +456,7 @@ Deno.serve(async (req: Request) => {
 
             const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
             const imageCost = imageCount * CREDITS_PER_IMAGE;
-            const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
+            const searchCost = webSearchRequested ? computeWebSearchCredits(webSearchMaxResults) : 0;
             const totalCost = textCost + imageCost + searchCost;
 
             try {
@@ -419,7 +465,7 @@ Deno.serve(async (req: Request) => {
                     p_amount: totalCost,
                 });
 
-                if (subscriptionStatus === 'free' && requestedWebSearch) {
+                if (subscriptionStatus === 'free' && webSearchRequested) {
                     await supabaseAdmin
                         .from('user_credits')
                         .update({ free_searches_used: freeSearchesUsed + 1 })
@@ -438,7 +484,7 @@ Deno.serve(async (req: Request) => {
             accounting.imageCredits = imageCost;
             accounting.webSearchCredits = searchCost;
             accounting.totalCredits = totalCost;
-            accounting.webSearchResultsBilled = requestedWebSearch ? webSearchMaxResults : null;
+            accounting.webSearchResultsBilled = webSearchRequested ? webSearchMaxResults : null;
 
             await recordUsage({
                 userId: user.id,
@@ -460,7 +506,7 @@ Deno.serve(async (req: Request) => {
                 totalCreditsDeducted: totalCost,
                 inputCostPer1M: accounting.inputCostPer1M,
                 outputCostPer1M: accounting.outputCostPer1M,
-                webSearchEnabled: requestedWebSearch,
+                webSearchEnabled: webSearchRequested,
                 webSearchEngine: accounting.webSearchEngine,
                 webSearchMaxResults: accounting.webSearchMaxResults,
                 webSearchResultsBilled: accounting.webSearchResultsBilled,
@@ -547,7 +593,7 @@ Deno.serve(async (req: Request) => {
 
                 const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
                 const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const searchCost = requestedWebSearch ? computeWebSearchCredits(webSearchMaxResults) : 0;
+                const searchCost = webSearchRequested ? computeWebSearchCredits(webSearchMaxResults) : 0;
                 const totalCost = textCost + imageCost + searchCost;
 
                 try {
@@ -556,7 +602,7 @@ Deno.serve(async (req: Request) => {
                         p_amount: totalCost,
                     });
 
-                    if (subscriptionStatus === 'free' && requestedWebSearch) {
+                    if (subscriptionStatus === 'free' && webSearchRequested) {
                         await supabaseAdmin
                             .from('user_credits')
                             .update({ free_searches_used: freeSearchesUsed + 1 })
@@ -600,7 +646,7 @@ Deno.serve(async (req: Request) => {
                 accounting.imageCredits = imageCost;
                 accounting.webSearchCredits = searchCost;
                 accounting.totalCredits = totalCost;
-                accounting.webSearchResultsBilled = requestedWebSearch ? webSearchMaxResults : null;
+                accounting.webSearchResultsBilled = webSearchRequested ? webSearchMaxResults : null;
 
                 await recordUsage({
                     userId: user.id,
@@ -624,7 +670,7 @@ Deno.serve(async (req: Request) => {
                     totalCreditsDeducted: totalCost,
                     inputCostPer1M: accounting.inputCostPer1M,
                     outputCostPer1M: accounting.outputCostPer1M,
-                    webSearchEnabled: requestedWebSearch,
+                    webSearchEnabled: webSearchRequested,
                     webSearchEngine: accounting.webSearchEngine,
                     webSearchMaxResults: accounting.webSearchMaxResults,
                     webSearchResultsBilled: accounting.webSearchResultsBilled,
