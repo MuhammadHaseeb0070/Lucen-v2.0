@@ -188,33 +188,60 @@ const ChatArea: React.FC = () => {
         abortRef.current = controller;
         const contextMessages = getContextMessages(convId);
 
-        let chunkBuffer = '';
+        // Upstream SSE can arrive in bursty packets (network/proxy coalescing),
+        // which feels "chunky" even when streaming is technically enabled.
+        // We smooth bursts on the client by draining queued text once per frame.
+        // This keeps rendering continuous without spamming React updates.
+        let pendingText = '';
         let flushRaf: number | null = null;
+        let renderedContent =
+            useChatStore
+                .getState()
+                .conversations.find((c) => c.id === convId)
+                ?.messages.find((m) => m.id === assistantMsgId)
+                ?.content || '';
 
-        const flushBuffer = () => {
-            if (!chunkBuffer) return;
-            const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-            const msg = conv?.messages.find((m) => m.id === assistantMsgId);
+        const appendContent = (delta: string) => {
+            if (!delta) return;
+            renderedContent += delta;
             updateMessage(convId, assistantMsgId, {
-                content: (msg?.content || '') + chunkBuffer,
+                content: renderedContent,
                 isReasoningStreaming: false,
             });
-            chunkBuffer = '';
+        };
+
+        const drainFrame = () => {
+            flushRaf = null;
+            if (!pendingText) return;
+
+            // Adaptive per-frame slice:
+            // - small queue: tiny slices for smoothness
+            // - large queue: bigger slices to catch up quickly
+            const queueLen = pendingText.length;
+            const charsThisFrame = Math.max(12, Math.min(220, Math.ceil(queueLen * 0.2)));
+            const delta = pendingText.slice(0, charsThisFrame);
+            pendingText = pendingText.slice(charsThisFrame);
+            appendContent(delta);
+
+            if (pendingText) scheduleFlush();
         };
 
         const scheduleFlush = () => {
             if (flushRaf !== null) return;
             flushRaf = window.requestAnimationFrame(() => {
-                flushRaf = null;
-                flushBuffer();
+                drainFrame();
             });
+        };
+
+        const flushAllPending = () => {
+            if (!pendingText) return;
+            appendContent(pendingText);
+            pendingText = '';
         };
 
         await streamChat(contextMessages, {
             onChunk: (chunk) => {
-                chunkBuffer += chunk;
-                // Flush every animation frame so streaming appears continuous
-                // without forcing a React update per token.
+                pendingText += chunk;
                 scheduleFlush();
             },
             onReasoning: (reasoning) => {
@@ -230,7 +257,7 @@ const ChatArea: React.FC = () => {
                     cancelAnimationFrame(flushRaf);
                     flushRaf = null;
                 }
-                flushBuffer();
+                flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     isStreaming: false,
                     isReasoningStreaming: false,
@@ -244,13 +271,10 @@ const ChatArea: React.FC = () => {
                     cancelAnimationFrame(flushRaf);
                     flushRaf = null;
                 }
-                flushBuffer();
-                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
-                const existing = msg?.content || '';
+                flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation
-                        ? `${existing}\n\n⚠️ Error continuing: ${error}`
+                        ? `${renderedContent}\n\n⚠️ Error continuing: ${error}`
                         : `⚠️ Error: ${error}`,
                     isStreaming: false,
                     isReasoningStreaming: false,
