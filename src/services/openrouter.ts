@@ -1337,7 +1337,7 @@ async function streamViaEdgeFunction(
                 ...(requestPayload.messages as Array<Record<string, unknown>>),
                 {
                     role: 'system',
-                    content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: Use these results to answer the user directly. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
+                    content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: A web search has already been successfully executed for you. You must use these results to answer the user directly. Do NOT attempt to invoke any search tools, and do NOT output <tool_code> or <task> blocks. Provide your response entirely in natural language. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
                 },
             ];
             if (urls.length > 0) {
@@ -1618,37 +1618,10 @@ async function processStream(
         t = t.replace(/<runtime_context>[\s\S]*?<\/runtime_context>/gi, '');
         t = t.replace(/<image_perception>[\s\S]*?<\/image_perception>/gi, '');
 
-        // Web-tool leakage guard:
-        // Some fallback/tool-capable models occasionally emit an internal
-        // planning preamble plus a synthetic tool payload block. Neither should
-        // ever reach the user-facing transcript.
-        const hadToolBlock =
-            /<tool_code>[\s\S]*?<\/tool_code>/i.test(t) ||
-            /<task>[\s\S]*?<\/task>/i.test(t) ||
-            /&lt;tool_code&gt;[\s\S]*?&lt;\/tool_code&gt;/i.test(t) ||
-            /&lt;task&gt;[\s\S]*?&lt;\/task&gt;/i.test(t);
-        t = t.replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '');
-        t = t.replace(/<task>[\s\S]*?<\/task>/gi, '');
-        t = t.replace(/&lt;tool_code&gt;[\s\S]*?&lt;\/tool_code&gt;/gi, '');
-        t = t.replace(/&lt;task&gt;[\s\S]*?&lt;\/task&gt;/gi, '');
-        // Some models leak raw pseudo-tool JSON without wrappers.
-        t = t.replace(/\{\s*"id"\s*:\s*"web_search"[\s\S]*?\}\s*$/gi, '');
-        if (hadToolBlock) {
-            t = t.replace(
-                /^\s*(?:let me|i(?:'| a)?ll|i will|i'm going to)\s+(?:search|look up|check|find)[^\n]*\n?/i,
-                '',
-            );
-            t = t.replace(
-                /^\s*(?:searching|checking|looking up)[^\n]*\n?/i,
-                '',
-            );
-        }
-
         // Guard against split-tag leakage across chunk boundaries for known
         // internal tags. If a chunk ends with a dangling start fragment, drop
         // that fragment and let the next chunk carry semantic content.
-        t = t.replace(/<(?:tool_code|task|lucen_system|runtime_context|assistant_vision_notice|image_perception)[^>\n]{0,80}$/gi, '');
-        t = t.replace(/&lt;(?:tool_code|task)[^>\n]{0,80}$/gi, '');
+        t = t.replace(/<(?:lucen_system|runtime_context|assistant_vision_notice|image_perception)[^>\n]{0,80}$/gi, '');
 
         return t;
     }
