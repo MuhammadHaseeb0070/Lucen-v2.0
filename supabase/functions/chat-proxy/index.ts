@@ -296,20 +296,16 @@ Deno.serve(async (req: Request) => {
         accounting.imageTokens = imageCount;
 
         // ── Web search policy ──────────────────────────────────────────
-        // The client is now authoritative:
-        //   - web_search_used        → Tavily already ran in classify-intent;
-        //                              we DO NOT forward plugins to OpenRouter
-        //                              and we DO NOT swap the model.
-        //   - web_search_fallback    → classify-intent crashed; only in this
-        //                              case do we fall back to the server-side
-        //                              online model + forward Tavily plugin.
+        // Client is authoritative for modern flow:
+        //   - classify-intent + Tavily happen before chat-proxy
+        //   - main model answers using injected search context
+        //   - NO OpenRouter plugin forwarding unless explicit fallback flag
         //
-        // Legacy clients that still send a `plugins` array are honored as a
-        // one-turn fallback so we don't break old tabs; new client no longer
-        // sends it.
+        // We still inspect legacy `plugins` only for observability (warnings),
+        // never as a trigger for fallback/model swap.
         const legacyPluginRequested = hasWebPlugin(plugins);
-        const webSearchRequested = !!(web_search_enabled || legacyPluginRequested);
-        const webSearchFallback = !!web_search_fallback_requested || (legacyPluginRequested && !web_search_used);
+        const webSearchRequested = !!web_search_enabled;
+        const webSearchFallback = !!web_search_fallback_requested;
         const webSearchUsed = !!web_search_used;
 
         const sanitizedWebPlugins = webSearchFallback && legacyPluginRequested
@@ -329,6 +325,12 @@ Deno.serve(async (req: Request) => {
         accounting.webSearchEnabled = webSearchRequested;
         accounting.webSearchEngine = webSearchRequested ? webSearchEngine : null;
         accounting.webSearchMaxResults = webSearchRequested ? webSearchMaxResults : null;
+        if (legacyPluginRequested && !webSearchFallback) {
+            console.warn('[chat-proxy] ignoring legacy plugins field without explicit web_search_fallback_requested=true');
+            if (!accounting.statusReason) {
+                accounting.statusReason = 'ignored_legacy_plugins_without_fallback';
+            }
+        }
 
         // Decide the effective upstream model.
         // Default: use the client-requested model (MAIN chat model).

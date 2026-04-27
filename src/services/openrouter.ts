@@ -1607,6 +1607,23 @@ async function processStream(
         t = t.replace(/<runtime_context>[\s\S]*?<\/runtime_context>/gi, '');
         t = t.replace(/<image_perception>[\s\S]*?<\/image_perception>/gi, '');
 
+        // Web-tool leakage guard:
+        // Some fallback/tool-capable models occasionally emit an internal
+        // planning preamble plus a synthetic tool payload block. Neither should
+        // ever reach the user-facing transcript.
+        const hadToolBlock = /<tool_code>[\s\S]*?<\/tool_code>/i.test(t);
+        t = t.replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '');
+        if (hadToolBlock) {
+            t = t.replace(
+                /^\s*(?:let me|i(?:'| a)?ll|i will|i'm going to)\s+(?:search|look up|check|find)[^\n]*\n?/i,
+                '',
+            );
+            t = t.replace(
+                /^\s*(?:searching|checking|looking up)[^\n]*\n?/i,
+                '',
+            );
+        }
+
         return t;
     }
 
