@@ -203,7 +203,7 @@ const Sidebar: React.FC = () => {
                                 <>
                                     <div className="chat-item-info">
                                         <MessageSquare size={14} />
-                                        <span className="chat-item-title">{conv.title}</span>
+                                        <span className="chat-item-title" title={conv.title}>{conv.title}</span>
                                     </div>
                                     <span className="chat-item-date">{formatDate(conv.updatedAt)}</span>
                                     <div className="chat-item-actions">

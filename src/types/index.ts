@@ -30,6 +30,12 @@ export interface Message {
 export interface Conversation {
   id: string;
   title: string;
+  /**
+   * True while the title is still auto-generated (initial 'New Chat' or the
+   * AI-generated 1–3 word title). Flips to false the moment the user renames
+   * the chat, preventing the generator from ever overriding a human edit.
+   */
+  titleAuto?: boolean;
   messages: Message[];
   createdAt: number;
   updatedAt: number;

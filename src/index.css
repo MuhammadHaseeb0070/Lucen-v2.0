@@ -6013,12 +6013,9 @@ h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    background: var(--bg-muted);
-    color: var(--accent);
     flex-shrink: 0;
+    /* Let <FileIcon badge /> control its own 40px tile; no tiny 28px box. */
+    line-height: 0;
 }
 
 .attachment-chip-name {
@@ -6084,13 +6081,51 @@ h4 {
 .msg-attachment-file {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: var(--r-sm);
-    font-size: 0.72rem;
+    gap: 10px;
+    padding: 8px 12px 8px 8px;
+    background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+    border: 1px solid var(--divider-subtle);
+    border-radius: 12px;
+    font-size: 0.82rem;
     font-weight: 500;
+    text-align: left;
+    max-width: 320px;
+    min-width: 180px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.msg-attachment-file:hover {
+    border-color: var(--accent-border, color-mix(in srgb, var(--accent) 40%, transparent));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+}
+.msg-attachment-file-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    gap: 2px;
+}
+.msg-attachment-file-name {
+    display: block;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    line-height: 1.2;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.msg-attachment-file-sub {
+    display: block;
+    color: var(--text-tertiary);
+    font-size: 0.68rem;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ═══════════════════════════════════════════
@@ -7418,18 +7453,36 @@ h4 {
     padding: 8px 0;
 }
 
+/* Brief highlight when the messages container scrolls to a pinned/search hit. */
+@keyframes msgJumpFlash {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); background-color: color-mix(in srgb, var(--accent) 10%, transparent); }
+    60%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent);  background-color: color-mix(in srgb, var(--accent) 6%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; background-color: transparent; }
+}
+.msg-jump-flash {
+    animation: msgJumpFlash 1.2s ease-out;
+    border-radius: 12px;
+}
+
 .pin-marker {
     position: absolute;
     right: 2px;
+    /* Translate by -50% so the marker visually centers on the target
+       row instead of starting from it — feels much more accurate
+       across long/short chats. */
+    transform: translateY(-50%);
     width: 22px;
     height: 16px;
     cursor: pointer;
     pointer-events: auto;
-    transition: all var(--dur-fast) var(--ease);
+    transition: transform var(--dur-fast) var(--ease), width var(--dur-fast) var(--ease);
     display: flex;
     align-items: center;
     justify-content: flex-end;
 }
+
+/* Search markers should also be visually centered on their target row. */
+.search-marker { transform: translateY(-50%); }
 
 .pin-marker-dot {
     width: 11px;
@@ -7440,8 +7493,8 @@ h4 {
 }
 
 .pin-marker:hover {
-    width: 24px;
-    transform: translateX(-2px);
+    width: 26px;
+    transform: translate(-2px, -50%);
     z-index: 60;
 }
 
@@ -7582,9 +7635,18 @@ h4 {
 
 .search-marker:hover {
     width: 16px;
-    transform: translateX(-2px);
+    transform: translate(-2px, -50%);
     z-index: 60;
     background: #e11d48; /* Rose 600 */
+}
+
+/* Hide bulky tooltips on small screens (tap still works) and make the
+   click target fatter so it's easier to hit with a thumb. */
+@media (max-width: 640px) {
+    .pin-track-container { width: 22px; }
+    .pin-marker { height: 20px; }
+    .pin-marker-dot { height: 5px; width: 13px; }
+    .pin-marker-tooltip { display: none; }
 }
 
 mark.search-highlight {

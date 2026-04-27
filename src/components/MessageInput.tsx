@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Send, Square, RotateCcw, Paperclip, X, FileText, Image as ImageIcon, Quote, Globe } from 'lucide-react';
+import { Send, Square, RotateCcw, Paperclip, X, Image as ImageIcon, Quote, Globe } from 'lucide-react';
+import FileIcon, { getFileKindLabel } from './FileIcon';
 import { processFiles, formatFileSize } from '../services/fileProcessor';
 import type { FileAttachment } from '../types';
 
@@ -231,11 +232,15 @@ const MessageInput: React.FC<MessageInputProps> = ({
                                     <img src={att.dataUrl} alt={att.name} className="attachment-chip-thumb" />
                                 ) : (
                                     <span className="attachment-chip-icon">
-                                        {att.type === 'image' ? <ImageIcon size={14} /> : <FileText size={14} />}
+                                        {att.type === 'image'
+                                            ? <ImageIcon size={16} />
+                                            : <FileIcon name={att.name} type={att.type} size={20} badge />}
                                     </span>
                                 )}
                                 <span className="attachment-chip-name">{att.name}</span>
-                                <span className="attachment-chip-size">{formatFileSize(att.size)}</span>
+                                <span className="attachment-chip-size">
+                                    {getFileKindLabel(att.name, att.type)} · {formatFileSize(att.size)}
+                                </span>
                                 <button
                                     className="attachment-chip-remove"
                                     onClick={() => removeAttachment(att.id)}

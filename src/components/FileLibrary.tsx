@@ -1,9 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { 
     X, 
-    FileText, 
-    Image as ImageIcon, 
-    FileCode, 
     Search, 
     Loader2, 
     Inbox,
@@ -18,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
 import { useChatStore } from '../store/chatStore';
+import FileIcon, { classifyFile } from './FileIcon';
 
 interface FileRecord {
     id: string;
@@ -48,7 +46,11 @@ const FileLibrary: React.FC = () => {
     const [files, setFiles] = useState<FileRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState<'all' | 'image' | 'text' | 'code'>('all');
+    // NOTE: filterType values intentionally match FileIcon's FileCategory
+    // groupings, so "Documents" (text/pdf/word/markdown) is a single toggle
+    // in the UI even though we store several raw file_type values in the DB.
+    type FilterKey = 'all' | 'image' | 'document' | 'spreadsheet' | 'code' | 'other';
+    const [filterType, setFilterType] = useState<FilterKey>('all');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     useEffect(() => {
@@ -112,21 +114,43 @@ const FileLibrary: React.FC = () => {
         setViewerOpen(true);
     };
 
-    const getFileIcon = (type: string) => {
-        switch (type) {
-            case 'image': return <ImageIcon size={20} />;
-            case 'code': return <FileCode size={20} />;
-            default: return <FileText size={20} />;
+    // Map a file's raw (stored type, filename) pair into the high-level
+    // filter groups shown as chips in the toolbar.
+    const fileGroup = (f: FileRecord): FilterKey => {
+        const cat = classifyFile(f.file_name, f.file_type);
+        if (cat === 'image') return 'image';
+        if (cat === 'spreadsheet') return 'spreadsheet';
+        if (cat === 'code' || cat === 'json') return 'code';
+        if (cat === 'pdf' || cat === 'word' || cat === 'presentation' || cat === 'markdown' || cat === 'text') return 'document';
+        // DB often stores PDFs / Office files as file_type "text" with a wrong or missing extension.
+        if (cat === 'unknown') {
+            const t = (f.file_type || '').toLowerCase();
+            if (t === 'pdf' || t === 'text' || t === 'csv') {
+                if (t === 'csv') return 'spreadsheet';
+                return 'document';
+            }
         }
+        return 'other';
     };
 
     const filteredFiles = useMemo(() => {
         return files.filter(f => {
             const matchesSearch = f.file_name.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesType = filterType === 'all' || f.file_type === filterType;
+            const matchesType = filterType === 'all' || fileGroup(f) === filterType;
             return matchesSearch && matchesType;
         });
     }, [files, searchQuery, filterType]);
+
+    // Counts per group for the chip badges (so users know what's there
+    // even before clicking).
+    const counts = useMemo(() => {
+        const c: Record<FilterKey, number> = { all: files.length, image: 0, document: 0, spreadsheet: 0, code: 0, other: 0 };
+        for (const f of files) {
+            const g = fileGroup(f);
+            c[g] = (c[g] ?? 0) + 1;
+        }
+        return c;
+    }, [files]);
 
     if (!fileLibraryOpen) return null;
 
@@ -177,24 +201,23 @@ const FileLibrary: React.FC = () => {
                     </div>
                     
                     <div className="filter-group">
-                        <button 
-                            className={`filter-btn ${filterType === 'all' ? 'active' : ''}`}
-                            onClick={() => setFilterType('all')}
-                        >
-                            All
-                        </button>
-                        <button 
-                            className={`filter-btn ${filterType === 'image' ? 'active' : ''}`}
-                            onClick={() => setFilterType('image')}
-                        >
-                            Images
-                        </button>
-                        <button 
-                            className={`filter-btn ${filterType === 'text' ? 'active' : ''}`}
-                            onClick={() => setFilterType('text')}
-                        >
-                            Documents
-                        </button>
+                        {([
+                            { key: 'all',         label: 'All' },
+                            { key: 'image',       label: 'Images' },
+                            { key: 'document',    label: 'Documents' },
+                            { key: 'spreadsheet', label: 'Sheets' },
+                            { key: 'code',        label: 'Code' },
+                            { key: 'other',       label: 'Other' },
+                        ] as Array<{ key: FilterKey; label: string }>).map((b) => (
+                                <button
+                                    key={b.key}
+                                    className={`filter-btn ${filterType === b.key ? 'active' : ''}`}
+                                    onClick={() => setFilterType(b.key)}
+                                >
+                                    <span>{b.label}</span>
+                                    <span className="filter-count">{counts[b.key] ?? 0}</span>
+                                </button>
+                            ))}
                     </div>
                 </div>
 
@@ -224,7 +247,7 @@ const FileLibrary: React.FC = () => {
                                                 <img src={thumbUrl} alt="" className="thumb-img" />
                                             ) : (
                                                 <div className="type-placeholder">
-                                                    {getFileIcon(file.file_type)}
+                                                    <FileIcon name={file.file_name} type={file.file_type} size={32} badge />
                                                 </div>
                                             )}
                                             <div className="card-overlay">
@@ -414,10 +437,16 @@ const FileLibrary: React.FC = () => {
 
                 .filter-group {
                     display: flex;
-                    gap: 8px;
+                    gap: 6px;
+                    overflow-x: auto;
+                    scrollbar-width: none;
                 }
+                .filter-group::-webkit-scrollbar { display: none; }
                 .filter-btn {
-                    padding: 6px 16px;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 6px 14px;
                     font-size: 0.85rem;
                     font-weight: 600;
                     border-radius: 100px;
@@ -426,12 +455,27 @@ const FileLibrary: React.FC = () => {
                     border: 1px solid transparent;
                     background: transparent;
                     cursor: pointer;
+                    white-space: nowrap;
+                    flex-shrink: 0;
                 }
                 .filter-btn:hover { background: var(--bg-hover); }
                 .filter-btn.active {
                     background: var(--accent-soft);
                     color: var(--accent);
                     border-color: var(--accent-border);
+                }
+                .filter-count {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 20px;
+                    height: 18px;
+                    padding: 0 6px;
+                    border-radius: 999px;
+                    background: color-mix(in srgb, currentColor 14%, transparent);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    letter-spacing: 0.02em;
                 }
 
                 /* ─── VIEWPORT & CARDS ─── */
@@ -634,35 +678,142 @@ const FileLibrary: React.FC = () => {
                 @keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
                 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-                /* ─── MOBILE SCALING (Max-Width: 640px) ─── */
+                /* ─── TABLET & BELOW (Max-Width: 820px) ─── */
+                @media (max-width: 820px) {
+                    .file-lib-header { padding: 18px 22px; gap: 12px; }
+                    .file-lib-title-group p { display: none; } /* subtitle eats too much room */
+                    .file-lib-toolbar { padding: 14px 22px; }
+                    .file-lib-viewport { padding: 20px 22px; }
+                }
+
+                /* ─── MOBILE (Max-Width: 640px) ─── */
                 @media (max-width: 640px) {
                     .file-lib-overlay { padding: 0; }
-                    .file-lib-modal { height: 100vh; border-radius: 0; width: 100vw; }
-                    
-                    .file-lib-header { padding: 16px 20px; flex-wrap: wrap; gap: 12px; }
-                    .lib-icon-badge { width: 36px; height: 36px; border-radius: 10px; }
-                    .file-lib-title-group h2 { font-size: 1.1rem; }
-                    .file-lib-title-group p { font-size: 0.75rem; }
-                    
-                    .header-actions { margin-left: auto; gap: 12px; }
-                    .view-toggle { padding: 3px; }
-                    .view-toggle button { padding: 5px 8px; }
-                    
-                    .file-lib-toolbar { padding: 12px 20px; flex-direction: column; align-items: stretch; gap: 12px; }
-                    .search-box { max-width: 100%; height: 38px; }
-                    .filter-group { overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-                    .filter-group::-webkit-scrollbar { display: none; }
-                    .filter-btn { flex-shrink: 0; padding: 5px 14px; font-size: 0.8rem; }
-                    
-                    .file-lib-viewport { padding: 16px 20px; }
-                    
-                    .file-content-container.mode-grid { gap: 16px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-                    
-                    .mode-list .lib-file-card { height: auto; flex-direction: column; }
-                    .mode-list .file-preview-area { width: 100%; height: 120px; border-right: none; border-bottom: 1px solid var(--divider-subtle); }
-                    .mode-list .file-info-area { flex-direction: column; padding: 0; align-items: stretch; }
-                    .mode-list .info-top { padding: 12px 14px; }
-                    .mode-list .go-to-chat-btn { border-radius: 0; border: none; border-top: 1px solid var(--divider-subtle); justify-content: center; padding: 12px; }
+                    .file-lib-modal {
+                        height: 100vh;
+                        height: 100dvh;
+                        border-radius: 0;
+                        width: 100%;
+                        max-width: 100vw;
+                    }
+
+                    .file-lib-header {
+                        padding: 12px 14px;
+                        gap: 12px;
+                        flex-wrap: wrap;
+                        min-width: 0;
+                        align-items: center;
+                        border-bottom: 1px solid var(--divider);
+                    }
+                    .file-lib-title-group {
+                        gap: 10px;
+                        flex: 1 1 0;
+                        min-width: 0;
+                        max-width: calc(100% - 52px);
+                    }
+                    .lib-icon-badge {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 12px;
+                        flex-shrink: 0;
+                    }
+                    .file-lib-title-group > div {
+                        min-width: 0; /* enable ellipsis on h2 */
+                    }
+                    .file-lib-title-group h2 {
+                        font-size: 1.05rem;
+                        font-weight: 700;
+                        line-height: 1.2;
+                        display: -webkit-box;
+                        -webkit-line-clamp: 2;
+                        -webkit-box-orient: vertical;
+                        overflow: hidden;
+                    }
+                    .file-lib-title-group p { display: none; }
+
+                    .header-actions {
+                        gap: 6px;
+                        margin-left: auto;
+                        flex: 0 0 auto;
+                        align-items: center;
+                    }
+                    /* Hide view toggle on phones — one-column list by default is
+                       cleanest. Users can always switch on tablets/desktops. */
+                    .view-toggle { display: none; }
+                    .close-btn {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 12px;
+                        background: var(--bg-muted);
+                        flex-shrink: 0;
+                    }
+
+                    .file-lib-toolbar {
+                        padding: 10px 14px 12px;
+                        flex-direction: column;
+                        align-items: stretch;
+                        gap: 10px;
+                        position: sticky;
+                        top: 0;
+                        z-index: 5;
+                        background: var(--bg-surface);
+                        box-shadow: 0 1px 0 var(--divider-subtle);
+                    }
+                    .search-box { max-width: 100%; height: 44px; border-radius: 10px; }
+                    .filter-group {
+                        gap: 6px;
+                        padding: 0 0 4px 0;
+                        margin: 0;
+                        -webkit-overflow-scrolling: touch;
+                    }
+                    .filter-btn { padding: 6px 12px; font-size: 0.75rem; }
+                    .filter-count { min-width: 18px; height: 16px; font-size: 0.68rem; }
+
+                    .file-lib-viewport {
+                        padding: 12px 14px 28px;
+                        padding-bottom: calc(28px + env(safe-area-inset-bottom, 0));
+                    }
+
+                    /* Force a single responsive column on phones regardless of
+                       stored view mode — cleanest reading experience. */
+                    .file-content-container.mode-grid {
+                        gap: 12px;
+                        grid-template-columns: 1fr;
+                    }
+                    .mode-grid .file-preview-area { aspect-ratio: 16 / 9; }
+                    .mode-grid .info-top { padding: 12px 14px 14px 14px; }
+
+                    .mode-list .lib-file-card { height: auto; flex-direction: row; }
+                    .mode-list .file-preview-area {
+                        width: 72px;
+                        height: auto;
+                        border-right: 1px solid var(--divider-subtle);
+                        border-bottom: none;
+                        aspect-ratio: 1 / 1;
+                    }
+                    .mode-list .file-info-area {
+                        flex-direction: column;
+                        padding: 0;
+                        align-items: stretch;
+                        flex: 1;
+                        min-width: 0;
+                    }
+                    .mode-list .info-top { padding: 10px 14px 6px; }
+                    .mode-list .go-to-chat-btn {
+                        border-radius: 0;
+                        border: none;
+                        border-top: 1px solid var(--divider-subtle);
+                        justify-content: center;
+                        padding: 10px;
+                        background: transparent;
+                    }
+                }
+
+                /* ─── SMALL PHONE (Max-Width: 380px) ─── */
+                @media (max-width: 380px) {
+                    .file-lib-title-group h2 { font-size: 0.95rem; }
+                    .lib-icon-badge { width: 32px; height: 32px; }
+                    .lib-icon-badge svg { width: 16px; height: 16px; }
                 }
             `}</style>
         </div>

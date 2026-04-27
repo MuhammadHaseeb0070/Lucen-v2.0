@@ -59,6 +59,89 @@ function cancelMidstreamFlush(msgId: string): void {
     midstreamState.delete(msgId);
 }
 
+// ─── AI Chat Title Generator ─────────────────────────────────────────────
+// Fires once per conversation right after the FIRST assistant reply lands.
+// The edge function is fully instrumented (logged to usage_logs with
+// call_kind='title_gen') and persists the new title server-side, so the
+// only thing we do here is optimistically reflect it in local state.
+const titleGenInFlight = new Set<string>();
+
+async function maybeGenerateTitle(
+    convId: string,
+    userMessage: string,
+    assistantMessage: string,
+    applyTitle: (title: string) => void,
+): Promise<void> {
+    if (!hasActiveSessionSync() || !supabase) return;
+    if (!userMessage.trim()) return;
+    if (titleGenInFlight.has(convId)) return;
+    titleGenInFlight.add(convId);
+
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !anonKey) return;
+
+        const requestId = (crypto as Crypto & { randomUUID?: () => string }).randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`;
+
+        const requestBody = {
+            conversation_id: convId,
+            request_id: requestId,
+            user_message: userMessage,
+            assistant_message: assistantMessage,
+        };
+
+        const endpoint = `${supabaseUrl}/functions/v1/generate-title`;
+        const finalize = captureCall({
+            id: requestId,
+            kind: 'title_gen',
+            endpoint,
+            request: requestBody,
+        });
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': anonKey,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!res.ok) {
+                const errText = await res.text().catch(() => '');
+                finalize({ status: res.status, response: errText.slice(0, 1000), error: `HTTP ${res.status}` });
+                return;
+            }
+
+            const data = (await res.json().catch(() => null)) as { title?: string | null } | null;
+            finalize({ status: res.status, response: data });
+            const title = data?.title?.trim();
+            if (title && title !== 'New Chat') {
+                applyTitle(title);
+                // Server usually persists; this keeps the row in sync if the edge update raced or failed.
+                if (hasActiveSessionSync()) {
+                    db.renameConversation(convId, title, false).catch(() => {});
+                }
+            }
+        } catch (err) {
+            finalize({ error: err instanceof Error ? err.message : 'unknown' });
+            throw err;
+        }
+    } catch (err) {
+        console.warn('[chat-title] generation failed (non-fatal):', err);
+    } finally {
+        titleGenInFlight.delete(convId);
+    }
+}
+
 interface ChatStore {
     conversations: Conversation[];
     activeConversationId: string | null;
@@ -76,7 +159,8 @@ interface ChatStore {
     updateAttachmentDescription: (dataUrl: string, description: string, generatedAt?: number) => void;
 
     // Message actions
-    addMessage: (convId: string, message: Message) => void;
+    /** Resolves when the message row is persisted (or no-op if offline). Await the user turn before queuing the assistant to preserve DB `created_at` order. */
+    addMessage: (convId: string, message: Message) => Promise<void>;
     updateMessage: (convId: string, msgId: string, updates: Partial<Message>) => void;
     deleteMessagePair: (convId: string, userMsgId: string) => void;
     getActiveConversation: () => Conversation | undefined;
@@ -107,6 +191,7 @@ export const useChatStore = create<ChatStore>()(
                 const newConv: Conversation = {
                     id,
                     title: 'New Chat',
+                    titleAuto: true,
                     messages: [],
                     createdAt: now,
                     updatedAt: now,
@@ -154,13 +239,16 @@ export const useChatStore = create<ChatStore>()(
             renameConversation: (id, title) => {
                 set((state) => ({
                     conversations: state.conversations.map((c) =>
-                        c.id === id ? { ...c, title, updatedAt: Date.now() } : c
+                        c.id === id
+                            ? { ...c, title, titleAuto: false, updatedAt: Date.now() }
+                            : c
                     ),
                 }));
 
-                // Sync to Supabase
+                // Sync to Supabase — manual rename flips title_auto=false so
+                // the AI generator can never override this edit.
                 if (hasActiveSessionSync()) {
-                    db.renameConversation(id, title).catch(console.error);
+                    db.renameConversation(id, title, true).catch(console.error);
                 }
             },
 
@@ -229,110 +317,98 @@ export const useChatStore = create<ChatStore>()(
                         }
 
                         const messages = [...c.messages, message];
-                        // Auto-title from first user message
-                        const title =
-                            isFirst && message.role === 'user'
-                                ? message.content.slice(0, 40) + (message.content.length > 40 ? '...' : '')
-                                : c.title;
-
-                        return { ...c, messages, title, updatedAt: Date.now() };
+                        // Leave the title as 'New Chat' for now — the AI title
+                        // generator will produce a proper 1-3 word title after
+                        // the first assistant reply completes. If it fails we
+                        // still keep 'New Chat' (safer than a truncated prompt).
+                        return { ...c, messages, updatedAt: Date.now() };
                     }),
                 }));
 
-                // Save message to Supabase. For streaming assistant placeholders
-                // we still persist the row (empty content) so a page refresh
-                // during generation can resume from the DB — matches the
-                // behavior of ChatGPT / Claude / Gemini.
-                if (hasActiveSessionSync()) {
-                    const syncToDb = async () => {
-                        try {
-                            // If this is the absolute first message, ensure the conversation row exists first
-                            if (isFirstMessage) {
-                                // Find the title the store just generated
-                                const conv = get().conversations.find((c) => c.id === convId);
-                                const currentTitle = conv?.title || 'New Chat';
+                if (!hasActiveSessionSync()) {
+                    return Promise.resolve();
+                }
 
-                                // Await creation/UPSERT of the conversation with the correct auto-title
-                                await db.createConversation(convId, currentTitle);
-                            }
+                // IMPORTANT: this promise must be awaited for the *user* message before
+                // adding a streaming *assistant* row. If both run in parallel, the
+                // assistant upsert can commit first with an earlier `created_at`,
+                // so after refresh ORDER BY created_at shows the reply above the
+                // request (inverted bubble order).
+                return (async () => {
+                    try {
+                        if (isFirstMessage) {
+                            const conv = get().conversations.find((c) => c.id === convId);
+                            const currentTitle = conv?.title || 'New Chat';
+                            await db.createConversation(convId, currentTitle);
+                        }
 
-                            // Now safe to save the message. Streaming placeholders
-                            // go through upsertStreamingMessage so subsequent
-                            // throttled writes can find the row via ON CONFLICT.
-                            if (message.isStreaming) {
-                                await db.upsertStreamingMessage(convId, message);
-                                return;
-                            }
-                            await db.saveMessage(convId, message);
+                        if (message.isStreaming) {
+                            await db.upsertStreamingMessage(convId, message);
+                            return;
+                        }
+                        await db.saveMessage(convId, message);
 
-                            // --- NEW RAG LOGIC: Vectorize files ONLY after message is saved ---
-                            if (message.attachments && message.attachments.length > 0) {
-                                const { data: { session } } = await supabase!.auth.getSession();
-                                if (session?.access_token) {
-                                    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                                    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                        // RAG embeds: fire-and-forget (do not block the returned promise)
+                        if (message.attachments && message.attachments.length > 0) {
+                            const { data: { session } } = await supabase!.auth.getSession();
+                            if (session?.access_token) {
+                                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                                const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-                                    for (const att of message.attachments) {
-                                        // Embed either the raw text (PDF/Code) or the AI Image Description
-                                        const contentToEmbed = att.textContent || att.aiDescription;
-                                        
-                                        if (contentToEmbed && contentToEmbed.length > 200) {
-                                            const embedRequestId =
-                                                typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                                                    ? crypto.randomUUID()
-                                                    : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-                                            const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
-                                            const embedBody = {
-                                                text: contentToEmbed,
-                                                file_name: att.name,
-                                                message_id: message.id,
-                                                conversation_id: convId,
-                                                request_id: embedRequestId,
-                                            };
-                                            const finalizeEmbed = captureCall({
-                                                id: embedRequestId,
-                                                kind: 'embed',
-                                                endpoint: embedEndpoint,
-                                                request: embedBody,
-                                            });
+                                for (const att of message.attachments) {
+                                    const contentToEmbed = att.textContent || att.aiDescription;
 
-                                            // Fire and forget so we don't slow down the chat UI
-                                            fetch(embedEndpoint, {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'Authorization': `Bearer ${session.access_token}`,
-                                                    'apikey': anonKey || '',
-                                                },
-                                                body: JSON.stringify(embedBody),
-                                            })
-                                                .then(async (r) => {
-                                                    const text = await r.text().catch(() => '');
-                                                    finalizeEmbed({
-                                                        status: r.status,
-                                                        response: text.slice(0, 4000),
-                                                        error: r.ok ? undefined : `HTTP ${r.status}`,
-                                                    });
-                                                })
-                                                .catch((err) => {
-                                                    console.error('[RAG Embed] Failed:', err);
-                                                    finalizeEmbed({
-                                                        error: err instanceof Error ? err.message : 'unknown',
-                                                    });
+                                    if (contentToEmbed && contentToEmbed.length > 200) {
+                                        const embedRequestId =
+                                            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                                                ? crypto.randomUUID()
+                                                : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                                        const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
+                                        const embedBody = {
+                                            text: contentToEmbed,
+                                            file_name: att.name,
+                                            message_id: message.id,
+                                            conversation_id: convId,
+                                            request_id: embedRequestId,
+                                        };
+                                        const finalizeEmbed = captureCall({
+                                            id: embedRequestId,
+                                            kind: 'embed',
+                                            endpoint: embedEndpoint,
+                                            request: embedBody,
+                                        });
+
+                                        fetch(embedEndpoint, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'Authorization': `Bearer ${session.access_token}`,
+                                                'apikey': anonKey || '',
+                                            },
+                                            body: JSON.stringify(embedBody),
+                                        })
+                                            .then(async (r) => {
+                                                const text = await r.text().catch(() => '');
+                                                finalizeEmbed({
+                                                    status: r.status,
+                                                    response: text.slice(0, 4000),
+                                                    error: r.ok ? undefined : `HTTP ${r.status}`,
                                                 });
-                                        }
+                                            })
+                                            .catch((err) => {
+                                                console.error('[RAG Embed] Failed:', err);
+                                                finalizeEmbed({
+                                                    error: err instanceof Error ? err.message : 'unknown',
+                                                });
+                                            });
                                     }
                                 }
                             }
-                            // -----------------------------------------------------------------
-
-                        } catch (err) {
-                            console.error('[Sync] Error saving message to Supabase:', err);
                         }
-                    };
-
-                    syncToDb();
-                }
+                    } catch (err) {
+                        console.error('[Sync] Error saving message to Supabase:', err);
+                    }
+                })();
             },
 
             updateMessage: (convId, msgId, updates) => {
@@ -371,6 +447,34 @@ export const useChatStore = create<ChatStore>()(
                                 isStreaming: false,
                             }).catch(console.error);
                         });
+                    }
+
+                    // Fire the AI title generator exactly once — right after the
+                    // first assistant reply lands in a fresh conversation.
+                    // Conditions:
+                    //   - this finalized message is an assistant message
+                    //   - conversation has exactly one user + one assistant message
+                    //   - titleAuto is still true (user hasn't manually renamed)
+                    if (conv && msg?.role === 'assistant' && conv.titleAuto !== false) {
+                        const assistantCount = conv.messages.filter((m) => m.role === 'assistant').length;
+                        const userMsg = conv.messages.find((m) => m.role === 'user');
+                        const assistantContent = updates.content ?? msg.content;
+                        if (assistantCount === 1 && userMsg && assistantContent.trim().length > 0) {
+                            maybeGenerateTitle(
+                                convId,
+                                userMsg.content,
+                                assistantContent,
+                                (newTitle) => {
+                                    set((state) => ({
+                                        conversations: state.conversations.map((c) =>
+                                            c.id === convId
+                                                ? { ...c, title: newTitle, titleAuto: true, updatedAt: Date.now() }
+                                                : c,
+                                        ),
+                                    }));
+                                },
+                            );
+                        }
                     }
                     return;
                 }

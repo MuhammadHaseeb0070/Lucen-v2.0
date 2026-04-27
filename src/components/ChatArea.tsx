@@ -16,6 +16,7 @@ import { processFiles } from '../services/fileProcessor';
 import { highlightText } from '../lib/searchHighlight';
 import type { FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
+import FileIcon, { getFileKindLabel } from './FileIcon';
 
 const ChatArea: React.FC = () => {
     const {
@@ -78,6 +79,9 @@ const ChatArea: React.FC = () => {
     const [searchMarkers, setSearchMarkers] = useState<Array<{ id: string; topPx: number }>>([]);
     const dragCounterRef = useRef(0);
     const hasJumpedRef = useRef(false);
+    /** After jump-to-message / search hit, ignore scroll-based isAutoScroll for a few frames so we don't
+     *  fight the jump (at max scroll, "near bottom" stays true while smooth-scroll animates). */
+    const pinJumpLockUntilRef = useRef(0);
 
     const scrollToBottom = useCallback(() => {
         // Jump directly to bottom (no smooth) to keep up with streaming.
@@ -96,17 +100,20 @@ const ChatArea: React.FC = () => {
         scrollToBottom();
     }, [activeConv?.messages, isAutoScroll, scrollToBottom]);
 
-    // Scroll-to-bottom FAB visibility
+    // Scroll-to-bottom FAB visibility + "follow stream" flag.
+    // Do NOT set isAutoScroll from scroll while a programmatic jump to a pin/search hit is in progress,
+    // or the handler will re-enable autoscroll while still "near" the bottom and yank the view back.
     useEffect(() => {
         const container = messagesContainerRef.current;
         if (!container) return;
         const handleScroll = () => {
+            if (Date.now() < pinJumpLockUntilRef.current) return;
             const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
             const isNearBottom = distanceFromBottom < 200;
             setShowScrollBtn(!isNearBottom && container.scrollHeight > container.clientHeight + 100);
             setIsAutoScroll(isNearBottom);
         };
-        container.addEventListener('scroll', handleScroll);
+        container.addEventListener('scroll', handleScroll, { passive: true });
         return () => container.removeEventListener('scroll', handleScroll);
     }, []);
 
@@ -293,14 +300,14 @@ const ChatArea: React.FC = () => {
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 
-        addMessage(convId, {
+        await addMessage(convId, {
             // eslint-disable-next-line react-hooks/purity
             id: uuidv4(), role: 'user', content, timestamp: Date.now(),
             attachments: attachments || undefined,
         });
 
         const assistantMsgId = uuidv4();
-        addMessage(convId, {
+        await addMessage(convId, {
             id: assistantMsgId, role: 'assistant', content: '', reasoning: '',
             // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
@@ -477,13 +484,40 @@ const ChatArea: React.FC = () => {
         togglePinMessage(activeConversationId, msgId);
     };
 
-    const scrollToMessage = (msgId: string) => {
-        const el = messagesContainerRef.current?.querySelector(`[data-msg-id="${msgId}"]`);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setIsAutoScroll(false);
-        }
-    };
+    const scrollToMessage = useCallback((msgId: string) => {
+        pinJumpLockUntilRef.current = Date.now() + 900;
+        setIsAutoScroll(false);
+
+        const run = () => {
+            const container = messagesContainerRef.current;
+            const el = container?.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+            if (!container || !el) return;
+
+            const cRect = container.getBoundingClientRect();
+            const eRect = el.getBoundingClientRect();
+            const elTopInScroll = container.scrollTop + (eRect.top - cRect.top);
+            const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+            const desiredTop = eRect.height > container.clientHeight * 0.9
+                ? elTopInScroll - 20
+                : elTopInScroll - container.clientHeight / 2 + eRect.height / 2;
+            const targetTop = Math.max(0, Math.min(maxScroll, desiredTop));
+
+            // Instant scroll is reliable at max-scroll; smooth + "near bottom" was fighting autoscroll.
+            if (Math.abs(container.scrollTop - targetTop) < 1) {
+                container.scrollTop = targetTop > 0 ? targetTop - 1 : 0;
+            }
+            requestAnimationFrame(() => {
+                container.scrollTop = targetTop;
+                el.classList.add('msg-jump-flash');
+                window.setTimeout(() => el.classList.remove('msg-jump-flash'), 1400);
+            });
+        };
+
+        // Double rAF: layout settled after the pin click / any batched re-render.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(run);
+        });
+    }, []);
 
     const getHighlightedMatchElements = useCallback(() => {
         const q = searchQuery.trim();
@@ -693,6 +727,22 @@ const ChatArea: React.FC = () => {
             }
             if (nextMsg) i++;
         }
+
+        // De-overlap markers that land too close together so every pin is
+        // individually clickable on short chats / long chats alike.
+        markers.sort((a, b) => a.topPx - b.topPx);
+        const MIN_GAP = 14;
+        for (let i = 1; i < markers.length; i++) {
+            if (markers[i].topPx - markers[i - 1].topPx < MIN_GAP) {
+                markers[i].topPx = markers[i - 1].topPx + MIN_GAP;
+            }
+        }
+        // Clamp to track bounds.
+        const maxTop = trackPadding + trackUsableHeight;
+        for (const m of markers) {
+            if (m.topPx > maxTop) m.topPx = maxTop;
+        }
+
         setPinMarkers(markers);
     }, [activeConv, matchingIds, searchOpen]);
 
@@ -705,15 +755,27 @@ const ChatArea: React.FC = () => {
         const container = messagesContainerRef.current;
         if (!container) return;
 
+        let scrollRaf = 0;
+        const schedulePins = () => {
+            if (scrollRaf) return;
+            scrollRaf = requestAnimationFrame(() => {
+                scrollRaf = 0;
+                recalculateTrackMarkers();
+            });
+        };
+
         const refresh = () => recalculateTrackMarkers();
         const resizeObserver = new ResizeObserver(refresh);
         resizeObserver.observe(container);
         const list = container.querySelector('.messages-list');
         if (list) resizeObserver.observe(list);
 
+        container.addEventListener('scroll', schedulePins, { passive: true });
         window.addEventListener('resize', refresh);
         return () => {
+            if (scrollRaf) cancelAnimationFrame(scrollRaf);
             resizeObserver.disconnect();
+            container.removeEventListener('scroll', schedulePins);
             window.removeEventListener('resize', refresh);
         };
     }, [recalculateTrackMarkers]);
@@ -793,8 +855,9 @@ const ChatArea: React.FC = () => {
                                                     }}
                                                 />
                                             ) : (
-                                                <span 
-                                                    key={att.id} 
+                                                <button
+                                                    key={att.id}
+                                                    type="button"
                                                     className="msg-attachment-file clickable"
                                                     onClick={() => {
                                                         setViewerFile({
@@ -806,9 +869,14 @@ const ChatArea: React.FC = () => {
                                                         });
                                                         setViewerOpen(true);
                                                     }}
+                                                    title={att.name}
                                                 >
-                                                    📄 {att.name}
-                                                </span>
+                                                    <FileIcon name={att.name} type={att.type} size={24} badge />
+                                                    <span className="msg-attachment-file-meta">
+                                                        <span className="msg-attachment-file-name">{att.name}</span>
+                                                        <span className="msg-attachment-file-sub">{getFileKindLabel(att.name, att.type)}</span>
+                                                    </span>
+                                                </button>
                                             )
                                         ))}
                                     </div>

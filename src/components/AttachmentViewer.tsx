@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, ZoomIn, ZoomOut, Download, Copy, Check, FileText } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Download, Copy, Check } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
+import FileIcon from './FileIcon';
 
 const AttachmentViewer: React.FC = () => {
     const { viewerOpen, viewerFile, setViewerOpen, setViewerFile } = useUIStore();
@@ -29,7 +30,7 @@ const AttachmentViewer: React.FC = () => {
         <div className="attachment-viewer-overlay" onClick={handleClose}>
             <div className="attachment-viewer-header" onClick={e => e.stopPropagation()}>
                 <div className="viewer-title">
-                    <FileText size={18} style={{ flexShrink: 0 }} />
+                    <FileIcon name={viewerFile.name} type={viewerFile.type} size={18} />
                     <span className="truncate">{viewerFile.name}</span>
                 </div>
                 <div className="viewer-actions">

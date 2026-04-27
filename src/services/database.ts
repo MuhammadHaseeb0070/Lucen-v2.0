@@ -16,6 +16,7 @@ export interface DbConversation {
     id: string;
     user_id: string;
     title: string;
+    title_auto?: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -43,7 +44,7 @@ export async function createConversation(id: string, title: string): Promise<boo
 
     const { error } = await supabase
         .from('conversations')
-        .upsert({ id, title });
+        .upsert({ id, title, title_auto: true });
 
     if (error) {
         console.error('[DB] createConversation error:', error);
@@ -68,13 +69,22 @@ export async function deleteConversation(id: string): Promise<boolean> {
     return true;
 }
 
-/** Rename a conversation */
-export async function renameConversation(id: string, title: string): Promise<boolean> {
+/**
+ * Rename a conversation. When `manual` is true (default) we also flip
+ * `title_auto` to false so the AI title generator stops overriding a
+ * human-picked title. Pass `manual: false` from the title generator itself
+ * so it can update the title without locking out future improvements
+ * (the server-side generate-title function also guards on title_auto=true).
+ */
+export async function renameConversation(id: string, title: string, manual: boolean = true): Promise<boolean> {
     if (!hasActiveSessionSync() || !supabase) return false;
+
+    const update: Record<string, unknown> = { title };
+    if (manual) update.title_auto = false;
 
     const { error } = await supabase
         .from('conversations')
-        .update({ title })
+        .update(update)
         .eq('id', id);
 
     if (error) {
@@ -116,6 +126,23 @@ export async function fetchMessages(conversationId: string): Promise<Message[] |
     }
 
     const messages = (data as DbMessage[]).map(dbToMessage);
+
+    // Stable order: `created_at` + tie-break (user before assistant) — fixes
+    // same-ms inserts. Also corrects the historical race where the assistant
+    // streaming row was committed before the user row (inverted first pair).
+    messages.sort((a, b) => {
+        if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+        const rank = (r: string) => (r === 'user' ? 0 : r === 'assistant' ? 1 : 2);
+        return rank(a.role) - rank(b.role);
+    });
+    if (
+        messages.length >= 2
+        && messages[0].role === 'assistant'
+        && messages[1].role === 'user'
+        && messages[1].timestamp - messages[0].timestamp < 5 * 60_000
+    ) {
+        [messages[0], messages[1]] = [messages[1], messages[0]];
+    }
 
     // ─── PART 3: Restore file context from file_attachments table ───
     const { data: attachmentData, error: attachmentError } = await supabase
@@ -420,6 +447,9 @@ function dbToConversation(row: DbConversation): Conversation {
     return {
         id: row.id,
         title: row.title,
+        // Default to true if the column is missing (pre-migration rows) so the
+        // title generator can still improve the title on the next exchange.
+        titleAuto: row.title_auto !== false,
         messages: [], // Messages loaded separately on demand
         createdAt: new Date(row.created_at).getTime(),
         updatedAt: new Date(row.updated_at).getTime(),
