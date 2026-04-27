@@ -285,13 +285,14 @@ const ChatArea: React.FC = () => {
             onWebSearchUsed: () =>
                 updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
             onClarificationNeeded: (question) => {
-                flushBuffer();
-                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
-                const existing = msg?.content || '';
+                if (flushRaf !== null) {
+                    cancelAnimationFrame(flushRaf);
+                    flushRaf = null;
+                }
+                flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation
-                        ? `${existing}\n\n_Search paused._\n\n**${question}**`
+                        ? `${renderedContent}\n\n_Search paused._\n\n**${question}**`
                         : `_Search paused. I need a bit more info to get you the right results:_\n\n**${question}**`,
                     isStreaming: false,
                     isReasoningStreaming: false,
