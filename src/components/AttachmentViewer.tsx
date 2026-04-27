@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, ZoomIn, ZoomOut, Download, Copy, Check } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Download, Copy, Check, FileText } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import FileIcon from './FileIcon';
 
