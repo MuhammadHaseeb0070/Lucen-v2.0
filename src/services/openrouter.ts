@@ -1192,6 +1192,11 @@ async function resolveWebSearchContext(
             // search was attempted and can respond honestly instead of
             // hallucinating.
             let searchResultsText: string | null = null;
+            const clean = (v: unknown, max: number): string => {
+                const s = String(v ?? '').replace(/\s+/g, ' ').trim();
+                if (!s) return '';
+                return s.length > max ? `${s.slice(0, max)}...` : s;
+            };
 
             const hasAnswer = !!result.results?.answerBox;
             const hasKnowledge = !!result.results?.knowledgeGraph?.description;
@@ -1203,15 +1208,21 @@ async function resolveWebSearchContext(
 
                 if (result.results.answerBox) {
                     const ab = result.results.answerBox;
-                    parts.push(`DIRECT ANSWER: ${ab.answer || ab.snippet || ''}`);
+                    parts.push(`DIRECT ANSWER: ${clean(ab.answer || ab.snippet || '', 420)}`);
                 }
                 if (result.results.knowledgeGraph?.description) {
-                    parts.push(`KNOWLEDGE: ${result.results.knowledgeGraph.description}`);
+                    parts.push(`KNOWLEDGE: ${clean(result.results.knowledgeGraph.description, 420)}`);
                 }
                 if (organicCount > 0) {
                     parts.push('SEARCH RESULTS:');
-                    for (const r of result.results.organic) {
-                        parts.push(`- ${r.title}\n  ${r.snippet}\n  ${r.link}`);
+                    // Keep only top few concise hits to avoid flooding the main
+                    // model with noisy listicle HTML/alt-text that can derail
+                    // style and cause meta/planning leakage.
+                    for (const r of result.results.organic.slice(0, 3)) {
+                        const title = clean(r.title, 160);
+                        const snippet = clean(r.snippet, 360);
+                        const link = clean(r.link, 220);
+                        parts.push(`- ${title}\n  ${snippet}\n  ${link}`);
                     }
                 }
                 searchResultsText = parts.join('\n');
@@ -1624,6 +1635,11 @@ async function processStream(
             );
         }
 
+        // Guard against split-tag leakage across chunk boundaries for known
+        // internal tags. If a chunk ends with a dangling start fragment, drop
+        // that fragment and let the next chunk carry semantic content.
+        t = t.replace(/<(?:tool_code|task|lucen_system|runtime_context|assistant_vision_notice|image_perception)[^>\n]{0,80}$/gi, '');
+
         return t;
     }
 
@@ -1742,7 +1758,8 @@ async function processStream(
         // signal, the socket was almost certainly cut mid-response. Surface
         // this as "truncated" so the continuation loop resumes instead of
         // silently stopping with a half-finished artifact and a stuck UI.
-        const eofTruncated = wasTruncated || (!sawNaturalFinish && contentChunkCount > 0);
+        const sawAnyUsefulOutput = contentChunkCount > 0 || reasoningChunkCount > 0;
+        const eofTruncated = wasTruncated || (!sawNaturalFinish && sawAnyUsefulOutput);
         if (!wasTruncated && eofTruncated) {
             // eslint-disable-next-line no-console
             console.log('[OpenRouterDebug] eofWithoutFinishReason — treating as truncated', {

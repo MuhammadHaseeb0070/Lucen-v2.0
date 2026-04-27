@@ -31,9 +31,8 @@ export interface Conversation {
   id: string;
   title: string;
   /**
-   * True while the title is still auto-generated (initial 'New Chat' or the
-   * AI-generated 1–3 word title). Flips to false the moment the user renames
-   * the chat, preventing the generator from ever overriding a human edit.
+   * True while title is auto-managed by the title generator.
+   * Flips to false after any manual rename so AI never overrides user intent.
    */
   titleAuto?: boolean;
   messages: Message[];
