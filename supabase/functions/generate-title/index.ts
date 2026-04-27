@@ -238,10 +238,11 @@ Deno.serve(async (req: Request) => {
         if (supabaseUrl && serviceKey && conversationId && title !== 'New Chat') {
             try {
                 const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-                // Only update while title_auto is still true (user hasn't renamed).
+                // Only update while title_auto is still true (user hasn't renamed),
+                // then lock it so AI title generation runs once for this chat.
                 await admin
                     .from('conversations')
-                    .update({ title })
+                    .update({ title, title_auto: false })
                     .eq('id', conversationId)
                     .eq('user_id', userId)
                     .eq('title_auto', true);

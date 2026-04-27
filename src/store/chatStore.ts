@@ -468,7 +468,7 @@ export const useChatStore = create<ChatStore>()(
                                     set((state) => ({
                                         conversations: state.conversations.map((c) =>
                                             c.id === convId
-                                                ? { ...c, title: newTitle, titleAuto: true, updatedAt: Date.now() }
+                                                ? { ...c, title: newTitle, titleAuto: false, updatedAt: Date.now() }
                                                 : c,
                                         ),
                                     }));

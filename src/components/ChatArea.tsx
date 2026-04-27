@@ -189,7 +189,7 @@ const ChatArea: React.FC = () => {
         const contextMessages = getContextMessages(convId);
 
         let chunkBuffer = '';
-        let lastFlushTs = 0;
+        let flushRaf: number | null = null;
 
         const flushBuffer = () => {
             if (!chunkBuffer) return;
@@ -200,17 +200,22 @@ const ChatArea: React.FC = () => {
                 isReasoningStreaming: false,
             });
             chunkBuffer = '';
-            lastFlushTs = Date.now();
+        };
+
+        const scheduleFlush = () => {
+            if (flushRaf !== null) return;
+            flushRaf = window.requestAnimationFrame(() => {
+                flushRaf = null;
+                flushBuffer();
+            });
         };
 
         await streamChat(contextMessages, {
             onChunk: (chunk) => {
                 chunkBuffer += chunk;
-                const now = Date.now();
-                // Flush at most every ~60ms to keep UI smooth but responsive.
-                if (!lastFlushTs || now - lastFlushTs > 60) {
-                    flushBuffer();
-                }
+                // Flush every animation frame so streaming appears continuous
+                // without forcing a React update per token.
+                scheduleFlush();
             },
             onReasoning: (reasoning) => {
                 if (!options.trackReasoning) return;
@@ -221,6 +226,10 @@ const ChatArea: React.FC = () => {
                 });
             },
             onDone: (truncated) => {
+                if (flushRaf !== null) {
+                    cancelAnimationFrame(flushRaf);
+                    flushRaf = null;
+                }
                 flushBuffer();
                 updateMessage(convId, assistantMsgId, {
                     isStreaming: false,
@@ -231,6 +240,10 @@ const ChatArea: React.FC = () => {
                 useCreditsStore.getState().syncFromServer();
             },
             onError: (error) => {
+                if (flushRaf !== null) {
+                    cancelAnimationFrame(flushRaf);
+                    flushRaf = null;
+                }
                 flushBuffer();
                 const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
                 const msg = conv?.messages.find((m) => m.id === assistantMsgId);
