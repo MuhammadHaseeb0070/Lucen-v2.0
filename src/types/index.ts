@@ -23,6 +23,7 @@ export interface Message {
   isReasoningStreaming?: boolean;
   isTruncated?: boolean;
   webSearchUsed?: boolean;
+  webSearchUrls?: string[];
   isPinned?: boolean;
   attachments?: FileAttachment[];
 }

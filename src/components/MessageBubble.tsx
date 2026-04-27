@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import { parseArtifacts } from '../lib/artifactParser';
@@ -40,6 +40,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     disableArtifacts = false,
 }) => {
     const [reasoningOpen, setReasoningOpen] = useState(false);
+    const [searchSourcesOpen, setSearchSourcesOpen] = useState(false);
     const [copied, setCopied] = useState(false);
 
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
@@ -216,6 +217,35 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             )}
                         </div>
                     )}
+            
+            {message.webSearchUsed && message.webSearchUrls && message.webSearchUrls.length > 0 && (
+                <div className="reasoning-block search-sources-block" style={{ marginTop: normalizedReasoning ? '0.5rem' : '0' }}>
+                    <button className="reasoning-toggle" onClick={() => setSearchSourcesOpen(!searchSourcesOpen)}>
+                        <Globe size={14} />
+                        <span className="reasoning-label" style={{ flex: 1, textAlign: 'left', marginLeft: '0.25rem' }}>
+                            Searched {message.webSearchUrls.length} sources
+                        </span>
+                        {searchSourcesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                    {searchSourcesOpen && (
+                        <div className="reasoning-content search-sources-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {message.webSearchUrls.map((url, idx) => {
+                                try {
+                                    const domain = new URL(url).hostname.replace('www.', '');
+                                    return (
+                                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="search-source-link" style={{ fontSize: '0.8rem', color: 'inherit', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.5rem', borderRadius: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                                            <span style={{ fontWeight: 600, color: 'var(--accent-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{domain}</span>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.7 }}>{url}</span>
+                                        </a>
+                                    );
+                                } catch {
+                                    return <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="search-source-link" style={{ fontSize: '0.8rem', color: 'inherit', wordBreak: 'break-all' }}>{url}</a>;
+                                }
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {message.isStreaming && !message.content && !message.reasoning ? (
                 <div className="streaming-indicator">

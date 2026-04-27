@@ -458,7 +458,8 @@ Deno.serve(async (req: Request) => {
 
             const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
             const imageCost = imageCount * CREDITS_PER_IMAGE;
-            const searchCost = webSearchRequested ? computeWebSearchCredits(webSearchMaxResults) : 0;
+            const actualWebSearchHappened = webSearchUsed || webSearchFallback;
+            const searchCost = actualWebSearchHappened ? computeWebSearchCredits(webSearchMaxResults) : 0;
             const totalCost = textCost + imageCost + searchCost;
 
             try {
@@ -467,7 +468,7 @@ Deno.serve(async (req: Request) => {
                     p_amount: totalCost,
                 });
 
-                if (subscriptionStatus === 'free' && webSearchRequested) {
+                if (subscriptionStatus === 'free' && actualWebSearchHappened) {
                     await supabaseAdmin
                         .from('user_credits')
                         .update({ free_searches_used: freeSearchesUsed + 1 })
@@ -486,7 +487,7 @@ Deno.serve(async (req: Request) => {
             accounting.imageCredits = imageCost;
             accounting.webSearchCredits = searchCost;
             accounting.totalCredits = totalCost;
-            accounting.webSearchResultsBilled = webSearchRequested ? webSearchMaxResults : null;
+            accounting.webSearchResultsBilled = actualWebSearchHappened ? webSearchMaxResults : null;
 
             await recordUsage({
                 userId: user.id,
@@ -595,7 +596,8 @@ Deno.serve(async (req: Request) => {
 
                 const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
                 const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const searchCost = webSearchRequested ? computeWebSearchCredits(webSearchMaxResults) : 0;
+                const actualWebSearchHappened = webSearchUsed || webSearchFallback;
+                const searchCost = actualWebSearchHappened ? computeWebSearchCredits(webSearchMaxResults) : 0;
                 const totalCost = textCost + imageCost + searchCost;
 
                 try {
@@ -604,7 +606,7 @@ Deno.serve(async (req: Request) => {
                         p_amount: totalCost,
                     });
 
-                    if (subscriptionStatus === 'free' && webSearchRequested) {
+                    if (subscriptionStatus === 'free' && actualWebSearchHappened) {
                         await supabaseAdmin
                             .from('user_credits')
                             .update({ free_searches_used: freeSearchesUsed + 1 })
@@ -648,7 +650,7 @@ Deno.serve(async (req: Request) => {
                 accounting.imageCredits = imageCost;
                 accounting.webSearchCredits = searchCost;
                 accounting.totalCredits = totalCost;
-                accounting.webSearchResultsBilled = webSearchRequested ? webSearchMaxResults : null;
+                accounting.webSearchResultsBilled = actualWebSearchHappened ? webSearchMaxResults : null;
 
                 await recordUsage({
                     userId: user.id,

@@ -39,7 +39,7 @@ interface StreamCallbacks {
     onReasoning: (reasoning: string) => void;
     onDone: (truncated?: boolean) => void;
     onError: (error: string) => void;
-    onWebSearchUsed?: () => void;
+    onWebSearchUsed?: (urls?: string[]) => void;
     onClarificationNeeded?: (question: string) => void;
 }
 
@@ -1112,8 +1112,8 @@ async function streamViaEdgeFunctionWithInnerCallbacks(
 async function resolveWebSearchContext(
     apiMessages: Array<Record<string, unknown>>,
     parentRequestId?: string,
-): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null; searchResults?: string | null }> {
-    const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null };
+): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null; searchResults?: string | null; searchUrls?: string[] }> {
+    const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null, searchUrls: [] };
 
     const contextMessages = apiMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -1141,7 +1141,7 @@ async function resolveWebSearchContext(
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const { data: { session } } = await supabase!.auth.getSession();
-    if (!session?.access_token) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+    if (!session?.access_token) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
 
     const intentRequestId = newRequestId();
     const intentEndpoint = `${supabaseUrl}/functions/v1/classify-intent`;
@@ -1172,7 +1172,7 @@ async function resolveWebSearchContext(
         if (!intentResponse.ok) {
             const text = await intentResponse.text().catch(() => '');
             finalizeIntent({ status: intentResponse.status, response: text, error: `HTTP ${intentResponse.status}` });
-            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
         }
 
         const result = await intentResponse.json();
@@ -1182,7 +1182,7 @@ async function resolveWebSearchContext(
         if (result.state === 'skip') return noSearch;
 
         if (result.state === 'clarify' && result.question) {
-            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: result.question, searchResults: null };
+            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: result.question, searchResults: null, searchUrls: [] };
         }
 
         if (result.state === 'search') {
@@ -1239,15 +1239,16 @@ async function resolveWebSearchContext(
                 urls,
                 clarificationNeeded: null,
                 searchResults: searchResultsText,
+                searchUrls: Array.isArray(result.results?.organic) ? result.results.organic.map((r: any) => r.link).filter(Boolean) : [],
             };
         }
 
-        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
 
     } catch (err) {
         console.error('[classify-intent] FAILED:', err);
         finalizeIntent({ error: err instanceof Error ? err.message : 'unknown' });
-        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null };
+        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
     }
 }
 
@@ -1317,11 +1318,11 @@ async function streamViaEdgeFunction(
             ctx = await resolveWebSearchContext(apiMessages, perCallRequestId);
         } catch (err) {
             console.warn('[webSearch] classify-intent threw, will request server-side fallback:', err);
-            ctx = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null };
+            ctx = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null, searchUrls: [] };
             webSearchFallbackRequested = true;
         }
 
-        const { shouldSearch, urls, clarificationNeeded, searchResults } = ctx;
+        const { shouldSearch, urls, clarificationNeeded, searchResults, searchUrls } = ctx;
 
         if (clarificationNeeded) {
             callbacks.onClarificationNeeded?.(clarificationNeeded);
@@ -1329,7 +1330,8 @@ async function streamViaEdgeFunction(
         }
 
         if (shouldSearch && searchResults) {
-            callbacks.onWebSearchUsed?.();
+            // Extract links from organic results to display in the UI
+            callbacks.onWebSearchUsed?.(searchUrls);
             webSearchUsed = true;
             // Inject real search results directly — NO `plugins` field.
             // The main model reads the system message and answers natively.

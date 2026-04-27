@@ -282,8 +282,8 @@ const ChatArea: React.FC = () => {
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
             },
-            onWebSearchUsed: () =>
-                updateMessage(convId, assistantMsgId, { webSearchUsed: true }),
+            onWebSearchUsed: (urls) =>
+                updateMessage(convId, assistantMsgId, { webSearchUsed: true, webSearchUrls: urls }),
             onClarificationNeeded: (question) => {
                 if (flushRaf !== null) {
                     cancelAnimationFrame(flushRaf);
