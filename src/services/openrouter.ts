@@ -1622,8 +1622,17 @@ async function processStream(
         // Some fallback/tool-capable models occasionally emit an internal
         // planning preamble plus a synthetic tool payload block. Neither should
         // ever reach the user-facing transcript.
-        const hadToolBlock = /<tool_code>[\s\S]*?<\/tool_code>/i.test(t);
+        const hadToolBlock =
+            /<tool_code>[\s\S]*?<\/tool_code>/i.test(t) ||
+            /<task>[\s\S]*?<\/task>/i.test(t) ||
+            /&lt;tool_code&gt;[\s\S]*?&lt;\/tool_code&gt;/i.test(t) ||
+            /&lt;task&gt;[\s\S]*?&lt;\/task&gt;/i.test(t);
         t = t.replace(/<tool_code>[\s\S]*?<\/tool_code>/gi, '');
+        t = t.replace(/<task>[\s\S]*?<\/task>/gi, '');
+        t = t.replace(/&lt;tool_code&gt;[\s\S]*?&lt;\/tool_code&gt;/gi, '');
+        t = t.replace(/&lt;task&gt;[\s\S]*?&lt;\/task&gt;/gi, '');
+        // Some models leak raw pseudo-tool JSON without wrappers.
+        t = t.replace(/\{\s*"id"\s*:\s*"web_search"[\s\S]*?\}\s*$/gi, '');
         if (hadToolBlock) {
             t = t.replace(
                 /^\s*(?:let me|i(?:'| a)?ll|i will|i'm going to)\s+(?:search|look up|check|find)[^\n]*\n?/i,
@@ -1639,6 +1648,7 @@ async function processStream(
         // internal tags. If a chunk ends with a dangling start fragment, drop
         // that fragment and let the next chunk carry semantic content.
         t = t.replace(/<(?:tool_code|task|lucen_system|runtime_context|assistant_vision_notice|image_perception)[^>\n]{0,80}$/gi, '');
+        t = t.replace(/&lt;(?:tool_code|task)[^>\n]{0,80}$/gi, '');
 
         return t;
     }
