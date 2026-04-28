@@ -524,16 +524,16 @@ export const useChatStore = create<ChatStore>()(
                     }
                 }
 
-                const newConversations = state.conversations.map((c) => {
-                        if (c.id !== convId) return c;
-                        return {
-                            ...c,
-                            messages: c.messages.filter((m) => !idsToDelete.includes(m.id)),
-                            updatedAt: Date.now(),
-                        };
-                    });
+                const newConversations = get().conversations.map((c: Conversation) => {
+                    if (c.id !== convId) return c;
+                    return {
+                        ...c,
+                        messages: c.messages.filter((m: Message) => !idsToDelete.includes(m.id)),
+                        updatedAt: Date.now(),
+                    };
+                });
                 
-                const updatedConv = newConversations.find((c) => c.id === convId);
+                const updatedConv = newConversations.find((c: Conversation) => c.id === convId);
 
                 // Sync to Supabase
                 if (hasActiveSessionSync()) {
