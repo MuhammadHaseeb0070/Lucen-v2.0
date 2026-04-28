@@ -126,6 +126,7 @@ const ArtifactWorkspace: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isPublishLoading, setIsPublishLoading] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const prevStreamingRef = useRef(false);
@@ -147,9 +148,24 @@ const ArtifactWorkspace: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   }, [activeArtifact]);
 
-  const handleDownloadSvg = useCallback(() => {
+  const handleDownload = useCallback((ext: string) => {
     if (!activeArtifact) return;
-    downloadArtifactSvg(activeArtifact.content, activeArtifact.type, activeArtifact.title);
+    let content = activeArtifact.content;
+    let mime = 'text/plain';
+    
+    if (ext === 'svg' && (activeArtifact.type === 'mermaid' || activeArtifact.type === 'svg')) {
+      downloadArtifactSvg(content, activeArtifact.type, activeArtifact.title);
+      setDownloadOpen(false);
+      return;
+    }
+    
+    if (ext === 'html') mime = 'text/html';
+    else if (ext === 'md') mime = 'text/markdown';
+    else if (ext === 'js') mime = 'text/javascript';
+    
+    const blob = new Blob([content], { type: mime });
+    triggerDownload(blob, `${activeArtifact.title || 'artifact'}.${ext}`);
+    setDownloadOpen(false);
   }, [activeArtifact]);
 
   const handlePublishClick = async () => {
@@ -281,11 +297,26 @@ const ArtifactWorkspace: React.FC = () => {
           <button className="artifact-action-btn" onClick={handleCopy} title="Copy code">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
-          {(activeArtifact.type === 'svg' || activeArtifact.type === 'mermaid') && (
-            <button className="artifact-action-btn" onClick={handleDownloadSvg} title="Download diagram (SVG)">
+          <div style={{ position: 'relative' }}>
+            <button className="artifact-action-btn" onClick={() => setDownloadOpen(!downloadOpen)} title="Download artifact">
               <Download size={15} />
             </button>
-          )}
+            {downloadOpen && (
+              <div className="hub-sort-dropdown" style={{ right: 0, top: '100%', marginTop: '4px', padding: '4px' }}>
+                <button className="hub-sort-option" onClick={() => handleDownload(activeArtifact.type === 'file' ? 'txt' : activeArtifact.type)}>
+                  Download .{activeArtifact.type === 'file' ? 'txt' : activeArtifact.type}
+                </button>
+                <button className="hub-sort-option" onClick={() => handleDownload('txt')}>
+                  Download .txt
+                </button>
+                {activeArtifact.type === 'mermaid' && (
+                  <button className="hub-sort-option" onClick={() => handleDownload('svg')}>
+                    Download as .svg
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {/* Publish / Hub button — visible when not streaming and not a raw import */}
           {!activeArtifact.isStreaming && !activeArtifact.isImported && (
             <button

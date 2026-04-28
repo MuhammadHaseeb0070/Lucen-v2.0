@@ -122,30 +122,23 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
 </head><body>${trimmed}</body></html>`;
   }, [previewContent]);
 
+  // We do not auto-resize the iframe height anymore.
+  // Letting the iframe be 100% height allows standard CSS like 100vh and natural scrolling to work exactly like a real browser tab.
   useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const handleLoad = () => {
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (doc?.body) iframe.style.height = Math.max(300, doc.body.scrollHeight + 32) + 'px';
-      } catch { /* sandboxed */ }
-    };
-    iframe.addEventListener('load', handleLoad);
-    return () => iframe.removeEventListener('load', handleLoad);
+    // Just re-trigger if needed, but standard iframe loads srcDoc instantly.
   }, [srcDoc]);
 
   const vpWidth = VIEWPORT_WIDTHS[viewport];
   const isFramed = !!vpWidth;
 
   return (
-    <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`}>
+    <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`} style={{ height: '100%' }}>
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
         className="artifact-iframe"
-        style={isFramed ? { width: vpWidth!, maxWidth: '100%' } : undefined}
+        style={isFramed ? { width: vpWidth!, maxWidth: '100%', height: '100%' } : { width: '100%', height: '100%', border: 'none' }}
         title="HTML Preview"
       />
     </div>
