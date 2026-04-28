@@ -187,13 +187,6 @@ export const useChatStore = create<ChatStore>()(
             drafts: {},
 
             createConversation: (templateId?: string) => {
-                const state = get();
-                const existingEmpty = state.conversations.find((c) => c.messages.length === 0);
-                if (existingEmpty) {
-                    set({ activeConversationId: existingEmpty.id });
-                    return existingEmpty.id;
-                }
-
                 const id = uuidv4();
                 const now = Date.now();
                 const newConv: Conversation = {
@@ -209,12 +202,6 @@ export const useChatStore = create<ChatStore>()(
                     conversations: [newConv, ...state.conversations],
                     activeConversationId: id,
                 }));
-
-                // Sync to Supabase in the background
-                if (hasActiveSessionSync()) {
-                    db.createConversation(id, 'New Chat').catch(console.error);
-                }
-
                 return id;
             },
 
@@ -538,17 +525,14 @@ export const useChatStore = create<ChatStore>()(
                 // Sync to Supabase
                 if (hasActiveSessionSync()) {
                     db.deleteMessagePair(convId, userMsgId || msgId, assistantMsgId).catch(console.error);
+                    if (updatedConv && updatedConv.messages.length === 0) {
+                        // Delete the conversation from the DB so it doesn't persist as empty on refresh.
+                        // We intentionally leave it in the local UI state so the user isn't abruptly kicked out.
+                        db.deleteConversation(convId).catch(console.error);
+                    }
                 }
 
-                if (updatedConv && updatedConv.messages.length === 0) {
-                    // Prevent state update from the filter map and let deleteConversation handle it.
-                    // But deleteConversation needs to happen on the next tick to avoid zustand issues during render/dispatch
-                    setTimeout(() => {
-                        get().deleteConversation(convId);
-                    }, 0);
-                } else {
-                    set({ conversations: newConversations });
-                }
+                set({ conversations: newConversations });
             },
 
             togglePinMessage: (convId, msgId) => {

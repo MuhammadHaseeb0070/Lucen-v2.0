@@ -942,7 +942,6 @@ const ChatArea: React.FC = () => {
                                 message={msg}
                                 showDelete={false}
                                 actionsOnly
-                                onFork={handleFork}
                             />
                         </div>
                         {nextMsg && (
