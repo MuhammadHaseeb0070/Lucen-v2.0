@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap } from 'lucide-react';
+import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2 } from 'lucide-react';
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import { useArtifactStore } from '../store/artifactStore';
@@ -125,6 +125,7 @@ const ArtifactWorkspace: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [isPublishLoading, setIsPublishLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const prevStreamingRef = useRef(false);
@@ -248,14 +249,15 @@ const ArtifactWorkspace: React.FC = () => {
               <Download size={15} />
             </button>
           )}
-          {/* Publish / Hub button — visible once artifact is DB-saved (dbId set) */}
-          {activeArtifact.dbId && !activeArtifact.isStreaming && (
+          {/* Publish / Hub button — visible when not streaming */}
+          {!activeArtifact.isStreaming && (
             <button
               className={`artifact-action-btn artifact-publish-btn ${activeArtifact.isPublic ? 'artifact-publish-btn--public' : ''}`}
-              onClick={() => setPublishModalOpen(true)}
+              onClick={handlePublishClick}
+              disabled={isPublishLoading}
               title={activeArtifact.isPublic ? 'Manage Hub listing' : 'Publish to Artifact Hub'}
             >
-              {activeArtifact.isPublic ? <Globe size={15} /> : <Zap size={15} />}
+              {isPublishLoading ? <Loader2 size={15} className="apm-spin" /> : activeArtifact.isPublic ? <Globe size={15} /> : <Zap size={15} />}
             </button>
           )}
           <button className="artifact-action-btn artifact-close-btn" onClick={clearArtifact} title="Close workspace">
