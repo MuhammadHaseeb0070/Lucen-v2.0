@@ -152,6 +152,43 @@ const ArtifactWorkspace: React.FC = () => {
     downloadArtifactSvg(activeArtifact.content, activeArtifact.type, activeArtifact.title);
   }, [activeArtifact]);
 
+  const handlePublishClick = async () => {
+    if (!activeArtifact) return;
+    if (activeArtifact.dbId) {
+      setPublishModalOpen(true);
+      return;
+    }
+    
+    // Save to DB on the fly if it hasn't been saved yet
+    setIsPublishLoading(true);
+    try {
+      const { saveArtifact } = await import('../services/artifactDb');
+      const { useChatStore } = await import('../store/chatStore');
+      const convId = useChatStore.getState().activeConversationId;
+      
+      const dbId = await saveArtifact({
+        clientId: activeArtifact.id,
+        conversationId: convId,
+        messageId: activeArtifact.messageId,
+        type: activeArtifact.type,
+        title: activeArtifact.title,
+        content: activeArtifact.content
+      });
+      
+      if (dbId) {
+        useArtifactStore.getState().setDbId(activeArtifact.id, dbId);
+        setPublishModalOpen(true);
+      } else {
+        alert('Failed to prepare artifact for publishing. Please ensure you are logged in.');
+      }
+    } catch (e) {
+      console.error('Error saving artifact for publish:', e);
+      alert('Failed to prepare artifact for publishing.');
+    } finally {
+      setIsPublishLoading(false);
+    }
+  };
+
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
