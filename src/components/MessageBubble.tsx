@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe, Split } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import { parseArtifacts } from '../lib/artifactParser';
@@ -11,6 +11,7 @@ interface MessageBubbleProps {
     onDelete?: (msgId: string) => void;
     onRetry?: (msgId: string) => void;
     onContinue?: (msgId: string) => void;
+    onFork?: (msgId: string) => void;
     onToggleLink?: (message: Message) => void;
     onPin?: (msgId: string) => void;
     onDeleteHover?: (hovering: boolean) => void;
@@ -28,6 +29,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     onDelete,
     onRetry,
     onContinue,
+    onFork,
     onToggleLink,
     onPin,
     onDeleteHover,
@@ -178,6 +180,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         <Pin size={13} fill={message.isPinned ? "currentColor" : "none"} />
                     </button>
                 )}
+                {onFork && (
+                    <button className="msg-action-btn" onClick={() => onFork(message.id)} title="Fork chat from here">
+                        <Split size={13} />
+                    </button>
+                )}
                 {showDelete && onDelete && (
                     <button
                         className="msg-action-btn msg-action-danger"
@@ -294,6 +301,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             title={message.isPinned ? "Unpin message" : "Pin message"}
                         >
                             <Pin size={13} fill={message.isPinned ? "currentColor" : "none"} />
+                        </button>
+                    )}
+                    {onFork && (
+                        <button className="msg-action-btn" onClick={() => onFork(message.id)} title="Fork chat from here">
+                            <Split size={13} />
                         </button>
                     )}
                     {showRetry && onRetry && (

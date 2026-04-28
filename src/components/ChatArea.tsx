@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Pencil, Check } from 'lucide-react';
+import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Pencil, Check, Loader2 } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
@@ -31,6 +31,8 @@ const ChatArea: React.FC = () => {
         setDraft,
         togglePinMessage,
         isMessageLoading,
+        forkConversation,
+        setActiveConversation,
     } = useChatStore();
 
     const { hasEnoughCredits } = useCreditsStore();
@@ -77,6 +79,7 @@ const ChatArea: React.FC = () => {
     const [pinLabelDraft, setPinLabelDraft] = useState('');
     const [pinMarkers, setPinMarkers] = useState<Array<{ id: string; topPx: number; targetMsgId: string; previewText: string }>>([]);
     const [searchMarkers, setSearchMarkers] = useState<Array<{ id: string; topPx: number }>>([]);
+    const [isForking, setIsForking] = useState(false);
     const dragCounterRef = useRef(0);
     const hasJumpedRef = useRef(false);
     /** After jump-to-message / search hit, ignore scroll-based isAutoScroll for a few frames so we don't
@@ -522,6 +525,21 @@ const ChatArea: React.FC = () => {
         togglePinMessage(activeConversationId, msgId);
     };
 
+    const handleFork = async (msgId: string) => {
+        if (!activeConversationId) return;
+        setIsForking(true);
+        try {
+            const newConvId = await forkConversation(activeConversationId, msgId);
+            if (newConvId) {
+                setActiveConversation(newConvId);
+            }
+        } catch (error) {
+            console.error('Failed to fork chat:', error);
+        } finally {
+            setIsForking(false);
+        }
+    };
+
     const scrollToMessage = useCallback((msgId: string) => {
         pinJumpLockUntilRef.current = Date.now() + 900;
         setIsAutoScroll(false);
@@ -924,6 +942,7 @@ const ChatArea: React.FC = () => {
                                 message={msg}
                                 showDelete={false}
                                 actionsOnly
+                                onFork={handleFork}
                             />
                         </div>
                         {nextMsg && (
@@ -938,6 +957,7 @@ const ChatArea: React.FC = () => {
                                         message={nextMsg}
                                         onRetry={handleRetry}
                                         onContinue={handleContinue}
+                                        onFork={handleFork}
                                         onToggleLink={handleToggleLink}
                                         onPin={handlePin}
                                         isLinked={injectedContext.some(m => m.id === nextMsg.id)}
@@ -968,6 +988,7 @@ const ChatArea: React.FC = () => {
                                     message={msg}
                                     onRetry={handleRetry}
                                     onContinue={handleContinue}
+                                    onFork={handleFork}
                                     onToggleLink={handleToggleLink}
                                     onPin={handlePin}
                                     isLinked={injectedContext.some(m => m.id === msg.id)}
@@ -992,6 +1013,13 @@ const ChatArea: React.FC = () => {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
+            {isForking && (
+                <div className="forking-overlay" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(var(--bg-primary-rgb), 0.7)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+                    <Loader2 size={40} className="spinner" style={{ animation: 'spin 1s linear infinite', color: 'var(--accent-color)' }} />
+                    <p style={{ marginTop: '16px', fontWeight: 500, color: 'var(--text-primary)' }}>Forking chat...</p>
+                    <style>{\`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }\`}</style>
+                </div>
+            )}
             <div className="pin-track-container" ref={pinTrackRef}>
                 {searchMarkers.map((marker) => (
                     <div

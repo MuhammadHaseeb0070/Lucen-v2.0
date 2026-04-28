@@ -157,6 +157,7 @@ interface ChatStore {
     setActiveConversation: (id: string | null) => void;
     clearChats: () => void;
     updateAttachmentDescription: (dataUrl: string, description: string, generatedAt?: number) => void;
+    forkConversation: (convId: string, messageId: string) => Promise<string | null>;
 
     // Message actions
     /** Resolves when the message row is persisted (or no-op if offline). Await the user turn before queuing the assistant to preserve DB `created_at` order. */
@@ -186,6 +187,13 @@ export const useChatStore = create<ChatStore>()(
             drafts: {},
 
             createConversation: (templateId?: string) => {
+                const state = get();
+                const existingEmpty = state.conversations.find((c) => c.messages.length === 0);
+                if (existingEmpty) {
+                    set({ activeConversationId: existingEmpty.id });
+                    return existingEmpty.id;
+                }
+
                 const id = uuidv4();
                 const now = Date.now();
                 const newConv: Conversation = {
@@ -516,20 +524,30 @@ export const useChatStore = create<ChatStore>()(
                     }
                 }
 
-                set((state) => ({
-                    conversations: state.conversations.map((c) => {
+                const newConversations = state.conversations.map((c) => {
                         if (c.id !== convId) return c;
                         return {
                             ...c,
                             messages: c.messages.filter((m) => !idsToDelete.includes(m.id)),
                             updatedAt: Date.now(),
                         };
-                    }),
-                }));
+                    });
+                
+                const updatedConv = newConversations.find((c) => c.id === convId);
 
                 // Sync to Supabase
                 if (hasActiveSessionSync()) {
                     db.deleteMessagePair(convId, userMsgId || msgId, assistantMsgId).catch(console.error);
+                }
+
+                if (updatedConv && updatedConv.messages.length === 0) {
+                    // Prevent state update from the filter map and let deleteConversation handle it.
+                    // But deleteConversation needs to happen on the next tick to avoid zustand issues during render/dispatch
+                    setTimeout(() => {
+                        get().deleteConversation(convId);
+                    }, 0);
+                } else {
+                    set({ conversations: newConversations });
                 }
             },
 
@@ -602,6 +620,56 @@ export const useChatStore = create<ChatStore>()(
                         c.id === convId ? { ...c, templateId } : c
                     ),
                 }));
+            },
+
+            forkConversation: async (convId, messageId) => {
+                const conv = get().conversations.find((c) => c.id === convId);
+                if (!conv) return null;
+                const msgIndex = conv.messages.findIndex(m => m.id === messageId);
+                if (msgIndex === -1) return null;
+
+                const slicedMessages = conv.messages.slice(0, msgIndex + 1);
+                const newConvId = uuidv4();
+                const now = Date.now();
+                const newTitle = conv.title.startsWith('(Forked)') ? conv.title : \`(Forked) \${conv.title}\`;
+                
+                const oldToNewMap = new Map<string, string>();
+                slicedMessages.forEach(m => oldToNewMap.set(m.id, uuidv4()));
+
+                const newMessages: Message[] = slicedMessages.map(m => {
+                    const newId = oldToNewMap.get(m.id)!;
+                    return {
+                        ...m,
+                        id: newId,
+                        attachments: m.attachments?.map(a => ({ ...a })),
+                    };
+                });
+
+                const newConv: Conversation = {
+                    id: newConvId,
+                    title: newTitle,
+                    titleAuto: false,
+                    messages: newMessages,
+                    createdAt: now,
+                    updatedAt: now,
+                    templateId: conv.templateId,
+                };
+
+                set((state) => ({
+                    conversations: [newConv, ...state.conversations],
+                }));
+
+                if (hasActiveSessionSync()) {
+                    await db.createConversation(newConvId, newTitle);
+                    await db.renameConversation(newConvId, newTitle, true);
+                    
+                    // Duplicate messages in db sequentially to maintain order and avoid race conditions
+                    for (const msg of newMessages) {
+                        await db.saveMessage(newConvId, msg);
+                    }
+                }
+
+                return newConvId;
             },
 
             // ═══════════════════════════════════════════
