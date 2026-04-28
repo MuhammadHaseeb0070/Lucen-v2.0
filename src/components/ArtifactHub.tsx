@@ -366,8 +366,9 @@ const ArtifactHub: React.FC = () => {
     };
     
     // Generate standard artifact block so it renders exactly as if AI generated it
-    const lang = artifact.type === 'html' ? 'html' : artifact.type === 'svg' ? 'xml' : artifact.type === 'mermaid' ? 'mermaid' : 'text';
-    const content = `✨ Imported **${artifact.title}** from the Hub by @${artifact.author_name || 'anonymous'}!\n\n\`\`\`${lang}\n<antigravity_artifact identifier="${clientArtifact.id}" type="${artifact.type}" title="${artifact.title}">\n${artifact.content}\n</antigravity_artifact>\n\`\`\`\n\nYou can click on the artifact block above to open it in the workspace.`;
+    // No markdown block around it needed - our parser ignores code blocks around artifacts anyway,
+    // but generating naked XML is safer so it isn't rendered as a simple code block if parsing fails.
+    const content = `✨ Imported **${artifact.title}** from the Hub by @${artifact.author_name || 'anonymous'}!\n\n<lucen_artifact identifier="${clientArtifact.id}" type="${artifact.type}" title="${artifact.title}" imported="true">\n${artifact.content}\n</lucen_artifact>\n\nYou can click on the artifact block above to open it in the workspace.`;
     
     let targetConvId = useChatStore.getState().activeConversationId;
     

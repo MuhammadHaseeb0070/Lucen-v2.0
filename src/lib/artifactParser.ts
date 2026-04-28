@@ -19,13 +19,15 @@ function getAttr(attrs: string, name: string): string | undefined {
   return m?.[1];
 }
 
-function parseArtifactAttrs(attrs: string): { type: string; title: string; filename?: string } {
+function parseArtifactAttrs(attrs: string): { type: string; title: string; filename?: string; imported: boolean } {
   const typeRaw = getAttr(attrs, 'type');
   const titleRaw = getAttr(attrs, 'title');
   const filenameRaw = getAttr(attrs, 'filename');
+  const importedRaw = getAttr(attrs, 'imported');
 
   const type = (typeRaw || 'html').trim().toLowerCase();
   const filename = filenameRaw?.trim();
+  const imported = importedRaw === 'true';
 
   // Title priority:
   // - explicit title
@@ -33,7 +35,7 @@ function parseArtifactAttrs(attrs: string): { type: string; title: string; filen
   // - generic fallback
   const title = (titleRaw?.trim() || filename || 'Artifact').trim();
 
-  return { type, title, filename };
+  return { type, title, filename, imported };
 }
 
 export interface ParseResult {
@@ -85,7 +87,7 @@ export function parseArtifacts(
   cleanContent = cleanContent.replace(
     COMPLETE_ARTIFACT_RE,
     (_match, attrs: string, code: string) => {
-      const { type, title, filename } = parseArtifactAttrs(attrs || '');
+      const { type, title, filename, imported } = parseArtifactAttrs(attrs || '');
       artifacts.push({
         id: `${messageId}-artifact-${index++}`,
         type: (SUPPORTED_TYPES.has(type) ? type : 'html') as ArtifactType,
@@ -93,6 +95,7 @@ export function parseArtifacts(
         filename,
         content: code.trim(),
         messageId,
+        isImported: imported,
       });
       return '';
     }
@@ -102,7 +105,7 @@ export function parseArtifacts(
   const partialMatch = cleanContent.match(PARTIAL_OPEN_RE);
   if (partialMatch) {
     const [fullMatch, attrs, partialCode] = partialMatch;
-    const { type, title, filename } = parseArtifactAttrs(attrs || '');
+    const { type, title, filename, imported } = parseArtifactAttrs(attrs || '');
     artifacts.push({
       id: `${messageId}-artifact-${index}`,
       type: (SUPPORTED_TYPES.has(type) ? type : 'html') as ArtifactType,
@@ -110,6 +113,7 @@ export function parseArtifacts(
       filename,
       content: (partialCode || '').trim(),
       messageId,
+      isImported: imported,
       // When forceClose is true (message stream has ended but the model
       // never emitted a </lucen_artifact>), mark the synthesized artifact
       // as NOT streaming so it renders as a complete — if truncated — card.

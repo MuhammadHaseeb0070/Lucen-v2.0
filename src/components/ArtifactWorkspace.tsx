@@ -286,8 +286,8 @@ const ArtifactWorkspace: React.FC = () => {
               <Download size={15} />
             </button>
           )}
-          {/* Publish / Hub button — visible when not streaming */}
-          {!activeArtifact.isStreaming && (
+          {/* Publish / Hub button — visible when not streaming and not a raw import */}
+          {!activeArtifact.isStreaming && !activeArtifact.isImported && (
             <button
               className={`artifact-action-btn artifact-publish-btn ${activeArtifact.isPublic ? 'artifact-publish-btn--public' : ''}`}
               onClick={handlePublishClick}
@@ -295,6 +295,15 @@ const ArtifactWorkspace: React.FC = () => {
               title={activeArtifact.isPublic ? 'Manage Hub listing' : 'Publish to Artifact Hub'}
             >
               {isPublishLoading ? <Loader2 size={15} className="apm-spin" /> : activeArtifact.isPublic ? <Globe size={15} /> : <Zap size={15} />}
+            </button>
+          )}
+          {!activeArtifact.isStreaming && activeArtifact.isImported && (
+            <button
+              className="artifact-action-btn artifact-publish-btn"
+              style={{ opacity: 0.5, cursor: 'not-allowed' }}
+              title="Imported artifacts cannot be published directly. Ask the AI to modify it first."
+            >
+              <Zap size={15} />
             </button>
           )}
           <button className="artifact-action-btn artifact-close-btn" onClick={clearArtifact} title="Close workspace">

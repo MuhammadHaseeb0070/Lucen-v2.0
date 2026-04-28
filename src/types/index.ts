@@ -69,6 +69,8 @@ export interface Artifact {
   isPublic?: boolean;
   /** Globally unique slug chosen by the user at publish time */
   slug?: string;
+  /** Whether this artifact was imported directly from the Hub (blocks re-publishing until modified) */
+  isImported?: boolean;
 }
 
 export interface ModelInfo {
