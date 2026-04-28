@@ -631,7 +631,7 @@ export const useChatStore = create<ChatStore>()(
                 const slicedMessages = conv.messages.slice(0, msgIndex + 1);
                 const newConvId = uuidv4();
                 const now = Date.now();
-                const newTitle = conv.title.startsWith('(Forked)') ? conv.title : \`(Forked) \${conv.title}\`;
+                const newTitle = conv.title.startsWith('(Forked)') ? conv.title : `(Forked) ${conv.title}`;
                 
                 const oldToNewMap = new Map<string, string>();
                 slicedMessages.forEach(m => oldToNewMap.set(m.id, uuidv4()));
