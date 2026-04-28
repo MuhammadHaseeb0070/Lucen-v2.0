@@ -103,9 +103,13 @@ export async function updateArtifactContent(dbId: string, content: string, title
 export async function fetchMyArtifacts(): Promise<DbArtifact[]> {
   if (!hasActiveSessionSync() || !supabase) return [];
 
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return [];
+
   const { data, error } = await supabase
     .from('artifacts')
     .select('*')
+    .eq('user_id', session.user.id)
     .order('updated_at', { ascending: false });
 
   if (error) {
@@ -136,7 +140,8 @@ export async function fetchPublicArtifacts(opts: {
     .eq('is_public', true);
 
   if (search && search.trim().length > 0) {
-    query = query.textSearch('fts_vector', search.trim(), { type: 'websearch' });
+    const s = search.trim();
+    query = query.or(`title.ilike.%${s}%,description.ilike.%${s}%,tags.cs.{${s}}`);
   }
 
   if (tags && tags.length > 0) {

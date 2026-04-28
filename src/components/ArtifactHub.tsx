@@ -39,7 +39,7 @@ interface HubCardProps {
   userSparked: boolean;
   onSpark: (id: string) => void;
   onPreview: (artifact: DbArtifact) => void;
-  onImport: (artifact: DbArtifact) => void;
+  onImport: (artifact: DbArtifact, mode: 'current' | 'new') => void;
   isOwner?: boolean;
   onUnpublish?: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -107,7 +107,7 @@ const HubCard: React.FC<HubCardProps> = ({
           <Eye size={13} />
           <span>Preview</span>
         </button>
-        <button className="hub-action-btn hub-action-btn--primary" onClick={() => onImport(artifact)} title="Import to new chat">
+        <button className="hub-action-btn hub-action-btn--primary" onClick={() => onImport(artifact, 'new')} title="Import to new chat">
           <Download size={13} />
           <span>Import</span>
         </button>
@@ -121,7 +121,7 @@ interface PreviewModalProps {
   artifact: DbArtifact;
   userSparked: boolean;
   onSpark: (id: string) => void;
-  onImport: (artifact: DbArtifact) => void;
+  onImport: (artifact: DbArtifact, mode: 'current' | 'new') => void;
   onClose: () => void;
   currentUserId?: string;
 }
@@ -175,9 +175,14 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
               <Zap size={14} fill={userSparked ? 'currentColor' : 'none'} />
               <span>{artifact.spark_count}</span>
             </button>
-            <button className="hub-action-btn hub-action-btn--primary" onClick={() => onImport(artifact)}>
-              <Download size={14} /> Import
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button className="hub-action-btn hub-action-btn--ghost" onClick={() => onImport(artifact, 'current')} title="Import to current chat">
+                <Download size={14} /> Current
+              </button>
+              <button className="hub-action-btn hub-action-btn--primary" onClick={() => onImport(artifact, 'new')} title="Import to new chat">
+                <Download size={14} /> New Chat
+              </button>
+            </div>
             <button className="hub-close-btn" onClick={onClose}><X size={18} /></button>
           </div>
         </div>
@@ -348,7 +353,7 @@ const ArtifactHub: React.FC = () => {
     });
   };
 
-  const handleImport = useCallback((artifact: DbArtifact) => {
+  const handleImport = useCallback((artifact: DbArtifact, mode: 'current' | 'new') => {
     const clientArtifact: Artifact = {
       id: uuidv4(),
       dbId: artifact.id,
@@ -359,15 +364,26 @@ const ArtifactHub: React.FC = () => {
       isPublic: true,
       slug: artifact.slug || undefined,
     };
-    const newConvId = createConversation();
-    addMessage(newConvId, {
+    
+    // Generate standard artifact block so it renders exactly as if AI generated it
+    const lang = artifact.type === 'html' ? 'html' : artifact.type === 'svg' ? 'xml' : artifact.type === 'mermaid' ? 'mermaid' : 'text';
+    const content = `✨ Imported **${artifact.title}** from the Hub by @${artifact.author_name || 'anonymous'}!\n\n\`\`\`${lang}\n<antigravity_artifact identifier="${clientArtifact.id}" type="${artifact.type}" title="${artifact.title}">\n${artifact.content}\n</antigravity_artifact>\n\`\`\`\n\nYou can click on the artifact block above to open it in the workspace.`;
+    
+    let targetConvId = useChatStore.getState().activeConversationId;
+    
+    if (mode === 'new' || !targetConvId) {
+      targetConvId = createConversation();
+    }
+    
+    addMessage(targetConvId, {
       id: uuidv4(),
       role: 'assistant',
-      content: `✨ Imported **${artifact.title}** from the Lucen Artifact Hub\n\nby @${artifact.author_name || 'anonymous'} · ${artifact.type.toUpperCase()}\n\n${artifact.description ? `> ${artifact.description}\n\n` : ''}The artifact is open in the workspace. Continue building on it or ask me to modify it!`,
+      content,
       timestamp: Date.now(),
     });
+    
     setActiveArtifact(clientArtifact);
-    setActiveConversation(newConvId);
+    setActiveConversation(targetConvId);
     setArtifactHubOpen(false);
     incrementViews(artifact.id);
   }, [createConversation, addMessage, setActiveArtifact, setActiveConversation, setArtifactHubOpen]);
