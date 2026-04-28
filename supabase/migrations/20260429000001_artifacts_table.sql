@@ -32,16 +32,24 @@ ALTER TABLE artifacts
   ADD CONSTRAINT artifacts_slug_format
   CHECK (slug IS NULL OR slug ~ '^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$');
 
--- Full-text search vector (stored, auto-updated)
-ALTER TABLE artifacts
-  ADD COLUMN fts_vector TSVECTOR
-  GENERATED ALWAYS AS (
-    to_tsvector('english',
-      coalesce(title, '') || ' ' ||
-      coalesce(description, '') || ' ' ||
-      coalesce(array_to_string(tags, ' '), '')
-    )
-  ) STORED;
+-- Full-text search vector (stored, auto-updated via trigger)
+ALTER TABLE artifacts ADD COLUMN fts_vector TSVECTOR;
+
+CREATE OR REPLACE FUNCTION artifacts_fts_update()
+RETURNS trigger AS $$
+BEGIN
+  NEW.fts_vector := to_tsvector('english',
+    coalesce(NEW.title, '') || ' ' ||
+    coalesce(NEW.description, '') || ' ' ||
+    coalesce(array_to_string(NEW.tags, ' '), '')
+  );
+  RETURN NEW;
+END
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_artifacts_fts_update
+  BEFORE INSERT OR UPDATE ON artifacts
+  FOR EACH ROW EXECUTE FUNCTION artifacts_fts_update();
 
 -- ─── Indexes ───
 CREATE INDEX idx_artifacts_user         ON artifacts(user_id);
