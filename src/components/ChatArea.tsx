@@ -17,6 +17,7 @@ import { highlightText } from '../lib/searchHighlight';
 import type { FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
 import FileIcon, { getFileKindLabel } from './FileIcon';
+import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
 
 const ChatArea: React.FC = () => {
     const {
@@ -268,6 +269,34 @@ const ChatArea: React.FC = () => {
                 });
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
+
+                // ── Auto-save artifact to DB (fire-and-forget) ──
+                // We read the artifact store AFTER the streaming update above
+                // so we get the final content. setDbId() patches the store once
+                // the async DB write completes — zero impact on streaming perf.
+                const finishedArtifact = useArtifactStore.getState().activeArtifact;
+                if (finishedArtifact && !finishedArtifact.isStreaming) {
+                    const existingDbId = finishedArtifact.dbId
+                        ?? useArtifactStore.getState().getDbId(finishedArtifact.id);
+                    if (existingDbId) {
+                        // Already saved — just update content in case it changed
+                        updateArtifactContent(existingDbId, finishedArtifact.content, finishedArtifact.title)
+                            .catch(() => {});
+                    } else {
+                        saveArtifact({
+                            clientId: finishedArtifact.id,
+                            conversationId: convId,
+                            messageId: assistantMsgId,
+                            type: finishedArtifact.type,
+                            title: finishedArtifact.title,
+                            content: finishedArtifact.content,
+                        }).then((dbId) => {
+                            if (dbId) {
+                                useArtifactStore.getState().setDbId(finishedArtifact.id, dbId);
+                            }
+                        }).catch(() => {});
+                    }
+                }
             },
             onError: (error) => {
                 if (flushRaf !== null) {

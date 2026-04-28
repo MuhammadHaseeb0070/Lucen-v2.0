@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2 } from 'lucide-react';
+import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap } from 'lucide-react';
 import ArtifactRenderer from './ArtifactRenderer';
+import ArtifactPublishModal from './ArtifactPublishModal';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
 import type { ArtifactType } from '../types';
@@ -123,6 +124,7 @@ const ArtifactWorkspace: React.FC = () => {
   } = useArtifactStore();
   const [copied, setCopied] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const prevStreamingRef = useRef(false);
@@ -246,6 +248,16 @@ const ArtifactWorkspace: React.FC = () => {
               <Download size={15} />
             </button>
           )}
+          {/* Publish / Hub button — visible once artifact is DB-saved (dbId set) */}
+          {activeArtifact.dbId && !activeArtifact.isStreaming && (
+            <button
+              className={`artifact-action-btn artifact-publish-btn ${activeArtifact.isPublic ? 'artifact-publish-btn--public' : ''}`}
+              onClick={() => setPublishModalOpen(true)}
+              title={activeArtifact.isPublic ? 'Manage Hub listing' : 'Publish to Artifact Hub'}
+            >
+              {activeArtifact.isPublic ? <Globe size={15} /> : <Zap size={15} />}
+            </button>
+          )}
           <button className="artifact-action-btn artifact-close-btn" onClick={clearArtifact} title="Close workspace">
             <X size={16} />
           </button>
@@ -262,6 +274,13 @@ const ArtifactWorkspace: React.FC = () => {
           isStreaming={!!activeArtifact.isStreaming}
         />
       </div>
+
+      {publishModalOpen && (
+        <ArtifactPublishModal
+          artifact={activeArtifact}
+          onClose={() => setPublishModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

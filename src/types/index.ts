@@ -63,6 +63,12 @@ export interface Artifact {
   content: string;
   messageId: string;
   isStreaming?: boolean;
+  /** Supabase artifacts.id — populated after the artifact is saved to DB */
+  dbId?: string;
+  /** Whether this artifact has been published to the Hub */
+  isPublic?: boolean;
+  /** Globally unique slug chosen by the user at publish time */
+  slug?: string;
 }
 
 export interface ModelInfo {

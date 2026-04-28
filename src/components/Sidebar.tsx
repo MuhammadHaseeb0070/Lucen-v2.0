@@ -9,12 +9,14 @@ import {
     ChevronLeft,
     ChevronRight,
     Terminal,
-    FolderOpen
+    FolderOpen,
+    Sparkles
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { isAdminUser } from '../config/admin';
+import { useArtifactStore } from '../store/artifactStore';
 
 const Sidebar: React.FC = () => {
     const {
@@ -39,6 +41,7 @@ const Sidebar: React.FC = () => {
     } = useUIStore();
     const { user } = useAuthStore();
     const isAdmin = isAdminUser(user?.email);
+    const { artifactHubOpen, setArtifactHubOpen } = useArtifactStore();
 
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editTitle, setEditTitle] = useState('');
@@ -264,6 +267,21 @@ const Sidebar: React.FC = () => {
                 >
                     <FolderOpen size={16} />
                     <span>File Library</span>
+                </div>
+            )}
+
+            {/* Artifact Hub Access */}
+            {!sidebarCollapsed && (
+                <div
+                    className={`sidebar-admin-link sidebar-hub-link ${artifactHubOpen ? 'active' : ''}`}
+                    onClick={() => {
+                        setArtifactHubOpen(true);
+                        if (isMobile() && !sidebarCollapsed) toggleSidebar();
+                    }}
+                    title="Browse & publish artifacts"
+                >
+                    <Sparkles size={16} />
+                    <span>Artifact Hub</span>
                 </div>
             )}
 

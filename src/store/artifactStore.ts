@@ -12,6 +12,11 @@ interface ArtifactStore {
   // workspace must NOT reopen for that artifact even as new stream chunks
   // arrive. Non-persisted; cleared on conversation switch.
   dismissedIds: Set<string>;
+  // Maps client artifact ID → Supabase DB UUID (populated after async save).
+  // Non-persisted — ephmeral per session.
+  dbIds: Record<string, string>;
+  // Hub panel open state
+  artifactHubOpen: boolean;
 
   setActiveArtifact: (artifact: Artifact | null) => void;
   updateArtifactContent: (artifact: Artifact) => void;
@@ -21,6 +26,13 @@ interface ArtifactStore {
   clearArtifact: () => void;
   resetDismissed: () => void;
   isDismissed: (id: string) => boolean;
+  // Set DB ID once the async save completes
+  setDbId: (clientId: string, dbId: string) => void;
+  getDbId: (clientId: string) => string | undefined;
+  // Propagate dbId / isPublic / slug back into the active artifact
+  patchActiveArtifact: (patch: Partial<Artifact>) => void;
+  // Hub
+  setArtifactHubOpen: (open: boolean) => void;
 }
 
 export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
@@ -29,6 +41,8 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
   panelWidthPercent: 50,
   previewViewport: 'full',
   dismissedIds: new Set<string>(),
+  dbIds: {},
+  artifactHubOpen: false,
 
   setActiveArtifact: (artifact) => {
     if (!artifact) {
@@ -40,8 +54,10 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
     // flow again and the workspace actually opens.
     const nextDismissed = new Set(get().dismissedIds);
     nextDismissed.delete(artifact.id);
+    // Rehydrate dbId / isPublic / slug from our dbIds map if available
+    const dbId = get().dbIds[artifact.id];
     set({
-      activeArtifact: artifact,
+      activeArtifact: dbId ? { ...artifact, dbId } : artifact,
       viewMode: 'preview',
       dismissedIds: nextDismissed,
     });
@@ -61,6 +77,7 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
   setPanelWidthPercent: (pct) => set({ panelWidthPercent: Math.max(25, Math.min(75, pct)) }),
   setPreviewViewport: (vp) => set({ previewViewport: vp }),
+
   clearArtifact: () => {
     const current = get().activeArtifact;
     const nextDismissed = new Set(get().dismissedIds);
@@ -72,6 +89,26 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
       dismissedIds: nextDismissed,
     });
   },
+
   resetDismissed: () => set({ dismissedIds: new Set<string>() }),
   isDismissed: (id) => get().dismissedIds.has(id),
+
+  setDbId: (clientId, dbId) => {
+    set((state) => ({ dbIds: { ...state.dbIds, [clientId]: dbId } }));
+    // Also patch the active artifact if it's the one we just saved
+    const active = get().activeArtifact;
+    if (active && active.id === clientId) {
+      set({ activeArtifact: { ...active, dbId } });
+    }
+  },
+
+  getDbId: (clientId) => get().dbIds[clientId],
+
+  patchActiveArtifact: (patch) => {
+    const active = get().activeArtifact;
+    if (!active) return;
+    set({ activeArtifact: { ...active, ...patch } });
+  },
+
+  setArtifactHubOpen: (open) => set({ artifactHubOpen: open }),
 }));
