@@ -1334,22 +1334,33 @@ async function streamViaEdgeFunction(
             callbacks.onWebSearchUsed?.(searchUrls);
             webSearchUsed = true;
             // Inject real search results directly — NO `plugins` field.
-            // The main model reads the system message and answers natively.
-            requestPayload.messages = [
-                ...(requestPayload.messages as Array<Record<string, unknown>>),
-                {
+            // By appending directly to the user's message, we ensure the model sees
+            // the results BEFORE it decides to trigger its own internal search tool.
+            const msgs = requestPayload.messages as Array<Record<string, unknown>>;
+            let lastUserIdx = -1;
+            for (let i = msgs.length - 1; i >= 0; i--) {
+                if (msgs[i].role === 'user') {
+                    lastUserIdx = i;
+                    break;
+                }
+            }
+
+            const searchInjection = `\n\n[SYSTEM INJECTION: WEB SEARCH ALREADY COMPLETED]\n${searchResults}\n\nCRITICAL INSTRUCTION: The web search requested above has ALREADY been executed automatically by the system. The results are provided above. You MUST NOT attempt to invoke any search tools, output search queries, or generate internal tool blocks. You must immediately synthesize these results into a highly detailed, comprehensive, and tailored natural language response to the user's original request. Do not ask the user to find information themselves.`;
+            const urlInjection = urls.length > 0 ? `\n\n[User referenced these URLs: ${urls.join(', ')}. Retrieve and use their content.]` : '';
+            const finalInjection = searchInjection + urlInjection;
+
+            if (lastUserIdx !== -1) {
+                const currentContent = msgs[lastUserIdx].content;
+                if (typeof currentContent === 'string') {
+                    msgs[lastUserIdx].content = currentContent + finalInjection;
+                } else if (Array.isArray(currentContent)) {
+                    currentContent.push({ type: 'text', text: finalInjection });
+                }
+            } else {
+                msgs.push({
                     role: 'system',
-                    content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: A web search has already been successfully executed for you. You must use these results to answer the user directly. Do NOT attempt to invoke any search tools or generate internal tool blocks. Provide your response entirely in natural language, ensuring it is a complete, highly detailed, and tailored answer to the user's original request. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
-                },
-            ];
-            if (urls.length > 0) {
-                requestPayload.messages = [
-                    ...(requestPayload.messages as Array<Record<string, unknown>>),
-                    {
-                        role: 'system',
-                        content: `[User referenced these URLs: ${urls.join(', ')}. Retrieve and use their content.]`,
-                    },
-                ];
+                    content: finalInjection.trim()
+                });
             }
         } else if (webSearchEnabled && !clarificationNeeded && !webSearchUsed) {
             // Classify-intent did not produce usable results (either skip or
