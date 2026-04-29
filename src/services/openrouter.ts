@@ -1339,7 +1339,7 @@ async function streamViaEdgeFunction(
                 ...(requestPayload.messages as Array<Record<string, unknown>>),
                 {
                     role: 'system',
-                    content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: A web search has already been successfully executed for you. You must use these results to answer the user directly. Do NOT attempt to invoke any search tools, and do NOT output <tool_code> or <task> blocks. Provide your response entirely in natural language. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
+                    content: `[Web Search Results Injected]\n${searchResults}\n\nINSTRUCTIONS: A web search has already been successfully executed for you. You must use these results to answer the user directly. Do NOT attempt to invoke any search tools or generate internal tool blocks. Provide your response entirely in natural language, ensuring it is a complete, highly detailed, and tailored answer to the user's original request. Do not ask the user to find information themselves. Do not ask about timezone or competition unless the user hasn't mentioned it at all in the entire conversation. Make reasonable assumptions. If results lack detail, say so briefly and use your training knowledge to supplement.`,
                 },
             ];
             if (urls.length > 0) {
