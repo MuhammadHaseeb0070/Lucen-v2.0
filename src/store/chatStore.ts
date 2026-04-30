@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Conversation, Message } from '../types';
 import { hasActiveSessionSync, supabase } from '../lib/supabase';
 import * as db from '../services/database';
+import type { SearchResult } from '../services/database';
 import { MIDSTREAM_PERSIST_MS } from '../config/models';
 import { captureCall } from './debugStore';
 
@@ -150,6 +151,12 @@ interface ChatStore {
     isSynced: boolean;
     drafts: Record<string, string>;
 
+    // Search state
+    searchQuery: string;
+    searchResults: SearchResult[] | null;
+    isSearching: boolean;
+    searchError: string | null;
+
     // Conversation actions
     createConversation: (templateId?: string) => string;
     deleteConversation: (id: string) => void;
@@ -171,6 +178,10 @@ interface ChatStore {
     getDraft: (convId: string) => string;
     updateConversationTemplate: (convId: string, templateId: string) => void;
 
+    // Search actions
+    setSearchQuery: (query: string) => void;
+    performSearch: () => Promise<void>;
+
     // Supabase sync
     loadFromSupabase: () => Promise<void>;
     loadMessages: (convId: string) => Promise<void>;
@@ -185,6 +196,10 @@ export const useChatStore = create<ChatStore>()(
             isMessageLoading: false,
             isSynced: false,
             drafts: {},
+            searchQuery: '',
+            searchResults: null,
+            isSearching: false,
+            searchError: null,
 
             createConversation: (templateId?: string) => {
                 const id = uuidv4();
@@ -657,6 +672,48 @@ export const useChatStore = create<ChatStore>()(
             },
 
             // ═══════════════════════════════════════════
+            //  SEARCH
+            // ═══════════════════════════════════════════
+
+            setSearchQuery: (query: string) => {
+                set({ searchQuery: query });
+                if (!query.trim()) {
+                    set({ searchResults: null, isSearching: false, searchError: null });
+                }
+            },
+
+            performSearch: async () => {
+                const query = get().searchQuery;
+                if (!query.trim()) {
+                    set({ searchResults: null, isSearching: false, searchError: null });
+                    return;
+                }
+
+                set({ isSearching: true, searchError: null });
+                
+                try {
+                    const results = await db.searchConversations(query);
+                    if (results === null) {
+                        set({ 
+                            searchError: 'Unable to search at the moment. Please try again.',
+                            isSearching: false 
+                        });
+                    } else {
+                        set({ 
+                            searchResults: results, 
+                            isSearching: false,
+                            searchError: null 
+                        });
+                    }
+                } catch (err) {
+                    set({ 
+                        searchError: 'An unexpected error occurred during search.',
+                        isSearching: false 
+                    });
+                }
+            },
+
+            // ═══════════════════════════════════════════
             //  SUPABASE SYNC
             // ═══════════════════════════════════════════
 
@@ -702,6 +759,10 @@ export const useChatStore = create<ChatStore>()(
                 isLoading: false,
                 isMessageLoading: false,
                 isSynced: false,
+                isSearching: false,
+                searchQuery: '',
+                searchResults: null,
+                searchError: null,
                 // Do not cache conversations locally to force full-stack sync 
                 // from Supabase
                 conversations: [],

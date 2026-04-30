@@ -10,7 +10,9 @@ import {
     ChevronRight,
     Terminal,
     FolderOpen,
-    Sparkles
+    Sparkles,
+    Search,
+    Loader2
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
@@ -27,6 +29,12 @@ const Sidebar: React.FC = () => {
         renameConversation,
         setActiveConversation,
         isLoading: chatsLoading,
+        searchQuery,
+        setSearchQuery,
+        searchResults,
+        isSearching,
+        searchError,
+        performSearch,
     } = useChatStore();
 
     const {
@@ -47,6 +55,15 @@ const Sidebar: React.FC = () => {
     const [editTitle, setEditTitle] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [isResizing, setIsResizing] = useState(false);
+
+    React.useEffect(() => {
+        const handler = setTimeout(() => {
+            if (searchQuery.trim()) {
+                performSearch();
+            }
+        }, 500); // 500ms debounce
+        return () => clearTimeout(handler);
+    }, [searchQuery, performSearch]);
 
     const isMobile = () => window.innerWidth <= 768;
 
@@ -143,6 +160,40 @@ const Sidebar: React.FC = () => {
                 </button>
             </div>
 
+            <div className="sidebar-search-container" style={{ padding: '0 12px 12px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+                    <input
+                        type="text"
+                        placeholder="Search chats..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '8px 12px 8px 32px',
+                            borderRadius: 'var(--r-md)',
+                            border: '1px solid var(--border-subtle)',
+                            background: 'var(--bg-muted)',
+                            color: 'var(--text-primary)',
+                            fontSize: '13px',
+                            outline: 'none',
+                            transition: 'border-color 0.2s',
+                        }}
+                        onFocus={(e) => e.target.style.borderColor = 'var(--brand-primary)'}
+                        onBlur={(e) => e.target.style.borderColor = 'var(--border-subtle)'}
+                    />
+                    {searchQuery && (
+                        <button 
+                            onClick={() => setSearchQuery('')}
+                            style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Clear search"
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
             <div className="sidebar-chat-list">
                 {chatsLoading ? (
                     <div className="sidebar-chat-skeleton-container" style={{ padding: '0 12px' }}>
@@ -150,12 +201,59 @@ const Sidebar: React.FC = () => {
                             <div key={i} className="chat-item-skeleton" style={{ height: '38px', borderRadius: 'var(--r-md)', background: 'var(--bg-muted)', opacity: 0.6, marginBottom: '8px', animation: 'pulse 1.5s infinite ease-in-out' }} />
                         ))}
                     </div>
+                ) : searchQuery.trim() ? (
+                    // ─── SEARCH RESULTS VIEW ───
+                    isSearching ? (
+                        <div className="sidebar-empty" style={{ opacity: 0.7 }}>
+                            <Loader2 size={24} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
+                            <p style={{ marginTop: '12px' }}>Searching chats...</p>
+                        </div>
+                    ) : searchError ? (
+                        <div className="sidebar-empty" style={{ color: 'var(--danger)' }}>
+                            <X size={24} />
+                            <p style={{ marginTop: '12px', textAlign: 'center', padding: '0 12px' }}>{searchError}</p>
+                        </div>
+                    ) : searchResults && searchResults.length === 0 ? (
+                        <div className="sidebar-empty">
+                            <Search size={24} />
+                            <p style={{ marginTop: '12px' }}>No matching chats found.</p>
+                        </div>
+                    ) : (
+                        searchResults?.map((res) => (
+                            <div
+                                key={res.conversationId}
+                                className={`sidebar-chat-item ${res.conversationId === activeConversationId && !isAdminView ? 'active' : ''}`}
+                                onClick={() => {
+                                    setIsAdminView(false);
+                                    setActiveConversation(res.conversationId);
+                                    if (isMobile() && !sidebarCollapsed) toggleSidebar();
+                                }}
+                                style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '10px 12px', gap: '4px' }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                                    <div className="chat-item-info">
+                                        <MessageSquare size={14} />
+                                        <span className="chat-item-title" title={res.title} style={{ fontWeight: 500 }}>{res.title}</span>
+                                    </div>
+                                    <span className="chat-item-date" style={{ fontSize: '11px' }}>{formatDate(res.updatedAt)}</span>
+                                </div>
+                                {res.matchExcerpt && (
+                                    <div 
+                                        style={{ fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', width: '100%', lineHeight: 1.4 }}
+                                        dangerouslySetInnerHTML={{ __html: res.matchExcerpt.replace(/<b/g, '<b style="color:var(--text-primary)"') }} 
+                                    />
+                                )}
+                            </div>
+                        ))
+                    )
                 ) : conversations.length === 0 ? (
+                    // ─── NORMAL EMPTY VIEW ───
                     <div className="sidebar-empty">
                         <MessageSquare size={24} />
                         <p>No conversations yet</p>
                     </div>
                 ) : (
+                    // ─── NORMAL LIST VIEW ───
                     [...conversations]
                         .sort((a, b) => b.updatedAt - a.updatedAt)
                         .map((conv) => (

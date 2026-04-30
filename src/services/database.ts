@@ -475,3 +475,42 @@ function dbToMessage(row: DbMessage): Message {
         })),
     };
 }
+
+// ═══════════════════════════════════════════
+//  SEARCH
+// ═══════════════════════════════════════════
+
+export interface SearchResult {
+    conversationId: string;
+    title: string;
+    updatedAt: number;
+    matchExcerpt: string;
+}
+
+/** Search conversations and messages using Full-Text Search */
+export async function searchConversations(query: string): Promise<SearchResult[] | null> {
+    if (!hasActiveSessionSync() || !supabase) return null;
+    if (!query || query.trim() === '') return [];
+
+    try {
+        const { data, error } = await supabase.rpc('search_chat_history', {
+            search_query: query,
+        });
+
+        if (error) {
+            console.error('[DB] searchConversations error:', error);
+            // Return null so the UI can gracefully show a fallback instead of crashing
+            return null;
+        }
+
+        return (data || []).map((row: any) => ({
+            conversationId: row.conversation_id,
+            title: row.title,
+            updatedAt: new Date(row.updated_at).getTime(),
+            matchExcerpt: row.match_excerpt || '',
+        }));
+    } catch (err) {
+        console.error('[DB] searchConversations exception:', err);
+        return null;
+    }
+}
