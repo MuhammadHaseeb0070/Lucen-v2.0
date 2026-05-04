@@ -1,13 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef, useLayoutEffect } from 'react';
 import {
     useThemeStore,
     THEME_PRESETS,
     THEME_SOLID_COLOR_KEYS,
     THEME_ALPHA_COLOR_KEYS,
     THEME_COLOR_LABELS,
-    CHAT_FONT_OPTIONS,
     CHAT_SIZE_STEPS,
     CHAT_SIZE_LABELS,
+    applyTheme,
     type ThemeColors,
 } from '../store/themeStore';
 import { SlidersHorizontal, RotateCcw } from 'lucide-react';
@@ -29,17 +29,21 @@ const ChatAppearanceSection: React.FC = () => {
         themeSource,
         customBasePresetId,
         customColors,
-        chatFontId,
         chatSizeStep,
         beginCustomTheme,
         setCustomBasePresetId,
-        setCustomColor,
+        patchCustomColors,
         resetCustomColors,
         setTheme,
-        setChatFontId,
         setChatSizeStep,
         getResolvedTheme,
     } = useThemeStore();
+
+    const settingsOpen = useThemeStore((s) => s.settingsOpen);
+
+    /** Local overlay so color drag does not write Zustand (and localStorage persist) on every pointer move. */
+    const [draftOverlay, setDraftOverlay] = useState<Partial<ThemeColors>>({});
+    const prevSettingsOpenRef = useRef(settingsOpen);
 
     const basePreset = useMemo(
         () => THEME_PRESETS.find((t) => t.id === customBasePresetId) || THEME_PRESETS[0],
@@ -47,10 +51,32 @@ const ChatAppearanceSection: React.FC = () => {
     );
 
     const mergedColors = useMemo(() => {
-        return { ...basePreset.colors, ...customColors } as ThemeColors;
-    }, [basePreset.colors, customColors]);
+        return { ...basePreset.colors, ...customColors, ...draftOverlay } as ThemeColors;
+    }, [basePreset.colors, customColors, draftOverlay]);
 
     const isCustom = themeSource === 'custom';
+
+    const flushDraftToStore = useCallback(() => {
+        const keys = Object.keys(draftOverlay) as (keyof ThemeColors)[];
+        if (keys.length === 0) return;
+        patchCustomColors(draftOverlay);
+        setDraftOverlay({});
+    }, [draftOverlay, patchCustomColors]);
+
+    useEffect(() => {
+        if (prevSettingsOpenRef.current && !settingsOpen) {
+            flushDraftToStore();
+        }
+        prevSettingsOpenRef.current = settingsOpen;
+    }, [settingsOpen, flushDraftToStore]);
+
+    /** Live preview while dragging (no Zustand persist until pointerup / blur). */
+    useLayoutEffect(() => {
+        if (Object.keys(draftOverlay).length === 0) return;
+        const preset = useThemeStore.getState().getResolvedTheme();
+        const previewColors = { ...preset.colors, ...draftOverlay };
+        applyTheme({ ...preset, colors: previewColors });
+    }, [draftOverlay]);
 
     return (
         <div className="chat-appearance">
@@ -59,32 +85,13 @@ const ChatAppearanceSection: React.FC = () => {
                 <div>
                     <h4 className="chat-appearance__title">Chat look</h4>
                     <p className="chat-appearance__subtitle">
-                        Font and text size apply to the main chat and Side Chat only. Custom colors replace the
-                        active theme everywhere.
+                        Text size applies to the main chat and Side Chat only (app font unchanged). Custom colors
+                        replace the active theme everywhere.
                     </p>
                 </div>
             </div>
 
             <div className="chat-appearance__row chat-appearance__row--typography">
-                <div className="chat-appearance__field">
-                    <label className="chat-appearance__label" htmlFor="chat-font-select">
-                        Chat font
-                    </label>
-                    <select
-                        id="chat-font-select"
-                        className="chat-appearance__select"
-                        value={chatFontId}
-                        onChange={(e) => {
-                            setChatFontId(e.target.value as (typeof CHAT_FONT_OPTIONS)[number]['id']);
-                        }}
-                    >
-                        {CHAT_FONT_OPTIONS.map((f) => (
-                            <option key={f.id} value={f.id}>
-                                {f.label}
-                            </option>
-                        ))}
-                    </select>
-                </div>
                 <div className="chat-appearance__field chat-appearance__field--grow">
                     <span className="chat-appearance__label">Text size</span>
                     <div className="chat-appearance__stepper" role="group" aria-label="Chat text size">
@@ -117,6 +124,7 @@ const ChatAppearanceSection: React.FC = () => {
                             className="chat-appearance__btn-ghost"
                             onClick={() => {
                                 resetCustomColors();
+                                setDraftOverlay({});
                             }}
                         >
                             <RotateCcw size={14} />
@@ -126,6 +134,7 @@ const ChatAppearanceSection: React.FC = () => {
                             type="button"
                             className="chat-appearance__btn-secondary"
                             onClick={() => {
+                                flushDraftToStore();
                                 setTheme(customBasePresetId);
                             }}
                         >
@@ -146,6 +155,7 @@ const ChatAppearanceSection: React.FC = () => {
                             className="chat-appearance__select"
                             value={customBasePresetId}
                             onChange={(e) => {
+                                flushDraftToStore();
                                 setCustomBasePresetId(e.target.value);
                             }}
                         >
@@ -168,7 +178,17 @@ const ChatAppearanceSection: React.FC = () => {
                                         value={hexForColorInput(mergedColors[key])}
                                         aria-label={THEME_COLOR_LABELS[key]}
                                         onChange={(e) => {
-                                            setCustomColor(key, e.target.value);
+                                            const v = e.target.value;
+                                            setDraftOverlay((d) => ({ ...d, [key]: v }));
+                                        }}
+                                        onPointerUp={(e) => {
+                                            const v = (e.currentTarget as HTMLInputElement).value;
+                                            patchCustomColors({ [key]: v } as Partial<ThemeColors>);
+                                            setDraftOverlay((d) => {
+                                                const next = { ...d };
+                                                delete next[key];
+                                                return next;
+                                            });
                                         }}
                                     />
                                     <input
@@ -176,7 +196,16 @@ const ChatAppearanceSection: React.FC = () => {
                                         className="chat-appearance__hex-input"
                                         value={mergedColors[key]}
                                         onChange={(e) => {
-                                            setCustomColor(key, e.target.value);
+                                            setDraftOverlay((d) => ({ ...d, [key]: e.target.value }));
+                                        }}
+                                        onBlur={() => {
+                                            const v = mergedColors[key];
+                                            patchCustomColors({ [key]: v } as Partial<ThemeColors>);
+                                            setDraftOverlay((d) => {
+                                                const next = { ...d };
+                                                delete next[key];
+                                                return next;
+                                            });
                                         }}
                                         spellCheck={false}
                                     />
@@ -191,7 +220,16 @@ const ChatAppearanceSection: React.FC = () => {
                                     className="chat-appearance__hex-input chat-appearance__hex-input--wide"
                                     value={mergedColors[key]}
                                     onChange={(e) => {
-                                        setCustomColor(key, e.target.value);
+                                        setDraftOverlay((d) => ({ ...d, [key]: e.target.value }));
+                                    }}
+                                    onBlur={() => {
+                                        const v = mergedColors[key];
+                                        patchCustomColors({ [key]: v } as Partial<ThemeColors>);
+                                        setDraftOverlay((d) => {
+                                            const next = { ...d };
+                                            delete next[key];
+                                            return next;
+                                        });
                                     }}
                                     spellCheck={false}
                                     placeholder="rgba(0,0,0,0.06)"

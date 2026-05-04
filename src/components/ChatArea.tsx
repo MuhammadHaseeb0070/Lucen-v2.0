@@ -1,10 +1,11 @@
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo, useDeferredValue } from 'react';
+import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
 import { v4 as uuidv4 } from 'uuid';
 import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Pencil, Check, Loader2 } from 'lucide-react';
-import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useCreditsStore } from '../store/creditsStore';
 import { useSideChatStore } from '../store/sideChatStore';
 import Logo from './Logo';
@@ -13,16 +14,23 @@ import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
-import { highlightText } from '../lib/searchHighlight';
 import type { FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
-import FileIcon, { getFileKindLabel } from './FileIcon';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
+import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
 
 const ChatArea: React.FC = () => {
+    const activeConversationId = useChatStore((s) => s.activeConversationId);
+    const activeConv = useChatStore(
+        useShallow((s) => {
+            const id = s.activeConversationId;
+            if (!id) return undefined;
+            return s.conversations.find((c) => c.id === id);
+        })
+    );
+    const isMessageLoading = useChatStore((s) => s.isMessageLoading);
+
     const {
-        activeConversationId,
-        getActiveConversation,
         createConversation,
         addMessage,
         updateMessage,
@@ -31,10 +39,22 @@ const ChatArea: React.FC = () => {
         getDraft,
         setDraft,
         togglePinMessage,
-        isMessageLoading,
         forkConversation,
         setActiveConversation,
-    } = useChatStore();
+    } = useChatStore(
+        useShallow((s) => ({
+            createConversation: s.createConversation,
+            addMessage: s.addMessage,
+            updateMessage: s.updateMessage,
+            deleteMessagePair: s.deleteMessagePair,
+            getContextMessages: s.getContextMessages,
+            getDraft: s.getDraft,
+            setDraft: s.setDraft,
+            togglePinMessage: s.togglePinMessage,
+            forkConversation: s.forkConversation,
+            setActiveConversation: s.setActiveConversation,
+        }))
+    );
 
     const { hasEnoughCredits } = useCreditsStore();
     const { 
@@ -55,7 +75,6 @@ const ChatArea: React.FC = () => {
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const pinTrackRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
-    const activeConv = getActiveConversation();
     // @ts-ignore: Suppress Vercel unused error if it builds differently
     const model = getActiveModel();
 
@@ -97,12 +116,6 @@ const ChatArea: React.FC = () => {
         }
         setIsAutoScroll(true);
     }, []);
-
-    // Auto-scroll only when user is near the bottom (isAutoScroll = true).
-    useEffect(() => {
-        if (!isAutoScroll) return;
-        scrollToBottom();
-    }, [activeConv?.messages, isAutoScroll, scrollToBottom]);
 
     // Scroll-to-bottom FAB visibility + "follow stream" flag.
     // Do NOT set isAutoScroll from scroll while a programmatic jump to a pin/search hit is in progress,
@@ -177,6 +190,51 @@ const ChatArea: React.FC = () => {
     }, [activeConversationId]);
 
     const isStreaming = activeConv?.messages.some((m) => m.isStreaming) || false;
+    const deferredActiveConv = useDeferredValue(activeConv);
+    /** Defer heavy list reconciliation when idle; stay on the live conversation while tokens stream. */
+    const conversationForMessageList = isStreaming ? activeConv : deferredActiveConv;
+    const listConv = conversationForMessageList ?? activeConv;
+    const exchangeRows = useMemo(
+        () => buildExchangeRows(listConv?.messages ?? []),
+        [listConv?.messages],
+    );
+    const msgIdToRowIndex = useMemo(() => buildMsgIdToRowIndex(exchangeRows), [exchangeRows]);
+    const searchActive = searchOpen && searchQuery.trim().length >= 2;
+    const virtActive =
+        !isMessageLoading &&
+        !isStreaming &&
+        !searchActive &&
+        exchangeRows.length >= 36;
+    const virtualizer = useVirtualizer({
+        count: exchangeRows.length,
+        getScrollElement: () => messagesContainerRef.current,
+        estimateSize: () => 200,
+        overscan: 8,
+    });
+    const virtActiveRef = useRef(false);
+    const msgIdToRowIndexRef = useRef(new Map<string, number>());
+    const virtualizerRef = useRef<Virtualizer<HTMLDivElement, Element> | null>(null);
+    virtActiveRef.current = virtActive;
+    msgIdToRowIndexRef.current = msgIdToRowIndex;
+    virtualizerRef.current = virtualizer;
+    const lastAssistantMsgId = useMemo(() => {
+        const msgs = listConv?.messages;
+        if (!msgs) return null;
+        for (let j = msgs.length - 1; j >= 0; j--) {
+            if (msgs[j].role === 'assistant') return msgs[j].id;
+        }
+        return null;
+    }, [listConv?.messages]);
+
+    // Auto-scroll only when user is near the bottom (isAutoScroll = true).
+    useEffect(() => {
+        if (!isAutoScroll) return;
+        if (virtActive && exchangeRows.length > 0) {
+            virtualizer.scrollToIndex(exchangeRows.length - 1, { align: 'end' });
+        } else {
+            scrollToBottom();
+        }
+    }, [activeConv?.messages, isAutoScroll, virtActive, exchangeRows.length, scrollToBottom, virtualizer]);
 
     // ─── Stream helpers ───
     //
@@ -575,8 +633,24 @@ const ChatArea: React.FC = () => {
 
         const run = () => {
             const container = messagesContainerRef.current;
-            const el = container?.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
-            if (!container || !el) return;
+            if (!container) return;
+
+            if (virtActiveRef.current && virtualizerRef.current) {
+                const idx = msgIdToRowIndexRef.current.get(msgId);
+                if (idx != null) {
+                    virtualizerRef.current.scrollToIndex(idx, { align: 'center' });
+                    requestAnimationFrame(() => {
+                        const el = container.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+                        if (!el) return;
+                        el.classList.add('msg-jump-flash');
+                        window.setTimeout(() => el.classList.remove('msg-jump-flash'), 1400);
+                    });
+                    return;
+                }
+            }
+
+            const el = container.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
+            if (!el) return;
 
             const cRect = container.getBoundingClientRect();
             const eRect = el.getBoundingClientRect();
@@ -776,6 +850,13 @@ const ChatArea: React.FC = () => {
         const trackPadding = 8;
         const trackUsableHeight = Math.max(track.clientHeight - trackPadding * 2, 1);
         const toTopPx = (msgId: string) => {
+            if (virtActive && exchangeRows.length > 0) {
+                const idx = msgIdToRowIndex.get(msgId);
+                if (idx != null) {
+                    const ratio = exchangeRows.length <= 1 ? 0 : idx / (exchangeRows.length - 1);
+                    return trackPadding + ratio * trackUsableHeight;
+                }
+            }
             const el = container.querySelector(`[data-msg-id="${msgId}"]`) as HTMLElement | null;
             if (!el) return null;
             const containerRect = container.getBoundingClientRect();
@@ -829,7 +910,7 @@ const ChatArea: React.FC = () => {
         }
 
         setPinMarkers(markers);
-    }, [activeConv, matchingIds, searchOpen]);
+    }, [activeConv, matchingIds, searchOpen, virtActive, exchangeRows, msgIdToRowIndex]);
 
     useEffect(() => {
         const raf = requestAnimationFrame(recalculateTrackMarkers);
@@ -882,155 +963,6 @@ const ChatArea: React.FC = () => {
         });
         setEditingPinId(null);
         setPinLabelDraft('');
-    };
-
-    const renderMessages = () => {
-        if (!activeConv) return null;
-        const msgs = activeConv.messages;
-        const elements: React.ReactNode[] = [];
-        let lastAssistantMsgId: string | null = null;
-        for (let j = msgs.length - 1; j >= 0; j--) {
-            if (msgs[j].role === 'assistant') {
-                lastAssistantMsgId = msgs[j].id;
-                break;
-            }
-        }
-
-        for (let i = 0; i < msgs.length; i++) {
-            const msg = msgs[i];
-            if (msg.role === 'user') {
-                const nextMsg = i + 1 < msgs.length && msgs[i + 1].role === 'assistant' ? msgs[i + 1] : null;
-                const pairHighlighted = highlightedPairId === msg.id;
-                const isDimmed = searchQuery && !matchingIds.has(msg.id) && !(nextMsg && matchingIds.has(nextMsg.id));
-                const isActiveMatch = activeMatchMsgId === msg.id || activeMatchMsgId === nextMsg?.id;
-                const hasReasoning = nextMsg?.reasoning || nextMsg?.isReasoningStreaming;
-                const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-
-                elements.push(
-                    <div
-                        key={msg.id}
-                        className={`msg-exchange ${pairHighlighted ? 'msg-exchange--danger' : ''} ${isActiveMatch ? 'msg-exchange--active-match' : ''} ${isDimmed ? 'msg-exchange--dimmed' : ''} ${msg.isPinned || nextMsg?.isPinned ? 'msg-exchange--pinned' : ''}`}
-                    >
-                        <div className="msg-timestamp">
-                            <span>{timeStr}</span>
-                            <span className="msg-timestamp__you">You</span>
-                        </div>
-                        <div className="msg-user-row" data-msg-id={msg.id}>
-                            <div className="msg-user-bubble">
-                                {searchQuery.trim()
-                                    ? highlightText(msg.content, searchQuery.trim())
-                                    : msg.content}
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                    <div className="msg-attachments">
-                                        {msg.attachments.map((att) => (
-                                            att.type === 'image' && att.dataUrl ? (
-                                                <img 
-                                                    key={att.id} 
-                                                    src={att.dataUrl} 
-                                                    alt={att.name} 
-                                                    className="msg-attachment-img clickable" 
-                                                    onClick={() => {
-                                                        setViewerFile({
-                                                            id: att.id,
-                                                            name: att.name,
-                                                            type: 'image',
-                                                            url: att.dataUrl
-                                                        });
-                                                        setViewerOpen(true);
-                                                    }}
-                                                />
-                                            ) : (
-                                                <button
-                                                    key={att.id}
-                                                    type="button"
-                                                    className="msg-attachment-file clickable"
-                                                    onClick={() => {
-                                                        setViewerFile({
-                                                            id: att.id,
-                                                            name: att.name,
-                                                            type: att.type,
-                                                            textContent: att.textContent,
-                                                            aiDescription: att.aiDescription
-                                                        });
-                                                        setViewerOpen(true);
-                                                    }}
-                                                    title={att.name}
-                                                >
-                                                    <FileIcon name={att.name} type={att.type} size={24} badge />
-                                                    <span className="msg-attachment-file-meta">
-                                                        <span className="msg-attachment-file-name">{att.name}</span>
-                                                        <span className="msg-attachment-file-sub">{getFileKindLabel(att.name, att.type)}</span>
-                                                    </span>
-                                                </button>
-                                            )
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <MessageBubble
-                                message={msg}
-                                showDelete={false}
-                                actionsOnly
-                            />
-                        </div>
-                        {nextMsg && (
-                            <div className="msg-ai-row" data-msg-id={nextMsg.id}>
-                                <div className="msg-ai-icon"><Logo size={16} /></div>
-                                <div className="msg-ai-content">
-                                    <div className="msg-ai-header">
-                                        <span className="msg-ai-name">Lucen AI</span>
-                                        {hasReasoning && <span className="msg-reasoning-badge">Reasoning</span>}
-                                    </div>
-                                    <MessageBubble
-                                        message={nextMsg}
-                                        onRetry={handleRetry}
-                                        onContinue={handleContinue}
-                                        onFork={handleFork}
-                                        onToggleLink={handleToggleLink}
-                                        onPin={handlePin}
-                                        isLinked={injectedContext.some(m => m.id === nextMsg.id)}
-                                        showRetry={nextMsg.id === lastAssistantMsgId}
-                                        searchQuery={searchQuery.trim() || undefined}
-                                        showDelete
-                                        onDelete={(ignoredMsgId: string) => { void ignoredMsgId; handleDelete(msg.id); }}
-                                        onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-                if (nextMsg) i++;
-            } else {
-                const isDimmed = searchQuery && !matchingIds.has(msg.id);
-                const isActiveMatch = activeMatchMsgId === msg.id;
-                elements.push(
-                    <div key={msg.id} className={`msg-exchange ${isActiveMatch ? 'msg-exchange--active-match' : ''} ${isDimmed ? 'msg-exchange--dimmed' : ''}`}>
-                        <div className="msg-ai-row" data-msg-id={msg.id}>
-                            <div className="msg-ai-icon"><Logo size={16} /></div>
-                            <div className="msg-ai-content">
-                                <div className="msg-ai-header">
-                                    <span className="msg-ai-name">Lucen AI</span>
-                                </div>
-                                <MessageBubble
-                                    message={msg}
-                                    onRetry={handleRetry}
-                                    onContinue={handleContinue}
-                                    onFork={handleFork}
-                                    onToggleLink={handleToggleLink}
-                                    onPin={handlePin}
-                                    isLinked={injectedContext.some(m => m.id === msg.id)}
-                                    showRetry={msg.id === lastAssistantMsgId}
-                                    searchQuery={searchQuery.trim() || undefined}
-                                    showDelete={false}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-        }
-        return elements;
     };
 
     return (
@@ -1196,7 +1128,75 @@ const ChatArea: React.FC = () => {
                     </div>
                 ) : (
                     <div className="messages-list">
-                        {renderMessages()}
+                        {virtActive ? (
+                            <div
+                                style={{
+                                    height: virtualizer.getTotalSize(),
+                                    position: 'relative',
+                                    width: '100%',
+                                }}
+                            >
+                                {virtualizer.getVirtualItems().map((vRow) => {
+                                    const row = exchangeRows[vRow.index];
+                                    return (
+                                        <div
+                                            key={vRow.key}
+                                            data-index={vRow.index}
+                                            ref={virtualizer.measureElement}
+                                            style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                left: 0,
+                                                width: '100%',
+                                                transform: `translateY(${vRow.start}px)`,
+                                            }}
+                                        >
+                                            <ChatExchangeRow
+                                                row={row}
+                                                searchQuery={searchQuery}
+                                                matchingIds={matchingIds}
+                                                activeMatchMsgId={activeMatchMsgId}
+                                                highlightedPairId={highlightedPairId}
+                                                lastAssistantMsgId={lastAssistantMsgId}
+                                                injectedContext={injectedContext}
+                                                setViewerFile={setViewerFile}
+                                                setViewerOpen={setViewerOpen}
+                                                handleRetry={handleRetry}
+                                                handleContinue={handleContinue}
+                                                handleFork={handleFork}
+                                                handleToggleLink={handleToggleLink}
+                                                handlePin={handlePin}
+                                                handleDelete={handleDelete}
+                                                setHighlightedPairId={setHighlightedPairId}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            exchangeRows.map((row) => (
+                                <React.Fragment key={row.kind === 'pair' ? row.user.id : row.msg.id}>
+                                    <ChatExchangeRow
+                                        row={row}
+                                        searchQuery={searchQuery}
+                                        matchingIds={matchingIds}
+                                        activeMatchMsgId={activeMatchMsgId}
+                                        highlightedPairId={highlightedPairId}
+                                        lastAssistantMsgId={lastAssistantMsgId}
+                                        injectedContext={injectedContext}
+                                        setViewerFile={setViewerFile}
+                                        setViewerOpen={setViewerOpen}
+                                        handleRetry={handleRetry}
+                                        handleContinue={handleContinue}
+                                        handleFork={handleFork}
+                                        handleToggleLink={handleToggleLink}
+                                        handlePin={handlePin}
+                                        handleDelete={handleDelete}
+                                        setHighlightedPairId={setHighlightedPairId}
+                                    />
+                                </React.Fragment>
+                            ))
+                        )}
                         <div ref={messagesEndRef} />
                     </div>
                 )}

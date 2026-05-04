@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe, Split } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
-import { parseArtifacts } from '../lib/artifactParser';
+import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
+import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
 
@@ -23,6 +24,9 @@ interface MessageBubbleProps {
     disableReasoning?: boolean;
     disableArtifacts?: boolean;
 }
+
+/** Beyond this size, artifact tag parsing runs in a Web Worker to avoid main-thread stalls. */
+const ARTIFACT_PARSE_WORKER_MIN_CHARS = 12_000;
 
 const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     message,
@@ -49,20 +53,57 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
     const isDismissed = useArtifactStore((s) => s.isDismissed);
 
-    const { cleanContent, artifacts } = useMemo(() => {
-        // Even when we are not rendering artifacts (e.g. side chat),
-        // we still strip the tags so the user sees clean "basic chat" text.
-        // When the owning message has stopped streaming but the model never
-        // emitted a closing </lucen_artifact>, the parser auto-closes the
-        // tag (forceClose=true) so the card renders as complete-if-truncated
-        // instead of hanging on "Generating". Authority on streaming state
-        // is the message, not the parser.
-        const parsed = parseArtifacts(message.content, message.id, !message.isStreaming);
-        if (disableArtifacts) {
-            return { cleanContent: parsed.cleanContent, artifacts: [] };
+    const parseSerialRef = useRef(0);
+    const [parsed, setParsed] = useState<ParseResult | null>(() => {
+        const content = message.content;
+        if (!content || !content.includes('<lucen_artifact')) {
+            return { cleanContent: content, artifacts: [] };
         }
-        return { cleanContent: parsed.cleanContent, artifacts: parsed.artifacts };
+        if (content.length >= ARTIFACT_PARSE_WORKER_MIN_CHARS && !message.isStreaming) {
+            return null;
+        }
+        return parseArtifacts(content, message.id, !message.isStreaming);
+    });
+    const [workerParsing, setWorkerParsing] = useState(false);
+
+    useLayoutEffect(() => {
+        const content = message.content;
+        const forceClose = !message.isStreaming;
+
+        if (!content || !content.includes('<lucen_artifact')) {
+            setWorkerParsing(false);
+            setParsed({ cleanContent: content, artifacts: [] });
+            return;
+        }
+
+        // Streaming stays on the main thread so chunk updates do not flood the worker.
+        if (message.isStreaming || content.length < ARTIFACT_PARSE_WORKER_MIN_CHARS) {
+            setWorkerParsing(false);
+            const next = parseArtifacts(content, message.id, forceClose);
+            setParsed(disableArtifacts ? { cleanContent: next.cleanContent, artifacts: [] } : next);
+            return;
+        }
+
+        const mySerial = ++parseSerialRef.current;
+        const requestId = `${message.id}:${mySerial}:${content.length}`;
+        setWorkerParsing(true);
+
+        parseArtifactsOffThread(requestId, content, message.id, forceClose)
+            .then((result) => {
+                if (mySerial !== parseSerialRef.current) return;
+                setWorkerParsing(false);
+                setParsed(disableArtifacts ? { cleanContent: result.cleanContent, artifacts: [] } : result);
+            })
+            .catch(() => {
+                if (mySerial !== parseSerialRef.current) return;
+                setWorkerParsing(false);
+                const fallback = parseArtifacts(content, message.id, forceClose);
+                setParsed(disableArtifacts ? { cleanContent: fallback.cleanContent, artifacts: [] } : fallback);
+            });
     }, [disableArtifacts, message.content, message.id, message.isStreaming]);
+
+    const cleanContent = parsed?.cleanContent ?? '';
+    const artifacts = parsed?.artifacts ?? [];
 
     const normalizedReasoning = useMemo(() => {
         const raw = (message.reasoning || '').trim();
@@ -260,6 +301,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 </div>
             ) : (
                 <>
+                    {workerParsing && !cleanContent && !message.isStreaming && (
+                        <div className="artifact-parse-loading" aria-live="polite">
+                            <Loader2 size={14} className="artifact-parse-loading__spin" />
+                            <span>Processing artifact…</span>
+                        </div>
+                    )}
                     {cleanContent && <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />}
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />

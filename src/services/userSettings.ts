@@ -10,7 +10,6 @@ export interface AppearanceSettingsPayload {
     activeThemeId: string;
     customBasePresetId: string;
     customColors: Record<string, string>;
-    chatFontId: string;
     chatSizeStep: number;
 }
 
@@ -83,7 +82,6 @@ export function parseAppearanceFromSettings(settings: Record<string, unknown>): 
     const themeSource = a.themeSource === 'custom' ? 'custom' : 'preset';
     const activeThemeId = typeof a.activeThemeId === 'string' ? a.activeThemeId : undefined;
     const customBasePresetId = typeof a.customBasePresetId === 'string' ? a.customBasePresetId : undefined;
-    const chatFontId = typeof a.chatFontId === 'string' ? a.chatFontId : undefined;
     const chatSizeStep = typeof a.chatSizeStep === 'number' && Number.isFinite(a.chatSizeStep) ? a.chatSizeStep : undefined;
 
     let customColors: Record<string, string> | undefined;
@@ -98,7 +96,6 @@ export function parseAppearanceFromSettings(settings: Record<string, unknown>): 
     if (activeThemeId !== undefined) out.activeThemeId = activeThemeId;
     if (customBasePresetId !== undefined) out.customBasePresetId = customBasePresetId;
     if (customColors !== undefined) out.customColors = customColors;
-    if (chatFontId !== undefined) out.chatFontId = chatFontId;
     if (chatSizeStep !== undefined) out.chatSizeStep = chatSizeStep;
     return out;
 }

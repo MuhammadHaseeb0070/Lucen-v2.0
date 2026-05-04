@@ -61,7 +61,6 @@
 
     /* Chat appearance (overridden in JS via themeStore) */
     --chat-font-scale: 1;
-    --chat-font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 /* ─── Reset ─── */
@@ -1678,6 +1677,25 @@ h4 {
     }
 }
 
+.artifact-parse-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 6px 0 10px;
+}
+
+.artifact-parse-loading__spin {
+    animation: artifact-spin 0.9s linear infinite;
+}
+
+@keyframes artifact-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* ─── Reasoning ─── */
 .reasoning-block {
     margin-bottom: 14px;
@@ -3189,12 +3207,10 @@ h4 {
 
 .chat-area .suggestion-chip {
     font-size: calc(0.85rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .chat-area .chat-search-input {
     font-size: calc(0.88rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .chat-area .msg-timestamp {
@@ -3203,12 +3219,10 @@ h4 {
 
 .chat-area .msg-user-bubble {
     font-size: calc(0.92rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .chat-area .msg-ai-name {
     font-size: calc(0.82rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .chat-area .msg-reasoning-badge {
@@ -3217,7 +3231,6 @@ h4 {
 
 .chat-area .msg-ai-drafting {
     font-size: calc(0.82rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .chat-area .msg-response {
@@ -3226,7 +3239,6 @@ h4 {
 
 .chat-area .markdown-body {
     font-size: calc(0.95rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .chat-area .markdown-body h1 {
@@ -3251,7 +3263,6 @@ h4 {
 
 .chat-area .message-textarea {
     font-size: calc(0.92rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .side-chat-panel .sc-timestamp {
@@ -3260,12 +3271,10 @@ h4 {
 
 .side-chat-panel .sc-user-bubble {
     font-size: calc(0.82rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .side-chat-panel .sc-ai-name {
     font-size: calc(0.75rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .side-chat-panel .sc-reasoning-badge {
@@ -3274,12 +3283,10 @@ h4 {
 
 .side-chat-panel .sc-ai-drafting {
     font-size: calc(0.75rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .side-chat-panel .sc-response .markdown-body {
     font-size: calc(0.82rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 .side-chat-panel .side-chat-empty {
@@ -3292,7 +3299,6 @@ h4 {
 
 .side-chat-panel .message-textarea {
     font-size: calc(0.82rem * var(--chat-font-scale));
-    font-family: var(--chat-font-family);
 }
 
 /* ═══════════════════════════════════════════

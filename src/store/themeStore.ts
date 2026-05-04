@@ -79,58 +79,6 @@ export const THEME_COLOR_LABELS: Record<keyof ThemeColors, string> = {
 export const CHAT_SIZE_STEPS = [0.92, 0.96, 1, 1.06, 1.12] as const;
 export const CHAT_SIZE_LABELS = ['Smaller', 'Small', 'Default', 'Large', 'Larger'] as const;
 
-export const CHAT_FONT_OPTIONS = [
-    {
-        id: 'inter',
-        label: 'Inter',
-        stack: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        href: null as string | null,
-    },
-    {
-        id: 'dm-sans',
-        label: 'DM Sans',
-        stack: "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        href: 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap',
-    },
-    {
-        id: 'source-serif',
-        label: 'Source Serif 4',
-        stack: "'Source Serif 4', Georgia, 'Times New Roman', serif",
-        href: 'https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap',
-    },
-    {
-        id: 'ibm-plex',
-        label: 'IBM Plex Sans',
-        stack: "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap',
-    },
-] as const;
-
-export type ChatFontId = (typeof CHAT_FONT_OPTIONS)[number]['id'];
-
-const LOADED_FONT_IDS = new Set<string>();
-
-export function ensureChatFontLoaded(fontId: ChatFontId): void {
-    const opt = CHAT_FONT_OPTIONS.find((f) => f.id === fontId);
-    if (!opt?.href) return;
-    if (LOADED_FONT_IDS.has(fontId)) return;
-    const domId = `lucen-chat-font-${fontId}`;
-    if (document.getElementById(domId)) {
-        LOADED_FONT_IDS.add(fontId);
-        return;
-    }
-    const link = document.createElement('link');
-    link.id = domId;
-    link.rel = 'stylesheet';
-    link.href = opt.href;
-    document.head.appendChild(link);
-    LOADED_FONT_IDS.add(fontId);
-}
-
-export function getChatFontStack(fontId: ChatFontId): string {
-    return CHAT_FONT_OPTIONS.find((f) => f.id === fontId)?.stack ?? CHAT_FONT_OPTIONS[0].stack;
-}
-
 function mergeThemeColors(base: ThemeColors, partial: Partial<ThemeColors>): ThemeColors {
     return { ...base, ...partial };
 }
@@ -669,7 +617,10 @@ export const THEME_PRESETS: ThemePreset[] = [
 // ─── Theme Store ───
 export type ThemeSource = 'preset' | 'custom';
 
-function queueAppearanceSync(): void {
+const SYNC_DEBOUNCE_MS = 400;
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushAppearanceSyncToServer(): void {
     const s = useThemeStore.getState();
     const active_theme = s.themeSource === 'custom' ? 'custom' : s.activeThemeId;
     const appearance = {
@@ -677,7 +628,6 @@ function queueAppearanceSync(): void {
         activeThemeId: s.activeThemeId,
         customBasePresetId: s.customBasePresetId,
         customColors: s.customColors,
-        chatFontId: s.chatFontId,
         chatSizeStep: s.chatSizeStep,
     };
     schedulePersistUserSettings({
@@ -686,12 +636,55 @@ function queueAppearanceSync(): void {
     });
 }
 
+/** Debounced Supabase sync so rapid theme edits (e.g. color drag) do not queue hundreds of timers. */
+function scheduleAppearanceSyncToServer(): void {
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(() => {
+        syncDebounceTimer = null;
+        flushAppearanceSyncToServer();
+    }, SYNC_DEBOUNCE_MS);
+}
+
+function buildThemeApplyFingerprint(): string {
+    const s = useThemeStore.getState();
+    const t = s.getResolvedTheme();
+    const c = t.colors;
+    return JSON.stringify({
+        themeSource: s.themeSource,
+        activeThemeId: s.activeThemeId,
+        customBasePresetId: s.customBasePresetId,
+        customColors: s.customColors,
+        chatSizeStep: s.chatSizeStep,
+        bgBase: c.bgBase,
+        bgSurface: c.bgSurface,
+        bgSurfaceHover: c.bgSurfaceHover,
+        bgMuted: c.bgMuted,
+        bgInset: c.bgInset,
+        textPrimary: c.textPrimary,
+        textSecondary: c.textSecondary,
+        textTertiary: c.textTertiary,
+        accent: c.accent,
+        accentSoft: c.accentSoft,
+        accentText: c.accentText,
+        danger: c.danger,
+        success: c.success,
+        warning: c.warning,
+        divider: c.divider,
+        shadow: c.shadow,
+        userBubbleBg: c.userBubbleBg,
+        userBubbleText: c.userBubbleText,
+        aiBubbleBg: c.aiBubbleBg,
+        aiBubbleBorder: c.aiBubbleBorder,
+    });
+}
+
+let lastThemeApplyFingerprint = '';
+
 interface ThemeStore {
     activeThemeId: string;
     themeSource: ThemeSource;
     customBasePresetId: string;
     customColors: Partial<ThemeColors>;
-    chatFontId: ChatFontId;
     chatSizeStep: number;
 
     settingsOpen: boolean;
@@ -700,6 +693,7 @@ interface ThemeStore {
     setTheme: (id: string) => void;
     setCustomBasePresetId: (id: string) => void;
     setCustomColor: (key: keyof ThemeColors, value: string) => void;
+    patchCustomColors: (patch: Partial<ThemeColors>) => void;
     resetCustomColors: () => void;
     beginCustomTheme: () => void;
     getResolvedTheme: () => ThemePreset;
@@ -709,7 +703,6 @@ interface ThemeStore {
     toggleSettings: () => void;
     setSettingsOpen: (open: boolean) => void;
     setSettingsTab: (tab: string) => void;
-    setChatFontId: (id: ChatFontId) => void;
     setChatSizeStep: (step: number) => void;
 }
 
@@ -743,7 +736,6 @@ export const useThemeStore = create<ThemeStore>()(
             themeSource: 'preset' as ThemeSource,
             customBasePresetId: 'washi',
             customColors: {} as Partial<ThemeColors>,
-            chatFontId: 'inter' as ChatFontId,
             chatSizeStep: DEFAULT_CHAT_SIZE_STEP,
 
             settingsOpen: false,
@@ -755,7 +747,7 @@ export const useThemeStore = create<ThemeStore>()(
                     themeSource: 'preset',
                     customColors: {},
                 });
-                queueAppearanceSync();
+                scheduleAppearanceSyncToServer();
             },
 
             setCustomBasePresetId: (customBasePresetId) => {
@@ -765,7 +757,7 @@ export const useThemeStore = create<ThemeStore>()(
                     customColors: {},
                     themeSource: 'custom',
                 });
-                queueAppearanceSync();
+                scheduleAppearanceSyncToServer();
             },
 
             setCustomColor: (key, value) => {
@@ -773,7 +765,15 @@ export const useThemeStore = create<ThemeStore>()(
                     customColors: { ...s.customColors, [key]: value },
                     themeSource: 'custom' as ThemeSource,
                 }));
-                queueAppearanceSync();
+                scheduleAppearanceSyncToServer();
+            },
+
+            patchCustomColors: (patch) => {
+                set((s) => ({
+                    customColors: { ...s.customColors, ...patch },
+                    themeSource: 'custom' as ThemeSource,
+                }));
+                scheduleAppearanceSyncToServer();
             },
 
             resetCustomColors: () => {
@@ -782,7 +782,7 @@ export const useThemeStore = create<ThemeStore>()(
                     customBasePresetId: s.customBasePresetId,
                     themeSource: 'custom' as ThemeSource,
                 }));
-                queueAppearanceSync();
+                scheduleAppearanceSyncToServer();
             },
 
             beginCustomTheme: () => {
@@ -797,7 +797,7 @@ export const useThemeStore = create<ThemeStore>()(
                     customBasePresetId: base.id,
                     customColors: {},
                 });
-                queueAppearanceSync();
+                scheduleAppearanceSyncToServer();
             },
 
             getResolvedTheme: () => resolveThemeFromState(get()),
@@ -808,14 +808,10 @@ export const useThemeStore = create<ThemeStore>()(
                 const appearance = parseAppearanceFromSettings(row.settings);
                 const known = (id: string) => THEME_PRESETS.some((t) => t.id === id);
 
-                const chatFontFromAppearance = (fid: string | undefined): ChatFontId =>
-                    fid && CHAT_FONT_OPTIONS.some((f) => f.id === fid) ? (fid as ChatFontId) : 'inter';
-
                 const clampStep = (n: number | undefined) =>
                     Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, n ?? DEFAULT_CHAT_SIZE_STEP));
 
                 if (appearance) {
-                    const chatFontId = chatFontFromAppearance(appearance.chatFontId);
                     const chatSizeStep = clampStep(appearance.chatSizeStep);
 
                     if (appearance.themeSource === 'custom') {
@@ -831,7 +827,6 @@ export const useThemeStore = create<ThemeStore>()(
                                     ? appearance.activeThemeId
                                     : customBasePresetId,
                             customColors: (appearance.customColors as Partial<ThemeColors>) || {},
-                            chatFontId,
                             chatSizeStep,
                         });
                     } else {
@@ -848,7 +843,6 @@ export const useThemeStore = create<ThemeStore>()(
                             activeThemeId,
                             customBasePresetId: 'washi',
                             customColors: {},
-                            chatFontId,
                             chatSizeStep,
                         });
                     }
@@ -869,21 +863,17 @@ export const useThemeStore = create<ThemeStore>()(
             setSettingsOpen: (open) => set({ settingsOpen: open }),
             setSettingsTab: (tab) => set({ settingsTab: tab }),
 
-            setChatFontId: (chatFontId) => {
-                set({ chatFontId });
-                queueAppearanceSync();
-            },
-
             setChatSizeStep: (chatSizeStep) => {
                 const step = Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, Math.round(chatSizeStep)));
                 set({ chatSizeStep: step });
-                queueAppearanceSync();
+                scheduleAppearanceSyncToServer();
             },
         }),
         {
             name: 'lucen-theme-storage',
-            version: 2,
+            version: 3,
             onRehydrateStorage: () => () => {
+                lastThemeApplyFingerprint = '';
                 applyThemeFromStore();
             },
             migrate: (persisted, fromVersion) => {
@@ -895,9 +885,11 @@ export const useThemeStore = create<ThemeStore>()(
                             typeof p.activeThemeId === 'string' && p.activeThemeId ? p.activeThemeId : 'washi';
                     }
                     if (p.customColors === undefined) p.customColors = {};
-                    if (p.chatFontId === undefined) p.chatFontId = 'inter';
                     if (p.chatSizeStep === undefined) p.chatSizeStep = DEFAULT_CHAT_SIZE_STEP;
                     if (p.activeThemeId === undefined || p.activeThemeId === '') p.activeThemeId = 'washi';
+                }
+                if (fromVersion < 3) {
+                    delete p.chatFontId;
                 }
                 return persisted as typeof persisted;
             },
@@ -906,7 +898,6 @@ export const useThemeStore = create<ThemeStore>()(
                 themeSource: s.themeSource,
                 customBasePresetId: s.customBasePresetId,
                 customColors: s.customColors,
-                chatFontId: s.chatFontId,
                 chatSizeStep: s.chatSizeStep,
             }),
         }
@@ -939,19 +930,20 @@ export function applyTheme(theme: ThemePreset): void {
     root.style.setProperty('--ai-bubble-border', c.aiBubbleBorder);
 }
 
-export function applyChatTypography(fontId: ChatFontId, sizeStep: number): void {
+export function applyChatFontScale(sizeStep: number): void {
     const root = document.documentElement;
     const step = Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, sizeStep));
     const scale = CHAT_SIZE_STEPS[step];
-    ensureChatFontLoaded(fontId);
     root.style.setProperty('--chat-font-scale', String(scale));
-    root.style.setProperty('--chat-font-family', getChatFontStack(fontId));
 }
 
-/** Apply resolved theme colors + chat typography (call after hydration or store changes). */
+/** Apply resolved theme colors + chat font scale (call after hydration or store changes). */
 export function applyThemeFromStore(): void {
+    const fp = buildThemeApplyFingerprint();
+    if (fp === lastThemeApplyFingerprint) return;
+    lastThemeApplyFingerprint = fp;
     const s = useThemeStore.getState();
     const preset = s.getResolvedTheme();
     applyTheme(preset);
-    applyChatTypography(s.chatFontId, s.chatSizeStep);
+    applyChatFontScale(s.chatSizeStep);
 }
