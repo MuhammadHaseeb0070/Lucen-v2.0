@@ -29,6 +29,7 @@ import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './Chat
 // the model gets the original turn + 3 retry passes before we give up.
 const MAX_PATCH_RETRIES = 3;
 const UPDATE_INTENT_RE = /\b(update|patch|modify|change|revise|fix)\b/i;
+const AMBIGUOUS_FOLLOWUP_RE = /\b(make it|change it|turn it|set it|make this|change this)\b/i;
 
 function toArtifactTag(artifact: Artifact): string {
     const esc = (v: string) => v.replace(/"/g, '&quot;');
@@ -928,7 +929,7 @@ const ChatArea: React.FC = () => {
         // Intent fallback: user asked to update/patch but did not explicitly
         // choose a target artifact. We require explicit targeting to avoid
         // silently patching the wrong artifact when multiple exist.
-        if (!targetedArtifact && UPDATE_INTENT_RE.test(content)) {
+        if (!targetedArtifact && (UPDATE_INTENT_RE.test(content) || AMBIGUOUS_FOLLOWUP_RE.test(content))) {
             const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
             const parsedArtifacts = (conv?.messages || []).flatMap((msg) =>
                 parseArtifacts(msg.content || '', msg.id, true).artifacts,

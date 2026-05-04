@@ -13,10 +13,10 @@ const PatchTurnReportCard: React.FC<Props> = ({ report }) => {
     report.status === 'skipped' ? <MinusCircle size={14} /> :
     <Loader2 size={14} className="patch-report-card-spin" />;
   const title =
-    report.status === 'success' ? 'Patch completed' :
-    report.status === 'failed' ? 'Patch failed' :
-    report.status === 'skipped' ? 'Patch skipped' :
-    'Patching in progress';
+    report.status === 'success' ? 'Artifact updated' :
+    report.status === 'failed' ? 'Artifact update failed' :
+    report.status === 'skipped' ? 'Artifact update skipped' :
+    'Updating artifact';
 
   return (
     <div className={`patch-report-card patch-report-card--${report.status}`}>

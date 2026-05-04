@@ -44,9 +44,10 @@ const ArtifactUpdateBinding: React.FC = () => {
       ? activeArtifact
       : (activeConversationId ? targetArtifactSnapshotByConv[activeConversationId] : null);
 
-  if (!targetId || !activeConversationId) return null;
-
-  const handleClear = () => setTargetArtifact(activeConversationId, null);
+  const handleClear = () => {
+    if (!activeConversationId) return;
+    setTargetArtifact(activeConversationId, null);
+  };
   React.useEffect(() => {
     if (!targetId || !activeConversationId) return;
     if (!boundArtifact) {
@@ -54,6 +55,7 @@ const ArtifactUpdateBinding: React.FC = () => {
     }
   }, [activeConversationId, boundArtifact, setTargetArtifact, targetId]);
 
+  if (!targetId || !activeConversationId) return null;
   if (!boundArtifact) return null;
 
   // Token-economy warnings (NFR2.2): soft + hard.
