@@ -157,6 +157,15 @@ interface ChatStore {
     isSearching: boolean;
     searchError: string | null;
 
+    // Patching engine: per-conversation ephemeral binding. When non-null,
+    // the user has clicked "Update" on an artifact and the next prompt
+    // submitted in that conversation should be routed through the patching
+    // pipeline instead of producing a new artifact. Cleared automatically
+    // after submit. NEVER persisted (see partialize config).
+    targetArtifactByConv: Record<string, string>;
+    setTargetArtifact: (convId: string, artifactId: string | null) => void;
+    getTargetArtifact: (convId: string | null | undefined) => string | null;
+
     // Conversation actions
     createConversation: (templateId?: string) => string;
     deleteConversation: (id: string) => void;
@@ -200,6 +209,21 @@ export const useChatStore = create<ChatStore>()(
             searchResults: null,
             isSearching: false,
             searchError: null,
+            targetArtifactByConv: {},
+
+            setTargetArtifact: (convId, artifactId) => {
+                set((state) => {
+                    const next = { ...state.targetArtifactByConv };
+                    if (artifactId) next[convId] = artifactId;
+                    else delete next[convId];
+                    return { targetArtifactByConv: next };
+                });
+            },
+
+            getTargetArtifact: (convId) => {
+                if (!convId) return null;
+                return get().targetArtifactByConv[convId] ?? null;
+            },
 
             createConversation: (templateId?: string) => {
                 const id = uuidv4();
@@ -763,10 +787,12 @@ export const useChatStore = create<ChatStore>()(
                 searchQuery: '',
                 searchResults: null,
                 searchError: null,
-                // Do not cache conversations locally to force full-stack sync 
+                // Do not cache conversations locally to force full-stack sync
                 // from Supabase
                 conversations: [],
                 activeConversationId: null,
+                // Patching: ephemeral; reset on every reload.
+                targetArtifactByConv: {},
             }),
         }
     )

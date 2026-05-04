@@ -2,7 +2,9 @@ import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffe
 import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
+import PatchSummaryCard from './PatchSummaryCard';
 import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
+import { parsePatches, type ParsedPatch } from '../lib/artifactPatchParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
@@ -104,6 +106,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     const cleanContent = parsed?.cleanContent ?? '';
     const artifacts = parsed?.artifacts ?? [];
+
+    // Patching engine: also extract <lucen_patch> blocks for display.
+    // Cheap re-parse on the same content — patch tags are rare and the
+    // regex returns immediately when no <lucen_patch substring exists.
+    const patches: ParsedPatch[] = useMemo(() => {
+        const content = message.content;
+        if (!content || !content.includes('<lucen_patch')) return [];
+        return parsePatches(content, !message.isStreaming).patches;
+    }, [message.content, message.isStreaming]);
 
     const normalizedReasoning = useMemo(() => {
         const raw = (message.reasoning || '').trim();
@@ -310,6 +321,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     {cleanContent && <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />}
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
+                    ))}
+                    {!disableArtifacts && patches.map((patch, idx) => (
+                        <PatchSummaryCard
+                            key={`patch-${message.id}-${idx}`}
+                            patch={patch}
+                            isStreaming={patch.isStreaming || message.isStreaming}
+                        />
                     ))}
                 </>
             )}

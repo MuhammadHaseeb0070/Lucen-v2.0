@@ -1,4 +1,4 @@
-import type { Message } from '../types';
+import type { Artifact, Message } from '../types';
 import {
     getActiveModel,
     STREAM_IDLE_TIMEOUT_MS,
@@ -21,6 +21,7 @@ import {
     type ResponseMode,
 } from './outputBudget';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
+import { isInsidePatch } from '../lib/artifactPatchParser';
 import { captureCall } from '../store/debugStore';
 
 function newRequestId(): string {
@@ -59,6 +60,25 @@ interface StreamOptions {
     // structured protocol the auto-continue loop uses. `priorAssistantText`
     // should be the partial content already shown to the user.
     continuation?: { priorAssistantText: string };
+    /**
+     * Patching engine: when set, the user clicked "Update" on an existing
+     * artifact and wants their next prompt to MODIFY that artifact rather
+     * than producing a new one. We inject the current artifact state as a
+     * <targeted_artifact> system message and tell the model to emit a
+     * <lucen_patch> block instead of a <lucen_artifact>.
+     *
+     * This is a per-turn flag — it is NOT persisted into the conversation
+     * history. Subsequent turns without the flag fall back to normal
+     * artifact-creation mode automatically.
+     */
+    targetedArtifact?: Artifact;
+    /**
+     * Patching engine: extra system note appended to the targeted-artifact
+     * injection. Used by the self-heal flow to pass an iframe runtime
+     * error and the NFR1.3 retry loop to pass "match failed" feedback
+     * back to the model.
+     */
+    patchHint?: string;
 }
 
 /**
@@ -386,11 +406,41 @@ function pruneMessagesForContext(
  * `omittedTurnsCount` > 0 adds a one-line summary note so the model knows
  * earlier history existed but was trimmed to fit the window.
  */
+function buildTargetedArtifactSystemMessage(artifact: Artifact, hint?: string): string {
+    // Compose the <targeted_artifact> system block. We DON'T HTML-encode the
+    // artifact body — the prompt instructs the model to copy <search>
+    // text verbatim from this block, so any encoding would break exact
+    // match. The risk of confusing the parser with literal `</...>` inside
+    // the artifact is mitigated by the fact that the artifact body is
+    // wrapped in a tag the patch parser doesn't look for.
+    const versionLabel = typeof artifact.version === 'number' ? `V${artifact.version}` : 'V1';
+    const idForPatch = artifact.dbId || artifact.id;
+    const filenameAttr = artifact.filename ? ` filename="${artifact.filename}"` : '';
+    const titleAttr = artifact.title ? ` title="${artifact.title.replace(/"/g, '&quot;')}"` : '';
+    const hintBlock = hint ? `\n[PATCH GUIDANCE]\n${hint}\n` : '';
+    return [
+        '<targeted_artifact',
+        ` id="${idForPatch}" version="${versionLabel}" type="${artifact.type}"${titleAttr}${filenameAttr}>`,
+        '\n',
+        artifact.content,
+        '\n</targeted_artifact>',
+        hintBlock,
+        '\n[INSTRUCTION] The user has clicked "Update" on the artifact above. Output a <lucen_patch artifact_id="',
+        idForPatch,
+        '"> block per the <artifact_patching> rules in the system prompt. Do NOT regenerate the artifact. Do NOT output a <lucen_artifact> tag. Copy <search> text verbatim from the artifact above.',
+    ].join('');
+}
+
 function buildApiMessages(
     messages: Message[],
     systemPromptOverride?: string,
     ragContext?: string | null,
-    opts: { supportsVision?: boolean; omittedTurnsCount?: number } = {},
+    opts: {
+        supportsVision?: boolean;
+        omittedTurnsCount?: number;
+        targetedArtifact?: Artifact;
+        patchHint?: string;
+    } = {},
 ): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
     const supportsVision = opts.supportsVision !== false;
@@ -447,6 +497,18 @@ function buildApiMessages(
         systemMessages.push({
             role: 'system',
             content: `[Earlier conversation summary: ${omittedTurnsCount} older turn${omittedTurnsCount === 1 ? '' : 's'} were omitted to fit the context window. Pinned messages and the most recent turns are preserved below. Do NOT mention this omission to the user.]`,
+        });
+    }
+
+    // Patching engine: when the caller has bound the next prompt to an
+    // existing artifact, inject the artifact's full current state as a
+    // system message so the model can produce a precise <lucen_patch>.
+    // Placed AFTER the conversation-omission note but BEFORE conversation
+    // history so it has high salience without polluting prior turns.
+    if (opts.targetedArtifact) {
+        systemMessages.push({
+            role: 'system',
+            content: buildTargetedArtifactSystemMessage(opts.targetedArtifact, opts.patchHint),
         });
     }
 
@@ -722,6 +784,8 @@ export async function streamChat(
     const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
         supportsVision: model.supportsVision,
         omittedTurnsCount: droppedCount,
+        targetedArtifact: options.targetedArtifact,
+        patchHint: options.patchHint,
     });
 
     const outputBudget = await computeOutputBudget(
@@ -878,13 +942,24 @@ export function buildContinuationMessages(
     priorAssistantText: string,
 ): Array<Record<string, unknown>> {
     const insideArtifact = isInsideArtifact(priorAssistantText);
+    const insidePatch = isInsidePatch(priorAssistantText);
 
     const messages: Array<Record<string, unknown>> = [
         ...apiMessages,
         { role: 'assistant', content: priorAssistantText },
     ];
 
-    if (insideArtifact) {
+    if (insidePatch) {
+        // Patch mid-stream: the most common failure mode here is the model
+        // re-emitting <lucen_patch> or restarting <block> halfway. Tell it
+        // explicitly NOT to do either and just keep typing inside the
+        // current <search>/<replace>/<block> body.
+        messages.push({
+            role: 'system',
+            content:
+                'You are mid-stream inside an unclosed <lucen_patch> tag. Do NOT re-emit the opening <lucen_patch>, do NOT restart any <block>/<search>/<replace> tag. Continue exactly where you left off. Close the open tag(s) and emit </lucen_patch> once the patch is complete.',
+        });
+    } else if (insideArtifact) {
         messages.push({
             role: 'system',
             content:

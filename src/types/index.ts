@@ -54,6 +54,67 @@ export interface SideChatState {
 
 export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file';
 
+/**
+ * Frontend status of an artifact during the agentic patching pipeline.
+ *   idle      → not actively being patched
+ *   reading   → user submitted a targeted update; we're injecting context
+ *   patching  → LLM is streaming patch blocks
+ *   verifying → patch parsed; applying search/replace + (for mermaid) parsing
+ *   failed    → patch could not be applied (no_match / multi_match / max retries)
+ */
+export type ArtifactPatchStatus =
+  | 'idle'
+  | 'reading'
+  | 'patching'
+  | 'verifying'
+  | 'failed';
+
+/**
+ * A captured runtime error from the artifact's iframe sandbox or mermaid
+ * renderer. Surfaced in the UI as a "Bug detected — fix automatically?"
+ * banner.
+ */
+export interface ArtifactRuntimeError {
+  /** Best-effort error message. */
+  message: string;
+  /** Optional stack trace (string form). */
+  stack?: string;
+  /** Source line/col when known. */
+  line?: number;
+  column?: number;
+  /** Source URL/file when known. Often the iframe srcDoc origin. */
+  source?: string;
+  /** Where the error originated. */
+  origin: 'iframe' | 'mermaid' | 'patch';
+  /** Timestamp (ms) when captured. */
+  capturedAt: number;
+}
+
+/**
+ * A snapshot of a single point in an artifact's patch lineage. The first
+ * version of a chain has parentId === undefined and versionNo === 1.
+ */
+export interface ArtifactVersion {
+  /** Supabase artifacts.id for THIS version (unique across the lineage). */
+  dbId: string;
+  /** Stable id shared by every version in the chain. The first version's dbId === lineageId. */
+  lineageId: string;
+  /** The previous version's dbId (undefined for V1). */
+  parentDbId?: string;
+  /** 1-based sequential version number within the lineage. */
+  versionNo: number;
+  /** Snapshot of the artifact content at this version. */
+  content: string;
+  /** Title at the time this version was created. */
+  title: string;
+  /** Type at the time this version was created. */
+  type: ArtifactType;
+  /** Message id of the chat turn that produced this version (the patching turn for V2+, or the original artifact-creation turn for V1). */
+  messageId: string | null;
+  /** Server timestamp (ms) when this version was inserted. */
+  createdAt: number;
+}
+
 export interface Artifact {
   id: string;
   type: ArtifactType;
@@ -71,6 +132,19 @@ export interface Artifact {
   slug?: string;
   /** Whether this artifact was imported directly from the Hub (blocks re-publishing until modified) */
   isImported?: boolean;
+  // ─── Patching-engine fields (additive, all optional) ──────────────────
+  /** 1-based version number within the lineage. Defaults to 1 when omitted. */
+  version?: number;
+  /** dbId of the previous version (undefined for V1). */
+  parentId?: string;
+  /** Stable id shared by every version of this artifact. Used by the version selector to enumerate the chain. */
+  lineageId?: string;
+  /** Cached full version chain. Lazy-loaded by useLineageHistory; absence does NOT mean no history exists. */
+  versionHistory?: ArtifactVersion[];
+  /** Latest captured runtime error from the iframe / mermaid renderer. Cleared when a successful patch lands. */
+  runtimeError?: ArtifactRuntimeError | null;
+  /** Frontend pipeline status (drives the status overlay). Defaults to 'idle' when omitted. */
+  patchStatus?: ArtifactPatchStatus;
 }
 
 export interface ModelInfo {

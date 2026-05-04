@@ -77,6 +77,20 @@ export function parseArtifacts(
   let cleanContent = content;
   let index = 0;
 
+  // Strip <lucen_patch> blocks BEFORE the artifact regex fires. Patches
+  // are routed through artifactPatchParser.ts; if we let them flow into
+  // the artifact extractor below they'd appear as conversational text
+  // (which is wrong — they're tool calls, not prose).
+  cleanContent = cleanContent.replace(
+    /<lucen_patch\s*[^>]*>[\s\S]*?<\/lucen_patch>/g,
+    ''
+  );
+  // Also strip any trailing partial patch — same rule as artifacts: the
+  // owning patch parser handles it; this parser must not emit it as
+  // conversational text.
+  cleanContent = cleanContent.replace(/<lucen_patch\s*[^>]*>[\s\S]*$/, '');
+  cleanContent = cleanContent.replace(/<lucen_patch[^>]*$/, '');
+
   // Strip markdown fences that AI might accidentally wrap around the entire artifact block
   cleanContent = cleanContent.replace(
     /```(?:xml|html|svg|mermaid|file)?\s*\n(<lucen_artifact[\s\S]*?<\/lucen_artifact>)\s*\n?```/g,

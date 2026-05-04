@@ -14,10 +14,19 @@ import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
-import type { FileAttachment, Message } from '../types';
+import type { Artifact, FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
+import { createPatchedVersion, ensureLineageId } from '../services/artifactVersionDb';
+import { parsePatches } from '../lib/artifactPatchParser';
+import { applyPatch } from '../lib/artifactPatcher';
+import ArtifactUpdateBinding from './ArtifactUpdateBinding';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
+
+// Max attempts to recover from a patch that failed to match (NFR1.3).
+// Counted starting at 0 (first failure), so MAX_PATCH_RETRIES = 3 means
+// the model gets the original turn + 3 retry passes before we give up.
+const MAX_PATCH_RETRIES = 3;
 
 const ChatArea: React.FC = () => {
     const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -80,6 +89,8 @@ const ChatArea: React.FC = () => {
 
     const pendingMainComposerPrefill = useComposerStore((s) => s.pendingMainComposerPrefill);
     const consumePendingMainComposerPrefill = useComposerStore((s) => s.consumePendingMainComposerPrefill);
+    const pendingAutoSend = useComposerStore((s) => s.pendingAutoSend);
+    const consumePendingAutoSend = useComposerStore((s) => s.consumePendingAutoSend);
 
     const [highlightedPairId, setHighlightedPairId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -183,6 +194,23 @@ const ChatArea: React.FC = () => {
         consumePendingMainComposerPrefill();
     }, [pendingMainComposerPrefill, consumePendingMainComposerPrefill]);
 
+    // Self-heal auto-submit: when ArtifactErrorBanner sets a payload,
+    // fire it through handleSend so the existing patch flow takes over.
+    // We deliberately wait until handleSend is defined before consuming
+    // (handleSend is hoisted via closure, so it's always callable here).
+    const handleSendRef = useRef<((c: string) => void) | null>(null);
+    useEffect(() => {
+        if (!pendingAutoSend) return;
+        const payload = consumePendingAutoSend();
+        if (!payload) return;
+        // Tiny delay so any binding-state update from the banner click
+        // settles before handleSend reads useChatStore.getState().
+        const t = window.setTimeout(() => {
+            handleSendRef.current?.(payload);
+        }, 30);
+        return () => window.clearTimeout(t);
+    }, [pendingAutoSend, consumePendingAutoSend]);
+
     // Clear prefill when switching conversations so it doesn't reappear in new chat
     useEffect(() => {
         setPrefillValue('');
@@ -244,7 +272,17 @@ const ChatArea: React.FC = () => {
     const runStream = async (
         convId: string,
         assistantMsgId: string,
-        options: { continuation?: { priorAssistantText: string }; trackReasoning: boolean },
+        options: {
+            continuation?: { priorAssistantText: string };
+            trackReasoning: boolean;
+            // Patching engine: when set, the assistant message is expected to
+            // emit <lucen_patch> blocks. After stream completion we run the
+            // patch engine instead of saving a fresh artifact row.
+            targetedArtifact?: import('../types').Artifact;
+            patchHint?: string;
+            // NFR1.3 retry counter — bounded by MAX_PATCH_RETRIES upstream.
+            patchRetryCount?: number;
+        },
     ) => {
         const controller = new AbortController();
         abortRef.current = controller;
@@ -328,6 +366,17 @@ const ChatArea: React.FC = () => {
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
 
+                // ── Patching engine: if this turn was bound to an existing
+                // artifact, we expect <lucen_patch> blocks in the response.
+                // Apply them via the deterministic patch engine and create
+                // a new version row. On failure, kick off the NFR1.3 retry.
+                if (options.targetedArtifact) {
+                    void finalizePatchTurn(convId, assistantMsgId, options).catch((err) => {
+                        console.warn('[Patch] finalize failed:', err);
+                    });
+                    return;
+                }
+
                 // ── Auto-save artifact to DB (fire-and-forget) ──
                 // We read the artifact store AFTER the streaming update above
                 // so we get the final content. setDbId() patches the store once
@@ -394,11 +443,223 @@ const ChatArea: React.FC = () => {
             webSearchEnabled,
             conversationId: convId,
             continuation: options.continuation,
+            messageId: assistantMsgId,
+            targetedArtifact: options.targetedArtifact,
+            patchHint: options.patchHint,
         });
     };
 
     const doStreamResponse = (convId: string, assistantMsgId: string) =>
         runStream(convId, assistantMsgId, { trackReasoning: true });
+
+    // ─── Patching engine: post-stream finalize ────────────────────────
+    // Called from runStream's onDone when this turn was bound to an
+    // existing artifact. Parses <lucen_patch> blocks out of the assistant
+    // message, runs the deterministic patcher, creates a new version row
+    // in DB, and (if the artifact is mermaid) validates with mermaid.parse.
+    //
+    // On failure we kick a retry loop (up to MAX_PATCH_RETRIES) that
+    // re-invokes streamChat with a precise patchHint describing what
+    // went wrong (NFR1.3).
+    const finalizePatchTurn = async (
+        convId: string,
+        assistantMsgId: string,
+        runOptions: {
+            targetedArtifact?: Artifact;
+            patchRetryCount?: number;
+        },
+    ) => {
+        const target = runOptions.targetedArtifact;
+        if (!target) return;
+        const retryCount = runOptions.patchRetryCount ?? 0;
+
+        const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+        const assistantMsg = conv?.messages.find((m) => m.id === assistantMsgId);
+        const responseContent = assistantMsg?.content || '';
+
+        const { patches } = parsePatches(responseContent, true);
+
+        if (patches.length === 0) {
+            // Model didn't emit any patch blocks. This could be:
+            //   1. Refusal / clarification request (legit response).
+            //   2. The model regenerated a <lucen_artifact> instead (wrong).
+            // Either way, we leave the message as-is and clear the binding.
+            // The user sees the assistant's text and can manually re-bind.
+            useChatStore.getState().setTargetArtifact(convId, null);
+            useArtifactStore.getState().setPatchStatus(target.id, 'idle');
+            return;
+        }
+
+        useArtifactStore.getState().setPatchStatus(target.id, 'verifying');
+
+        // Apply all blocks across all patches sequentially. If multiple
+        // patch tags arrive, treat them as one logical patch (FR6 multi-step).
+        const allBlocks = patches.flatMap((p) => p.blocks);
+        const patchResult = applyPatch(target.content, allBlocks);
+
+        if (!patchResult.ok) {
+            // ── NFR1.3 retry loop ──
+            const failedBlock = allBlocks[patchResult.blockIndex];
+            const reasonText =
+                patchResult.reason === 'no_match'
+                    ? `Block ${patchResult.blockIndex + 1} did not match anything in the artifact. The <search> text was not found. Add MORE surrounding context (5-10 lines above and below the change point) so the search becomes unique.`
+                    : patchResult.reason === 'multi_match'
+                        ? `Block ${patchResult.blockIndex + 1} matched ${patchResult.matchCount} places — the search is ambiguous. Add MORE surrounding context (a unique line or two of nearby code) so it matches exactly once.`
+                        : `Block ${patchResult.blockIndex + 1} had an empty <search>. Provide the actual existing text you want to replace.`;
+
+            const hint =
+                `Your previous patch attempt FAILED to apply. Reason: ${reasonText}\n` +
+                `Failed search excerpt: ${JSON.stringify(patchResult.searchExcerpt.slice(0, 160))}\n` +
+                `Original block context if needed: search-block #${patchResult.blockIndex + 1} of ${allBlocks.length}.\n` +
+                `Re-emit the FULL <lucen_patch> with corrected blocks. Copy <search> verbatim from the artifact above.`;
+
+            if (retryCount < MAX_PATCH_RETRIES) {
+                // Mark current message as failed indicator + spawn a retry message.
+                useArtifactStore.getState().setPatchStatus(target.id, 'failed');
+                const retryMsgId = uuidv4();
+                await addMessage(convId, {
+                    id: retryMsgId,
+                    role: 'assistant',
+                    content: '',
+                    reasoning: '',
+                    timestamp: Date.now(),
+                    isStreaming: true,
+                    isReasoningStreaming: false,
+                });
+                useArtifactStore.getState().setPatchStatus(target.id, 'patching');
+                await runStream(convId, retryMsgId, {
+                    trackReasoning: true,
+                    targetedArtifact: target,
+                    patchHint: hint,
+                    patchRetryCount: retryCount + 1,
+                });
+                return;
+            }
+
+            // Give up after MAX_PATCH_RETRIES. Leave the artifact
+            // untouched, surface the failure to the user, clear the
+            // binding so they can decide what to do next.
+            useArtifactStore.getState().setPatchStatus(target.id, 'failed');
+            useChatStore.getState().setTargetArtifact(convId, null);
+            updateMessage(convId, assistantMsgId, {
+                content:
+                    `${responseContent}\n\n⚠️ Patch failed after ${MAX_PATCH_RETRIES} retries: ${reasonText}\nThe artifact was not modified. You can edit it manually or try rephrasing.`,
+            });
+            console.warn('[Patch] gave up after retries:', { failedBlock, reason: patchResult.reason });
+            return;
+        }
+
+        let newContent = patchResult.newContent;
+
+        // Mermaid post-validation (P6.mermaid-validation): if the patched
+        // content is invalid mermaid syntax, treat as a patch failure and
+        // feed back into the retry loop.
+        if (target.type === 'mermaid') {
+            try {
+                const mermaid = (await import('mermaid')).default;
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: 'neutral',
+                    securityLevel: 'loose',
+                });
+                await mermaid.parse(newContent.trim());
+            } catch (e) {
+                const parseErr = e instanceof Error ? e.message : String(e);
+                if (retryCount < MAX_PATCH_RETRIES) {
+                    const hint =
+                        `Your patch produced INVALID Mermaid syntax. Parser error: ${parseErr.slice(0, 280)}\n` +
+                        `Re-emit the <lucen_patch> with corrected blocks that produce valid Mermaid.`;
+                    useArtifactStore.getState().setPatchStatus(target.id, 'failed');
+                    const retryMsgId = uuidv4();
+                    await addMessage(convId, {
+                        id: retryMsgId,
+                        role: 'assistant',
+                        content: '',
+                        reasoning: '',
+                        timestamp: Date.now(),
+                        isStreaming: true,
+                        isReasoningStreaming: false,
+                    });
+                    useArtifactStore.getState().setPatchStatus(target.id, 'patching');
+                    await runStream(convId, retryMsgId, {
+                        trackReasoning: true,
+                        targetedArtifact: target,
+                        patchHint: hint,
+                        patchRetryCount: retryCount + 1,
+                    });
+                    return;
+                }
+                useArtifactStore.getState().setPatchStatus(target.id, 'failed');
+                useChatStore.getState().setTargetArtifact(convId, null);
+                updateMessage(convId, assistantMsgId, {
+                    content: `${responseContent}\n\n⚠️ Patch produced invalid Mermaid syntax (${parseErr.slice(0, 120)}). Artifact unchanged.`,
+                });
+                return;
+            }
+        }
+
+        // ── Patch applied successfully — persist the new version. ──
+        // Make sure the source artifact has a lineage_id (defensive
+        // backfill for artifacts created before the migration ran).
+        const parentDbId = target.dbId
+            ?? useArtifactStore.getState().getDbId(target.id);
+        if (!parentDbId) {
+            // Source artifact never made it to the DB — fall back to the
+            // legacy save path with the patched content. Clear binding.
+            const dbId = await saveArtifact({
+                clientId: target.id,
+                conversationId: convId,
+                messageId: assistantMsgId,
+                type: target.type,
+                title: target.title,
+                content: newContent,
+            });
+            if (dbId) useArtifactStore.getState().setDbId(target.id, dbId);
+            useArtifactStore.getState().patchActiveArtifact({ content: newContent });
+            useArtifactStore.getState().setPatchStatus(target.id, 'idle');
+            useChatStore.getState().setTargetArtifact(convId, null);
+            return;
+        }
+
+        const lineageId = target.lineageId
+            ?? (await ensureLineageId(parentDbId))
+            ?? parentDbId;
+
+        const newVersion = await createPatchedVersion({
+            lineageId,
+            parentDbId,
+            conversationId: convId,
+            messageId: assistantMsgId,
+            type: target.type,
+            title: target.title,
+            content: newContent,
+        });
+
+        if (!newVersion) {
+            // DB write failed — keep the patch in memory so the user still
+            // sees their change, but warn so we know something's off.
+            console.warn('[Patch] createPatchedVersion failed; keeping change in-memory only.');
+            useArtifactStore.getState().patchActiveArtifact({ content: newContent });
+        } else {
+            // Push the new version into the lineage cache and update the
+            // active artifact so the renderer immediately reflects V_n+1.
+            useArtifactStore.getState().appendLineageVersion(lineageId, newVersion);
+            useArtifactStore.getState().patchActiveArtifact({
+                content: newContent,
+                dbId: newVersion.dbId,
+                version: newVersion.versionNo,
+                parentId: newVersion.parentDbId,
+                lineageId,
+            });
+            useArtifactStore.getState().setDbId(target.id, newVersion.dbId);
+        }
+
+        // Reset error/heal state on success.
+        useArtifactStore.getState().setRuntimeError(target.id, null);
+        useArtifactStore.getState().resetHealAttempts(target.id);
+        useArtifactStore.getState().setPatchStatus(target.id, 'idle');
+        useChatStore.getState().setTargetArtifact(convId, null);
+    };
 
     // ─── Continue truncated response ───
     // Resumes from the message's existing partial content. The
@@ -428,6 +689,35 @@ const ChatArea: React.FC = () => {
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 
+        // Patching engine: resolve the per-conversation binding to a real
+        // Artifact snapshot. If the bound artifact is the active one, we
+        // use its in-memory state directly (preserves any unsaved changes).
+        const targetArtifactId = useChatStore.getState().getTargetArtifact(convId);
+        const activeArt = useArtifactStore.getState().activeArtifact;
+        const targetedArtifact: Artifact | undefined =
+            targetArtifactId && activeArt && activeArt.id === targetArtifactId
+                ? activeArt
+                : undefined;
+
+        // Hard-block: artifact too large to safely patch (>100k chars).
+        // We surface a synthesized assistant message instead of burning a
+        // turn that's almost certain to truncate.
+        if (targetedArtifact && targetedArtifact.content.length > 100_000) {
+            await addMessage(convId, {
+                id: uuidv4(), role: 'user', content, timestamp: Date.now(),
+                attachments: attachments || undefined,
+            });
+            await addMessage(convId, {
+                id: uuidv4(),
+                role: 'assistant',
+                content:
+                    `⚠️ This artifact is ${Math.round(targetedArtifact.content.length / 1000)}k chars — too large to patch reliably. Consider rewriting it from scratch (close the update binding and ask for a fresh artifact instead).`,
+                timestamp: Date.now(),
+            });
+            useChatStore.getState().setTargetArtifact(convId, null);
+            return;
+        }
+
         await addMessage(convId, {
             // eslint-disable-next-line react-hooks/purity
             id: uuidv4(), role: 'user', content, timestamp: Date.now(),
@@ -440,8 +730,30 @@ const ChatArea: React.FC = () => {
             // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
         });
+
+        if (targetedArtifact) {
+            // Drive the status overlay through its full pipeline. Each phase
+            // is set explicitly so the UI doesn't flicker between states.
+            useArtifactStore.getState().setPatchStatus(targetedArtifact.id, 'reading');
+            // Tiny micro-delay so the user perceives the read step before the
+            // model's first token arrives.
+            window.setTimeout(() => {
+                useArtifactStore.getState().setPatchStatus(targetedArtifact.id, 'patching');
+            }, 80);
+            await runStream(convId, assistantMsgId, {
+                trackReasoning: true,
+                targetedArtifact,
+                patchRetryCount: 0,
+            });
+            return;
+        }
+
         await doStreamResponse(convId, assistantMsgId);
     };
+
+    // Expose handleSend to the auto-heal effect above so it can fire a
+    // patch turn programmatically without typing.
+    handleSendRef.current = (content: string) => { void handleSend(content); };
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -1211,6 +1523,7 @@ const ChatArea: React.FC = () => {
                     setPrefillCounter((c) => c + 1);
                 }}
             />
+            <ArtifactUpdateBinding />
             <MessageInput
                 onSend={handleSend} onStop={handleStop} onHaltAndEdit={handleHaltAndEdit}
                 isStreaming={isStreaming} disabled={!hasEnoughCredits()}

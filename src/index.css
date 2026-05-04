@@ -4043,6 +4043,16 @@ h4 {
     color: var(--text-primary);
 }
 
+.artifact-action-btn--active {
+    background: var(--accent-soft, rgba(11, 186, 168, 0.12));
+    color: var(--accent);
+}
+
+.artifact-action-btn--active:hover {
+    background: var(--accent-soft, rgba(11, 186, 168, 0.18));
+    color: var(--accent);
+}
+
 .artifact-close-btn:hover {
     background: rgba(239, 68, 68, 0.1);
     color: var(--danger, #ef4444);
@@ -4536,19 +4546,467 @@ h4 {
 
 .artifact-card {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    align-items: stretch;
+    gap: 0;
     width: 100%;
     margin-top: 12px;
-    padding: 12px 16px;
     border: 1px solid var(--divider);
     border-radius: var(--r-md);
     background: var(--bg-surface);
-    cursor: pointer;
     transition: all var(--dur) var(--ease);
-    text-align: left;
     font-family: inherit;
     animation: fadeIn var(--dur) var(--ease);
+    overflow: hidden;
+}
+
+.artifact-card-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    padding: 12px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.artifact-card-main:hover {
+    background: var(--bg-surface-hover);
+}
+
+.artifact-card-update-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    border: none;
+    border-left: 1px solid var(--divider);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    flex-shrink: 0;
+    font-family: inherit;
+}
+
+.artifact-card-update-btn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--accent);
+}
+
+.artifact-card-update-btn--active {
+    background: var(--accent-soft, rgba(11, 186, 168, 0.10));
+    color: var(--accent);
+}
+
+.artifact-card--targeted {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-soft, rgba(11, 186, 168, 0.18));
+}
+
+/* ─── Artifact Update Binding Pill (above chat input) ─── */
+
+.artifact-binding-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px 6px;
+    padding: 6px 10px 6px 12px;
+    background: var(--accent-soft, rgba(11, 186, 168, 0.08));
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 500;
+    max-width: calc(100% - 32px);
+    align-self: flex-start;
+    animation: fadeIn var(--dur) var(--ease);
+}
+
+.artifact-binding-pill-label {
+    color: var(--accent);
+    opacity: 0.85;
+    font-weight: 600;
+}
+
+.artifact-binding-pill-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+}
+
+.artifact-binding-pill-warn-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--warning, #d97706);
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding-left: 8px;
+    border-left: 1px solid var(--divider);
+}
+
+.artifact-binding-pill--warn {
+    border-color: var(--warning, #d97706);
+    background: rgba(217, 119, 6, 0.08);
+    color: var(--warning, #d97706);
+}
+
+.artifact-binding-pill--blocked {
+    border-color: var(--danger, #ef4444);
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--danger, #ef4444);
+}
+
+.artifact-binding-pill-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.artifact-binding-pill-close:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* ─── Patch Summary Card (chat-side breadcrumb for patch turns) ─── */
+
+.patch-summary-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border: 1px dashed var(--accent);
+    border-radius: var(--r-md);
+    background: var(--accent-soft, rgba(11, 186, 168, 0.06));
+    animation: fadeIn var(--dur) var(--ease);
+}
+
+.patch-summary-card--streaming {
+    animation: pulse 1.5s infinite ease-in-out;
+}
+
+.patch-summary-card--orphan {
+    opacity: 0.65;
+}
+
+.patch-summary-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent-soft, rgba(11, 186, 168, 0.12));
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.patch-summary-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.patch-summary-card-title {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.patch-summary-card-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+.patch-summary-card-open {
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: var(--r-sm);
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.patch-summary-card-open:hover {
+    background: rgba(11, 186, 168, 0.10);
+}
+
+/* ─── Patch Status Pipeline (overlay over artifact body) ─── */
+
+.patch-pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    margin: 8px 12px 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-md);
+    box-shadow: 0 2px 12px var(--shadow-color, rgba(0,0,0,0.05));
+    animation: fadeIn var(--dur) var(--ease);
+}
+
+.patch-pipeline--failed {
+    border-color: var(--warning, #d97706);
+}
+
+.patch-pipeline-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.patch-pipeline--failed .patch-pipeline-header {
+    color: var(--warning, #d97706);
+}
+
+.patch-pipeline-spinner {
+    animation: spin 1s linear infinite;
+}
+
+.patch-pipeline-headline {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.patch-pipeline-steps {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.78rem;
+}
+
+.patch-pipeline-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--bg-surface-hover);
+    color: var(--text-tertiary);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.patch-pipeline-step--active {
+    background: var(--accent-soft, rgba(11, 186, 168, 0.12));
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.patch-pipeline-step--done {
+    color: var(--text-secondary);
+    opacity: 0.85;
+}
+
+/* ─── Artifact Version Selector ─── */
+
+.artifact-version-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 4px;
+    border: 1px solid var(--divider);
+    border-radius: 999px;
+    background: var(--bg-surface);
+}
+
+.artifact-version-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.artifact-version-btn:hover:not(:disabled) {
+    background: var(--bg-surface-hover);
+    color: var(--accent);
+}
+
+.artifact-version-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.artifact-version-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    user-select: none;
+}
+
+.artifact-version-revert-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    margin-left: 4px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-soft, rgba(11, 186, 168, 0.10));
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+    font-family: inherit;
+}
+
+.artifact-version-revert-btn:hover:not(:disabled) {
+    background: rgba(11, 186, 168, 0.18);
+}
+
+.artifact-version-revert-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ─── Artifact Error Banner (self-heal CTA) ─── */
+
+.artifact-error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    margin: 8px 12px 0;
+    border: 1px solid var(--warning, #d97706);
+    border-radius: var(--r-md);
+    background: rgba(217, 119, 6, 0.06);
+    animation: fadeIn var(--dur) var(--ease);
+}
+
+.artifact-error-banner-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(217, 119, 6, 0.15);
+    color: var(--warning, #d97706);
+    flex-shrink: 0;
+}
+
+.artifact-error-banner-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.artifact-error-banner-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.artifact-error-banner-origin {
+    font-weight: 400;
+    color: var(--text-tertiary);
+    font-size: 0.72rem;
+    margin-left: 4px;
+}
+
+.artifact-error-banner-message {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    line-height: 1.4;
+}
+
+.artifact-error-banner-cap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+}
+
+.artifact-error-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.artifact-error-banner-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 10px;
+    border: 1px solid var(--divider);
+    border-radius: var(--r-sm);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    font-family: inherit;
+}
+
+.artifact-error-banner-btn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.artifact-error-banner-btn--primary {
+    background: var(--warning, #d97706);
+    border-color: var(--warning, #d97706);
+    color: #fff;
+}
+
+.artifact-error-banner-btn--primary:hover {
+    background: #b45309;
+    border-color: #b45309;
+    color: #fff;
 }
 
 /* ═══════════════════════════════════════════
@@ -5203,7 +5661,6 @@ h4 {
 
 .artifact-card:hover {
     border-color: var(--accent);
-    background: var(--bg-surface-hover);
     box-shadow: 0 2px 12px var(--shadow-color, rgba(0,0,0,0.06));
 }
 
@@ -5271,7 +5728,7 @@ h4 {
     transition: color var(--dur-fast) var(--ease);
 }
 
-.artifact-card:hover .artifact-card-action {
+.artifact-card-main:hover .artifact-card-action {
     color: var(--accent);
 }
 

@@ -4,12 +4,16 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
 import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
+import { useArtifactStore } from '../store/artifactStore';
+import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 
 interface RendererProps {
   content: string;
   title?: string;
   viewport?: PreviewViewport;
   isStreaming?: boolean;
+  /** Artifact id used to route captured runtime errors back into artifactStore. */
+  artifactId?: string;
 }
 
 // Heavy preview renders (iframe reload, mermaid compile, SVG parse) are
@@ -107,26 +111,53 @@ const VIEWPORT_WIDTHS: Record<string, string | null> = {
 
 // ── HTML Renderer ──
 
-const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isStreaming = false }) => {
+const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isStreaming = false, artifactId }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
+  const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
 
   const srcDoc = useMemo(() => {
     const trimmed = previewContent.trim();
-    if (!trimmed) return '<html><body></body></html>';
-    if (trimmed.toLowerCase().includes('<html') || trimmed.toLowerCase().includes('<!doctype'))
-      return trimmed;
-    return `<!DOCTYPE html>
+    let baseDoc: string;
+    if (!trimmed) {
+      baseDoc = '<html><body></body></html>';
+    } else if (trimmed.toLowerCase().includes('<html') || trimmed.toLowerCase().includes('<!doctype')) {
+      baseDoc = trimmed;
+    } else {
+      baseDoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,-apple-system,sans-serif;padding:16px;color:#1a1a1a;background:#fff}</style>
 </head><body>${trimmed}</body></html>`;
+    }
+    // Splice in the iframe error bridge so runtime errors / unhandled
+    // rejections / console.errors are surfaced to the parent.
+    return injectIntoHtml(baseDoc);
   }, [previewContent]);
 
-  // We do not auto-resize the iframe height anymore.
-  // Letting the iframe be 100% height allows standard CSS like 100vh and natural scrolling to work exactly like a real browser tab.
+  // Bridge runtime errors back into artifactStore so the error banner
+  // (and self-heal flow) can react. We attach the listener once per
+  // mount; the bridge filters by envelope tag so cross-source noise
+  // is ignored.
   useEffect(() => {
-    // Just re-trigger if needed, but standard iframe loads srcDoc instantly.
-  }, [srcDoc]);
+    if (!artifactId) return;
+    // Clear any prior error on iframe rebuild — the new srcDoc may have
+    // fixed it. We let the iframe's first `onerror` re-set if needed.
+    setRuntimeError(artifactId, null);
+    const detach = attachErrorListener((e) => {
+      // Throttle to "first error wins per render" so console.error spam
+      // doesn't repeatedly re-trigger React state updates.
+      setRuntimeError(artifactId, {
+        message: e.message,
+        stack: e.stack,
+        line: e.line,
+        column: e.column,
+        source: e.source,
+        origin: 'iframe',
+        capturedAt: e.capturedAt,
+      });
+    });
+    return () => detach();
+  }, [artifactId, srcDoc, setRuntimeError]);
 
   const vpWidth = VIEWPORT_WIDTHS[viewport];
   const isFramed = !!vpWidth;
@@ -333,11 +364,12 @@ async function tryRenderMermaid(text: string, id: string): Promise<string> {
   }
 }
 
-const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false }) => {
+const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false, artifactId }) => {
   const [error, setError] = useState<string | null>(null);
   const [svg, setSvg] = useState<string>('');
   const renderIdRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
 
   const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
   const cleanedContent = useMemo(() => sanitizeMermaidSyntax(previewContent), [previewContent]);
@@ -351,7 +383,12 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
       (async () => {
         try {
           const rendered = await tryRenderMermaid(cleanedContent, `mermaid-${Date.now()}-${currentId}`);
-          if (!cancelled && renderIdRef.current === currentId) { setSvg(rendered); setError(null); }
+          if (!cancelled && renderIdRef.current === currentId) {
+            setSvg(rendered);
+            setError(null);
+            // Successful render — clear any prior parse error.
+            if (artifactId) setRuntimeError(artifactId, null);
+          }
         } catch (firstErr) {
           try {
             const lines = cleanedContent.split('\n');
@@ -361,12 +398,27 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
               return t && /^[\w\s]/.test(t) && (t.includes('-->') || t.includes('---') || t.includes('==>') || /^\s*\w+[\s[({]/.test(t) || /^\s*subgraph\b/.test(t) || /^\s*end\s*$/.test(t));
             });
             const rendered = await tryRenderMermaid(header + '\n' + structural.join('\n'), `mermaid-r-${Date.now()}-${currentId}`);
-            if (!cancelled && renderIdRef.current === currentId) { setSvg(rendered); setError(null); }
+            if (!cancelled && renderIdRef.current === currentId) {
+              setSvg(rendered);
+              setError(null);
+              if (artifactId) setRuntimeError(artifactId, null);
+            }
           } catch {
             if (!cancelled && renderIdRef.current === currentId) {
-              const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-              setError(msg.replace(/\nmermaid version[\s\S]*$/, '').replace(/Parse error on line \d+:[\s\S]*$/, 'Diagram syntax not supported').trim() || 'Invalid diagram syntax');
+              const rawMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+              const cleanedMsg = rawMsg.replace(/\nmermaid version[\s\S]*$/, '').replace(/Parse error on line \d+:[\s\S]*$/, 'Diagram syntax not supported').trim() || 'Invalid diagram syntax';
+              setError(cleanedMsg);
               setSvg('');
+              // Surface mermaid syntax errors as runtimeError so the
+              // self-heal banner can react to them.
+              if (artifactId) {
+                setRuntimeError(artifactId, {
+                  message: cleanedMsg,
+                  stack: firstErr instanceof Error ? firstErr.stack : undefined,
+                  origin: 'mermaid',
+                  capturedAt: Date.now(),
+                });
+              }
             }
             cleanupMermaidElements();
           }
@@ -375,7 +427,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
       return () => { cancelled = true; };
     }, 500);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); cleanupMermaidElements(); };
-  }, [cleanedContent]);
+  }, [cleanedContent, artifactId, setRuntimeError]);
 
   useEffect(() => { return () => cleanupMermaidElements(); }, []);
 
@@ -466,9 +518,11 @@ interface ArtifactRendererProps {
   viewMode: 'preview' | 'code';
   viewport?: PreviewViewport;
   isStreaming?: boolean;
+  /** Artifact id used to route runtime errors back into artifactStore. */
+  artifactId?: string;
 }
 
-const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming }) => {
+const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming, artifactId }) => {
   if (!content || !content.trim())
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
@@ -480,7 +534,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
   if (Renderer) {
     return (
       <RendererErrorBoundary content={content} language={language}>
-        <Renderer content={content} title={title} viewport={viewport} isStreaming={isStreaming} />
+        <Renderer content={content} title={title} viewport={viewport} isStreaming={isStreaming} artifactId={artifactId} />
       </RendererErrorBoundary>
     );
   }
