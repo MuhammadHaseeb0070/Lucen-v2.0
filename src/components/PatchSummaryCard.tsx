@@ -18,6 +18,7 @@ import React from 'react';
 import { GitBranch, Wand2 } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import type { ParsedPatch } from '../lib/artifactPatchParser';
+import type { Artifact } from '../types';
 
 interface PatchSummaryCardProps {
   patch: ParsedPatch;
@@ -32,13 +33,14 @@ const PatchSummaryCard: React.FC<PatchSummaryCardProps> = ({ patch, isStreaming 
   const lineageHit = Object.values(lineages)
     .flat()
     .find((v) => v.dbId === patch.artifactId || v.lineageId === patch.artifactId);
+  const resolvedId = patch.artifactId || lineageHit?.dbId || lineageHit?.lineageId;
 
-  const targetArtifact =
+  const targetArtifact: Artifact | null =
     activeArtifact && (activeArtifact.id === patch.artifactId || activeArtifact.dbId === patch.artifactId)
       ? activeArtifact
-      : lineageHit
+      : lineageHit && resolvedId
         ? {
-            id: patch.artifactId,
+            id: resolvedId,
             type: lineageHit.type,
             title: lineageHit.title,
             content: lineageHit.content,
