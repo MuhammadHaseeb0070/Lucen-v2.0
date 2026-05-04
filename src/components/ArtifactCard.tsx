@@ -40,7 +40,7 @@ const ArtifactCard: React.FC<ArtifactCardProps> = ({ artifact }) => {
     // Don't bubble up to the card's "open workspace" handler.
     e.stopPropagation();
     if (!activeConversationId || artifact.isStreaming) return;
-    setTargetArtifact(activeConversationId, isTargeted ? null : artifact.id);
+    setTargetArtifact(activeConversationId, isTargeted ? null : artifact);
   };
 
   return (

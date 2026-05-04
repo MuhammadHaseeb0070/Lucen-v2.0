@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Conversation, Message } from '../types';
+import type { Artifact, Conversation, Message } from '../types';
 import { hasActiveSessionSync, supabase } from '../lib/supabase';
 import * as db from '../services/database';
 import type { SearchResult } from '../services/database';
@@ -163,8 +163,10 @@ interface ChatStore {
     // pipeline instead of producing a new artifact. Cleared automatically
     // after submit. NEVER persisted (see partialize config).
     targetArtifactByConv: Record<string, string>;
-    setTargetArtifact: (convId: string, artifactId: string | null) => void;
+    targetArtifactSnapshotByConv: Record<string, Artifact>;
+    setTargetArtifact: (convId: string, artifact: Artifact | null) => void;
     getTargetArtifact: (convId: string | null | undefined) => string | null;
+    getTargetArtifactSnapshot: (convId: string | null | undefined) => Artifact | null;
 
     // Conversation actions
     createConversation: (templateId?: string) => string;
@@ -210,19 +212,33 @@ export const useChatStore = create<ChatStore>()(
             isSearching: false,
             searchError: null,
             targetArtifactByConv: {},
+            targetArtifactSnapshotByConv: {},
 
-            setTargetArtifact: (convId, artifactId) => {
+            setTargetArtifact: (convId, artifact) => {
                 set((state) => {
-                    const next = { ...state.targetArtifactByConv };
-                    if (artifactId) next[convId] = artifactId;
-                    else delete next[convId];
-                    return { targetArtifactByConv: next };
+                    const nextIds = { ...state.targetArtifactByConv };
+                    const nextSnapshots = { ...state.targetArtifactSnapshotByConv };
+                    if (artifact) {
+                        nextIds[convId] = artifact.id;
+                        nextSnapshots[convId] = artifact;
+                    } else {
+                        delete nextIds[convId];
+                        delete nextSnapshots[convId];
+                    }
+                    return {
+                        targetArtifactByConv: nextIds,
+                        targetArtifactSnapshotByConv: nextSnapshots,
+                    };
                 });
             },
 
             getTargetArtifact: (convId) => {
                 if (!convId) return null;
                 return get().targetArtifactByConv[convId] ?? null;
+            },
+            getTargetArtifactSnapshot: (convId) => {
+                if (!convId) return null;
+                return get().targetArtifactSnapshotByConv[convId] ?? null;
             },
 
             createConversation: (templateId?: string) => {
@@ -793,6 +809,7 @@ export const useChatStore = create<ChatStore>()(
                 activeConversationId: null,
                 // Patching: ephemeral; reset on every reload.
                 targetArtifactByConv: {},
+                targetArtifactSnapshotByConv: {},
             }),
         }
     )

@@ -9,9 +9,9 @@ interface ComposerStore {
    * content — used by the self-heal flow to fire a patch turn without
    * the user typing anything. Cleared by the consumer.
    */
-  pendingAutoSend: string | null;
-  setPendingAutoSend: (value: string) => void;
-  consumePendingAutoSend: () => string | null;
+  pendingAutoSend: { content: string; hideUserMessage?: boolean } | null;
+  setPendingAutoSend: (value: { content: string; hideUserMessage?: boolean }) => void;
+  consumePendingAutoSend: () => { content: string; hideUserMessage?: boolean } | null;
 }
 
 export const useComposerStore = create<ComposerStore>()((set, get) => ({

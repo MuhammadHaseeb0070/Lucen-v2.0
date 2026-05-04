@@ -17,7 +17,7 @@
 // binding rather than rendering a broken state.
 // ============================================================
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Edit3, X, AlertTriangle } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
@@ -30,35 +30,19 @@ const HARD_BLOCK_CHARS = 100_000;
 const ArtifactUpdateBinding: React.FC = () => {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const targetArtifactByConv = useChatStore((s) => s.targetArtifactByConv);
+  const targetArtifactSnapshotByConv = useChatStore((s) => s.targetArtifactSnapshotByConv);
   const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
   const activeArtifact = useArtifactStore((s) => s.activeArtifact);
 
   const targetId = activeConversationId ? targetArtifactByConv[activeConversationId] : null;
 
-  // Resolve the bound artifact. Today the active artifact is the only
-  // artifact we keep hot in memory; if the user closed the workspace,
-  // we still know enough to render a pill (id + an "open me to view" CTA).
-  // If we can't even find the id in any source, auto-clear.
+  // Resolve from active artifact first (live content), then fall back to
+  // snapshot captured at bind-time so update mode still works even when
+  // the workspace is closed.
   const boundArtifact =
-    activeArtifact && activeArtifact.id === targetId ? activeArtifact : null;
-
-  // Auto-cleanup: if the binding refers to nothing we can resolve AND
-  // the active artifact has changed, drop the binding. Without this,
-  // a stale binding can persist after a conversation switch.
-  useEffect(() => {
-    if (!targetId || !activeConversationId) return;
-    if (boundArtifact) return;
-    // We have an id but no artifact. Wait one frame then check again —
-    // ArtifactStore hydrates async on conversation load.
-    const t = window.setTimeout(() => {
-      const stillNotFound =
-        useArtifactStore.getState().activeArtifact?.id !== targetId;
-      if (stillNotFound) {
-        setTargetArtifact(activeConversationId, null);
-      }
-    }, 600);
-    return () => window.clearTimeout(t);
-  }, [targetId, activeConversationId, boundArtifact, setTargetArtifact]);
+    activeArtifact && activeArtifact.id === targetId
+      ? activeArtifact
+      : (activeConversationId ? targetArtifactSnapshotByConv[activeConversationId] : null);
 
   if (!targetId || !activeConversationId) return null;
 

@@ -4760,6 +4760,30 @@ h4 {
     background: rgba(11, 186, 168, 0.10);
 }
 
+.patch-report-card {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+    background: var(--bg-surface);
+}
+
+.patch-report-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.patch-report-card-icon { color: var(--text-secondary); display: inline-flex; }
+.patch-report-card-title { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
+.patch-report-card-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--text-tertiary); }
+.patch-report-card-notes { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.patch-report-card-note { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.35; }
+.patch-report-card-spin { animation: spin 1s linear infinite; }
+.patch-report-card--success { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.05); }
+.patch-report-card--failed { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.06); }
+.patch-report-card--running { border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.05); }
+
 /* ─── Patch Status Pipeline (overlay over artifact body) ─── */
 
 .patch-pipeline {

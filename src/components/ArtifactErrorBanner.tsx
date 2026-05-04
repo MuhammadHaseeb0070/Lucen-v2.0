@@ -53,7 +53,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     const next = incHealAttempts(artifact.id);
 
     // Bind the artifact so the next prompt routes through the patching flow.
-    setTargetArtifact(activeConversationId, artifact.id);
+    setTargetArtifact(activeConversationId, artifact);
 
     // Compose a precise, structured fix prompt. The patching prompt
     // already tells the model how to format <lucen_patch>; we just feed
@@ -73,7 +73,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     lines.push('Use a <lucen_patch> with the smallest possible change that resolves this error. Do NOT regenerate the entire artifact.');
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);
 
-    setPendingAutoSend(lines.join('\n'));
+    setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: true });
   };
 
   return (

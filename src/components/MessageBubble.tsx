@@ -3,6 +3,7 @@ import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast,
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import PatchSummaryCard from './PatchSummaryCard';
+import PatchTurnReportCard from './PatchTurnReportCard';
 import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
 import { parsePatches, type ParsedPatch } from '../lib/artifactPatchParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
@@ -104,17 +105,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             });
     }, [disableArtifacts, message.content, message.id, message.isStreaming]);
 
-    const cleanContent = parsed?.cleanContent ?? '';
+    const rawCleanContent = parsed?.cleanContent ?? '';
     const artifacts = parsed?.artifacts ?? [];
 
     // Patching engine: also extract <lucen_patch> blocks for display.
     // Cheap re-parse on the same content — patch tags are rare and the
     // regex returns immediately when no <lucen_patch substring exists.
-    const patches: ParsedPatch[] = useMemo(() => {
+    const patchParse = useMemo(() => {
         const content = message.content;
-        if (!content || !content.includes('<lucen_patch')) return [];
-        return parsePatches(content, !message.isStreaming).patches;
-    }, [message.content, message.isStreaming]);
+        if (!content || !content.includes('<lucen_patch')) {
+            return { cleanContent: rawCleanContent, patches: [] as ParsedPatch[] };
+        }
+        return parsePatches(content, !message.isStreaming);
+    }, [message.content, message.isStreaming, rawCleanContent]);
+    const patches: ParsedPatch[] = patchParse.patches;
+    const cleanContent = patchParse.cleanContent;
 
     const normalizedReasoning = useMemo(() => {
         const raw = (message.reasoning || '').trim();
@@ -329,6 +334,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             isStreaming={patch.isStreaming || message.isStreaming}
                         />
                     ))}
+                    {message.patchReport && <PatchTurnReportCard report={message.patchReport} />}
                 </>
             )}
 

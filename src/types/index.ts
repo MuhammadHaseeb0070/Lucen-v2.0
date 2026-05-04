@@ -26,6 +26,21 @@ export interface Message {
   webSearchUrls?: string[];
   isPinned?: boolean;
   attachments?: FileAttachment[];
+  /**
+   * Compact frontend-generated report for artifact patch turns.
+   * Keeps the chat clean while still exposing what happened (attempts,
+   * blocks applied, retries, final status).
+   */
+  patchReport?: {
+    targetArtifactId?: string;
+    targetTitle?: string;
+    attempts: number;
+    retries: number;
+    totalBlocksSeen: number;
+    appliedBlocks?: number;
+    status: 'running' | 'success' | 'failed' | 'skipped';
+    notes: string[];
+  };
 }
 
 export interface Conversation {

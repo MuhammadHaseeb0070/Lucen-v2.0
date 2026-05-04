@@ -28,6 +28,13 @@ import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './Chat
 // the model gets the original turn + 3 retry passes before we give up.
 const MAX_PATCH_RETRIES = 3;
 
+type PatchAttemptLog = {
+    attemptNo: number;
+    blockCount: number;
+    status: 'running' | 'success' | 'failed';
+    note: string;
+};
+
 const ChatArea: React.FC = () => {
     const activeConversationId = useChatStore((s) => s.activeConversationId);
     const activeConv = useChatStore(
@@ -198,7 +205,7 @@ const ChatArea: React.FC = () => {
     // fire it through handleSend so the existing patch flow takes over.
     // We deliberately wait until handleSend is defined before consuming
     // (handleSend is hoisted via closure, so it's always callable here).
-    const handleSendRef = useRef<((c: string) => void) | null>(null);
+    const handleSendRef = useRef<((payload: { content: string; hideUserMessage?: boolean }) => void) | null>(null);
     useEffect(() => {
         if (!pendingAutoSend) return;
         const payload = consumePendingAutoSend();
@@ -282,6 +289,7 @@ const ChatArea: React.FC = () => {
             patchHint?: string;
             // NFR1.3 retry counter — bounded by MAX_PATCH_RETRIES upstream.
             patchRetryCount?: number;
+            patchAttemptLogs?: PatchAttemptLog[];
         },
     ) => {
         const controller = new AbortController();
@@ -467,17 +475,22 @@ const ChatArea: React.FC = () => {
         runOptions: {
             targetedArtifact?: Artifact;
             patchRetryCount?: number;
+            patchAttemptLogs?: PatchAttemptLog[];
         },
     ) => {
         const target = runOptions.targetedArtifact;
         if (!target) return;
         const retryCount = runOptions.patchRetryCount ?? 0;
+        const attemptLogs = [...(runOptions.patchAttemptLogs ?? [])];
+        const attemptNo = retryCount + 1;
 
         const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
         const assistantMsg = conv?.messages.find((m) => m.id === assistantMsgId);
         const responseContent = assistantMsg?.content || '';
 
-        const { patches } = parsePatches(responseContent, true);
+        const parsedPatchPayload = parsePatches(responseContent, true);
+        const { patches } = parsedPatchPayload;
+        const visibleContent = parsedPatchPayload.cleanContent.trim();
 
         if (patches.length === 0) {
             // Model didn't emit any patch blocks. This could be:
@@ -487,6 +500,18 @@ const ChatArea: React.FC = () => {
             // The user sees the assistant's text and can manually re-bind.
             useChatStore.getState().setTargetArtifact(convId, null);
             useArtifactStore.getState().setPatchStatus(target.id, 'idle');
+            updateMessage(convId, assistantMsgId, {
+                content: visibleContent,
+                patchReport: {
+                    targetArtifactId: target.id,
+                    targetTitle: target.title,
+                    attempts: attemptNo,
+                    retries: retryCount,
+                    totalBlocksSeen: 0,
+                    status: 'skipped',
+                    notes: ['No <lucen_patch> block detected in model output.'],
+                },
+            });
             return;
         }
 
@@ -495,6 +520,12 @@ const ChatArea: React.FC = () => {
         // Apply all blocks across all patches sequentially. If multiple
         // patch tags arrive, treat them as one logical patch (FR6 multi-step).
         const allBlocks = patches.flatMap((p) => p.blocks);
+        attemptLogs.push({
+            attemptNo,
+            blockCount: allBlocks.length,
+            status: 'running',
+            note: `Attempt ${attemptNo}: parsed ${allBlocks.length} patch block${allBlocks.length === 1 ? '' : 's'}.`,
+        });
         const patchResult = applyPatch(target.content, allBlocks);
 
         if (!patchResult.ok) {
@@ -514,24 +545,37 @@ const ChatArea: React.FC = () => {
                 `Re-emit the FULL <lucen_patch> with corrected blocks. Copy <search> verbatim from the artifact above.`;
 
             if (retryCount < MAX_PATCH_RETRIES) {
-                // Mark current message as failed indicator + spawn a retry message.
+                // Keep everything in the SAME assistant bubble; reset stream
+                // content and retry in-place.
                 useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-                const retryMsgId = uuidv4();
-                await addMessage(convId, {
-                    id: retryMsgId,
-                    role: 'assistant',
+                attemptLogs.push({
+                    attemptNo,
+                    blockCount: allBlocks.length,
+                    status: 'failed',
+                    note: reasonText,
+                });
+                updateMessage(convId, assistantMsgId, {
                     content: '',
                     reasoning: '',
-                    timestamp: Date.now(),
                     isStreaming: true,
                     isReasoningStreaming: false,
+                    patchReport: {
+                        targetArtifactId: target.id,
+                        targetTitle: target.title,
+                        attempts: attemptNo,
+                        retries: retryCount,
+                        totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                        status: 'running',
+                        notes: attemptLogs.map((a) => a.note),
+                    },
                 });
                 useArtifactStore.getState().setPatchStatus(target.id, 'patching');
-                await runStream(convId, retryMsgId, {
+                await runStream(convId, assistantMsgId, {
                     trackReasoning: true,
                     targetedArtifact: target,
                     patchHint: hint,
                     patchRetryCount: retryCount + 1,
+                    patchAttemptLogs: attemptLogs,
                 });
                 return;
             }
@@ -542,8 +586,16 @@ const ChatArea: React.FC = () => {
             useArtifactStore.getState().setPatchStatus(target.id, 'failed');
             useChatStore.getState().setTargetArtifact(convId, null);
             updateMessage(convId, assistantMsgId, {
-                content:
-                    `${responseContent}\n\n⚠️ Patch failed after ${MAX_PATCH_RETRIES} retries: ${reasonText}\nThe artifact was not modified. You can edit it manually or try rephrasing.`,
+                content: visibleContent,
+                patchReport: {
+                    targetArtifactId: target.id,
+                    targetTitle: target.title,
+                    attempts: attemptNo,
+                    retries: retryCount,
+                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                    status: 'failed',
+                    notes: [...attemptLogs.map((a) => a.note), `Final failure: ${reasonText}`],
+                },
             });
             console.warn('[Patch] gave up after retries:', { failedBlock, reason: patchResult.reason });
             return;
@@ -570,29 +622,50 @@ const ChatArea: React.FC = () => {
                         `Your patch produced INVALID Mermaid syntax. Parser error: ${parseErr.slice(0, 280)}\n` +
                         `Re-emit the <lucen_patch> with corrected blocks that produce valid Mermaid.`;
                     useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-                    const retryMsgId = uuidv4();
-                    await addMessage(convId, {
-                        id: retryMsgId,
-                        role: 'assistant',
+                    attemptLogs.push({
+                        attemptNo,
+                        blockCount: allBlocks.length,
+                        status: 'failed',
+                        note: `Mermaid validation failed: ${parseErr.slice(0, 180)}`,
+                    });
+                    updateMessage(convId, assistantMsgId, {
                         content: '',
                         reasoning: '',
-                        timestamp: Date.now(),
                         isStreaming: true,
                         isReasoningStreaming: false,
+                        patchReport: {
+                            targetArtifactId: target.id,
+                            targetTitle: target.title,
+                            attempts: attemptNo,
+                            retries: retryCount,
+                            totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                            status: 'running',
+                            notes: attemptLogs.map((a) => a.note),
+                        },
                     });
                     useArtifactStore.getState().setPatchStatus(target.id, 'patching');
-                    await runStream(convId, retryMsgId, {
+                    await runStream(convId, assistantMsgId, {
                         trackReasoning: true,
                         targetedArtifact: target,
                         patchHint: hint,
                         patchRetryCount: retryCount + 1,
+                        patchAttemptLogs: attemptLogs,
                     });
                     return;
                 }
                 useArtifactStore.getState().setPatchStatus(target.id, 'failed');
                 useChatStore.getState().setTargetArtifact(convId, null);
                 updateMessage(convId, assistantMsgId, {
-                    content: `${responseContent}\n\n⚠️ Patch produced invalid Mermaid syntax (${parseErr.slice(0, 120)}). Artifact unchanged.`,
+                    content: visibleContent,
+                    patchReport: {
+                        targetArtifactId: target.id,
+                        targetTitle: target.title,
+                        attempts: attemptNo,
+                        retries: retryCount,
+                        totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                        status: 'failed',
+                        notes: [...attemptLogs.map((a) => a.note), `Final failure: invalid Mermaid syntax (${parseErr.slice(0, 120)})`],
+                    },
                 });
                 return;
             }
@@ -659,6 +732,19 @@ const ChatArea: React.FC = () => {
         useArtifactStore.getState().resetHealAttempts(target.id);
         useArtifactStore.getState().setPatchStatus(target.id, 'idle');
         useChatStore.getState().setTargetArtifact(convId, null);
+        updateMessage(convId, assistantMsgId, {
+            content: visibleContent,
+            patchReport: {
+                targetArtifactId: target.id,
+                targetTitle: target.title,
+                attempts: attemptNo,
+                retries: retryCount,
+                totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                appliedBlocks: allBlocks.length,
+                status: 'success',
+                notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+            },
+        });
     };
 
     // ─── Continue truncated response ───
@@ -684,7 +770,11 @@ const ChatArea: React.FC = () => {
         });
     };
 
-    const handleSend = async (content: string, attachments?: FileAttachment[]) => {
+    const handleSend = async (
+        content: string,
+        attachments?: FileAttachment[],
+        opts?: { hideUserMessage?: boolean },
+    ) => {
         if (!hasEnoughCredits()) return;
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
@@ -693,20 +783,25 @@ const ChatArea: React.FC = () => {
         // Artifact snapshot. If the bound artifact is the active one, we
         // use its in-memory state directly (preserves any unsaved changes).
         const targetArtifactId = useChatStore.getState().getTargetArtifact(convId);
+        const targetArtifactSnapshot = useChatStore.getState().getTargetArtifactSnapshot(convId);
         const activeArt = useArtifactStore.getState().activeArtifact;
         const targetedArtifact: Artifact | undefined =
             targetArtifactId && activeArt && activeArt.id === targetArtifactId
                 ? activeArt
-                : undefined;
+                : (targetArtifactSnapshot && targetArtifactSnapshot.id === targetArtifactId
+                    ? targetArtifactSnapshot
+                    : undefined);
 
         // Hard-block: artifact too large to safely patch (>100k chars).
         // We surface a synthesized assistant message instead of burning a
         // turn that's almost certain to truncate.
         if (targetedArtifact && targetedArtifact.content.length > 100_000) {
-            await addMessage(convId, {
-                id: uuidv4(), role: 'user', content, timestamp: Date.now(),
-                attachments: attachments || undefined,
-            });
+            if (!opts?.hideUserMessage) {
+                await addMessage(convId, {
+                    id: uuidv4(), role: 'user', content, timestamp: Date.now(),
+                    attachments: attachments || undefined,
+                });
+            }
             await addMessage(convId, {
                 id: uuidv4(),
                 role: 'assistant',
@@ -718,11 +813,13 @@ const ChatArea: React.FC = () => {
             return;
         }
 
-        await addMessage(convId, {
-            // eslint-disable-next-line react-hooks/purity
-            id: uuidv4(), role: 'user', content, timestamp: Date.now(),
-            attachments: attachments || undefined,
-        });
+        if (!opts?.hideUserMessage) {
+            await addMessage(convId, {
+                // eslint-disable-next-line react-hooks/purity
+                id: uuidv4(), role: 'user', content, timestamp: Date.now(),
+                attachments: attachments || undefined,
+            });
+        }
 
         const assistantMsgId = uuidv4();
         await addMessage(convId, {
@@ -753,7 +850,9 @@ const ChatArea: React.FC = () => {
 
     // Expose handleSend to the auto-heal effect above so it can fire a
     // patch turn programmatically without typing.
-    handleSendRef.current = (content: string) => { void handleSend(content); };
+    handleSendRef.current = (payload) => {
+        void handleSend(payload.content, undefined, { hideUserMessage: !!payload.hideUserMessage });
+    };
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
         e.preventDefault();

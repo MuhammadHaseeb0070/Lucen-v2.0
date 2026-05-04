@@ -144,7 +144,7 @@ const ArtifactWorkspace: React.FC = () => {
   const handleToggleUpdate = useCallback(() => {
     if (!activeArtifact || !activeConversationId) return;
     if (activeArtifact.isStreaming) return;
-    setTargetArtifact(activeConversationId, isTargeted ? null : activeArtifact.id);
+    setTargetArtifact(activeConversationId, isTargeted ? null : activeArtifact);
   }, [activeArtifact, activeConversationId, isTargeted, setTargetArtifact]);
 
   // Subscribe to per-artifact patch status. We read it via getPatchStatus
