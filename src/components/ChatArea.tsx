@@ -762,6 +762,22 @@ const ChatArea: React.FC = () => {
                     [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
                     allBlocks.length,
                 )}\n\n${toArtifactTag(fallbackArtifact)}`,
+                patchReport: {
+                    targetArtifactId: target.id,
+                    targetTitle: target.title,
+                    attempts: attemptNo,
+                    retries: retryCount,
+                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                    appliedBlocks: allBlocks.length,
+                    status: 'success',
+                    notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+                    patchedArtifact: {
+                        title: fallbackArtifact.title,
+                        type: fallbackArtifact.type,
+                        version: fallbackArtifact.version,
+                        content: fallbackArtifact.content,
+                    },
+                },
             });
             return;
         }
@@ -845,6 +861,12 @@ const ChatArea: React.FC = () => {
                     appliedBlocks: allBlocks.length,
                     status: 'success',
                     notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+                    patchedArtifact: {
+                        title: persistedArtifact.title,
+                        type: persistedArtifact.type,
+                        version: persistedArtifact.version,
+                        content: persistedArtifact.content,
+                    },
                 },
             });
         }

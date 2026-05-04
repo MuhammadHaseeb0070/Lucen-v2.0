@@ -33,6 +33,15 @@ const PatchTurnReportCard: React.FC<Props> = ({ report }) => {
           <div key={`${i}-${n.slice(0, 20)}`} className="patch-report-card-note">- {n}</div>
         ))}
       </div>
+      {report.status === 'success' && report.patchedArtifact?.content && (
+        <details className="patch-report-card-artifact" open>
+          <summary>
+            Full patched artifact: {report.patchedArtifact.title}
+            {typeof report.patchedArtifact.version === 'number' ? ` (V${report.patchedArtifact.version})` : ''}
+          </summary>
+          <pre>{report.patchedArtifact.content}</pre>
+        </details>
+      )}
     </div>
   );
 };

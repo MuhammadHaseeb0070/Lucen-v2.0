@@ -40,6 +40,13 @@ export interface Message {
     appliedBlocks?: number;
     status: 'running' | 'success' | 'failed' | 'skipped';
     notes: string[];
+    /** Full patched artifact snapshot for immediate post-patch visibility. */
+    patchedArtifact?: {
+      title: string;
+      type: ArtifactType;
+      version?: number;
+      content: string;
+    };
   };
 }
 
