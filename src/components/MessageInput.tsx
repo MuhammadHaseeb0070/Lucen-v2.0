@@ -3,6 +3,8 @@ import { Send, Square, RotateCcw, Paperclip, X, Image as ImageIcon, Quote, Globe
 import FileIcon, { getFileKindLabel } from './FileIcon';
 import { processFiles, formatFileSize } from '../services/fileProcessor';
 import type { FileAttachment } from '../types';
+import { useChatStore } from '../store/chatStore';
+import { useArtifactStore } from '../store/artifactStore';
 
 
 interface MessageInputProps {
@@ -55,6 +57,17 @@ const MessageInput: React.FC<MessageInputProps> = ({
     const [processingFiles, setProcessingFiles] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const activeConversationId = useChatStore((s) => s.activeConversationId);
+    const targetArtifactByConv = useChatStore((s) => s.targetArtifactByConv);
+    const targetArtifactSnapshotByConv = useChatStore((s) => s.targetArtifactSnapshotByConv);
+    const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
+    const activeArtifact = useArtifactStore((s) => s.activeArtifact);
+
+    const targetArtifactId = activeConversationId ? targetArtifactByConv[activeConversationId] : null;
+    const updateTarget =
+        targetArtifactId && activeArtifact && activeArtifact.id === targetArtifactId
+            ? activeArtifact
+            : (activeConversationId ? targetArtifactSnapshotByConv[activeConversationId] : null);
 
     const getPlaceholder = () => {
         if (placeholder !== 'Message Lucen...') return placeholder; // respect overrides
@@ -224,8 +237,28 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
             <div className="message-input-wrapper">
                 {/* Attachment preview strip */}
-                {attachments.length > 0 && (
+                {(updateTarget || attachments.length > 0) && (
                     <div className="attachment-strip">
+                        {updateTarget && (
+                            <div className="attachment-chip attachment-chip--update-target">
+                                <span className="attachment-chip-icon">
+                                    <RotateCcw size={14} />
+                                </span>
+                                <span className="attachment-chip-name">
+                                    Updating: {updateTarget.title}
+                                </span>
+                                <span className="attachment-chip-size">
+                                    {typeof updateTarget.version === 'number' ? `V${updateTarget.version}` : 'V1'}
+                                </span>
+                                <button
+                                    className="attachment-chip-remove"
+                                    onClick={() => activeConversationId && setTargetArtifact(activeConversationId, null)}
+                                    title="Cancel artifact update target"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        )}
                         {attachments.map((att) => (
                             <div key={att.id} className={`attachment-chip attachment-chip--${att.type}`}>
                                 {att.type === 'image' && att.dataUrl ? (

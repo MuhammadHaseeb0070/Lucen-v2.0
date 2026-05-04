@@ -19,6 +19,7 @@ import { useUIStore } from '../store/uiStore';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
 import { createPatchedVersion, ensureLineageId, getHead } from '../services/artifactVersionDb';
 import { parsePatches } from '../lib/artifactPatchParser';
+import { parseArtifacts } from '../lib/artifactParser';
 import { applyPatch } from '../lib/artifactPatcher';
 import ArtifactUpdateBinding from './ArtifactUpdateBinding';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
@@ -27,6 +28,22 @@ import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './Chat
 // Counted starting at 0 (first failure), so MAX_PATCH_RETRIES = 3 means
 // the model gets the original turn + 3 retry passes before we give up.
 const MAX_PATCH_RETRIES = 3;
+const UPDATE_INTENT_RE = /\b(update|patch|modify|change|revise|fix)\b/i;
+
+function toArtifactTag(artifact: Artifact): string {
+    const esc = (v: string) => v.replace(/"/g, '&quot;');
+    const attrs: string[] = [
+        `type="${artifact.type}"`,
+        `title="${esc(artifact.title)}"`,
+    ];
+    if (artifact.filename) attrs.push(`filename="${esc(artifact.filename)}"`);
+    if (artifact.dbId) attrs.push(`db_id="${artifact.dbId}"`);
+    if (artifact.lineageId) attrs.push(`lineage_id="${artifact.lineageId}"`);
+    if (artifact.parentId) attrs.push(`parent_id="${artifact.parentId}"`);
+    if (typeof artifact.version === 'number') attrs.push(`version_no="${artifact.version}"`);
+    if (typeof artifact.isHead === 'boolean') attrs.push(`is_head="${artifact.isHead}"`);
+    return `<lucen_artifact ${attrs.join(' ')}>\n${artifact.content}\n</lucen_artifact>`;
+}
 
 type PatchAttemptLog = {
     attemptNo: number;
@@ -728,7 +745,15 @@ const ChatArea: React.FC = () => {
                 content: newContent,
             });
             if (dbId) useArtifactStore.getState().setDbId(baseArtifact.id, dbId);
-            useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent, dbId: dbId ?? baseArtifact.dbId });
+            const fallbackArtifact: Artifact = {
+                ...baseArtifact,
+                content: newContent,
+                dbId: dbId ?? baseArtifact.dbId,
+                lineageId: dbId ?? baseArtifact.lineageId ?? baseArtifact.dbId,
+                version: 1,
+                isHead: true,
+            };
+            useArtifactStore.getState().setActiveArtifact(fallbackArtifact);
             useArtifactStore.getState().setPatchStatus(target.id, 'idle');
             useChatStore.getState().setTargetArtifact(convId, null);
             updateMessage(convId, assistantMsgId, {
@@ -736,7 +761,7 @@ const ChatArea: React.FC = () => {
                     'success',
                     [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
                     allBlocks.length,
-                )}`,
+                )}\n\n${toArtifactTag(fallbackArtifact)}`,
             });
             return;
         }
@@ -756,23 +781,72 @@ const ChatArea: React.FC = () => {
         });
 
         if (!newVersion) {
-            // DB write failed — keep the patch in memory so the user still
-            // sees their change, but warn so we know something's off.
-            console.warn('[Patch] createPatchedVersion failed; keeping change in-memory only.');
-            useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent });
+            // Never claim full success when we couldn't persist the patched
+            // version. Keep the edited preview locally, but mark the turn as
+            // failed-to-persist so users know refresh/device sync is unsafe.
+            console.warn('[Patch] createPatchedVersion failed; patch is local-only.');
+            useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent, isHead: false });
+            useArtifactStore.getState().setPatchStatus(target.id, 'failed');
+            updateMessage(convId, assistantMsgId, {
+                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                    'failed',
+                    [
+                        ...attemptLogs.map((a) => a.note),
+                        'Patch content was generated but could not be persisted as a new artifact version.',
+                        'Please retry update so the patched version is saved and available across refresh/devices.',
+                    ],
+                )}`,
+                patchReport: {
+                    targetArtifactId: target.id,
+                    targetTitle: target.title,
+                    attempts: attemptNo,
+                    retries: retryCount,
+                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                    status: 'failed',
+                    notes: [
+                        ...attemptLogs.map((a) => a.note),
+                        'Patch content was generated but could not be persisted as a new artifact version.',
+                    ],
+                },
+            });
+            useChatStore.getState().setTargetArtifact(convId, null);
+            return;
         } else {
             // Push the new version into the lineage cache and update the
             // active artifact so the renderer immediately reflects V_n+1.
             useArtifactStore.getState().appendLineageVersion(lineageId, newVersion);
-            useArtifactStore.getState().setActiveArtifact({
+            const persistedArtifact: Artifact = {
                 ...baseArtifact,
                 content: newContent,
                 dbId: newVersion.dbId,
                 version: newVersion.versionNo,
                 parentId: newVersion.parentDbId,
                 lineageId,
-            });
+                isHead: true,
+            };
+            useArtifactStore.getState().setActiveArtifact(persistedArtifact);
             useArtifactStore.getState().setDbId(baseArtifact.id, newVersion.dbId);
+
+            // Persist the patched result in-chat as a first-class artifact so it
+            // can be reopened/repatched after refresh and on other devices.
+            const patchedArtifactTag = toArtifactTag(persistedArtifact);
+            updateMessage(convId, assistantMsgId, {
+                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                    'success',
+                    [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+                    allBlocks.length,
+                )}\n\n${patchedArtifactTag}`,
+                patchReport: {
+                    targetArtifactId: target.id,
+                    targetTitle: target.title,
+                    attempts: attemptNo,
+                    retries: retryCount,
+                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                    appliedBlocks: allBlocks.length,
+                    status: 'success',
+                    notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+                },
+            });
         }
 
         // Reset error/heal state on success.
@@ -780,23 +854,8 @@ const ChatArea: React.FC = () => {
         useArtifactStore.getState().resetHealAttempts(target.id);
         useArtifactStore.getState().setPatchStatus(target.id, 'idle');
         useChatStore.getState().setTargetArtifact(convId, null);
-        updateMessage(convId, assistantMsgId, {
-            content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                'success',
-                [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
-                allBlocks.length,
-            )}`,
-            patchReport: {
-                targetArtifactId: target.id,
-                targetTitle: target.title,
-                attempts: attemptNo,
-                retries: retryCount,
-                totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
-                appliedBlocks: allBlocks.length,
-                status: 'success',
-                notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
-            },
-        });
+        // message content + patchReport were already written in the success
+        // persistence branch above.
     };
 
     // ─── Continue truncated response ───
@@ -843,6 +902,39 @@ const ChatArea: React.FC = () => {
                 : (targetArtifactSnapshot && targetArtifactSnapshot.id === targetArtifactId
                     ? targetArtifactSnapshot
                     : undefined);
+
+        // Intent fallback: user asked to update/patch but did not explicitly
+        // choose a target artifact. We require explicit targeting to avoid
+        // silently patching the wrong artifact when multiple exist.
+        if (!targetedArtifact && UPDATE_INTENT_RE.test(content)) {
+            const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+            const parsedArtifacts = (conv?.messages || []).flatMap((msg) =>
+                parseArtifacts(msg.content || '', msg.id, true).artifacts,
+            );
+            const artifactsInConv = parsedArtifacts.length;
+            if (artifactsInConv > 0) {
+                const previews = parsedArtifacts
+                    .slice(0, 3)
+                    .map((a, i) => `${i + 1}. ${a.title}${typeof a.version === 'number' ? ` (V${a.version})` : ''}`)
+                    .join('\n');
+                if (!opts?.hideUserMessage) {
+                    await addMessage(convId, {
+                        id: uuidv4(), role: 'user', content, timestamp: Date.now(),
+                        attachments: attachments || undefined,
+                    });
+                }
+                await addMessage(convId, {
+                    id: uuidv4(),
+                    role: 'assistant',
+                    content:
+                        `Choose which artifact to update first: click **Update** on the artifact card/workspace, then send your update prompt again.\n\n` +
+                        `Detected artifact${artifactsInConv === 1 ? '' : 's'} in this chat:\n${previews}${artifactsInConv > 3 ? `\n…and ${artifactsInConv - 3} more` : ''}\n\n` +
+                        `I do not auto-patch without an explicit target selection.`,
+                    timestamp: Date.now(),
+                });
+                return;
+            }
+        }
 
         // Hard-block: artifact too large to safely patch (>100k chars).
         // We surface a synthesized assistant message instead of burning a

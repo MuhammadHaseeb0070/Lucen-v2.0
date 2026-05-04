@@ -305,6 +305,13 @@
     letter-spacing: 0.5px;
 }
 
+.usage-logs-note {
+    margin: 0;
+    padding: 10px 20px 0;
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
 .usage-table-wrap {
     width: 100%;
     overflow-x: auto;

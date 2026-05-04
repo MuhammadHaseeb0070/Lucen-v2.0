@@ -47,9 +47,18 @@ const ArtifactUpdateBinding: React.FC = () => {
   if (!targetId || !activeConversationId) return null;
 
   const handleClear = () => setTargetArtifact(activeConversationId, null);
+  React.useEffect(() => {
+    if (!targetId || !activeConversationId) return;
+    if (!boundArtifact) {
+      setTargetArtifact(activeConversationId, null);
+    }
+  }, [activeConversationId, boundArtifact, setTargetArtifact, targetId]);
+
+  if (!boundArtifact) return null;
 
   // Token-economy warnings (NFR2.2): soft + hard.
-  const contentLen = boundArtifact?.content?.length ?? 0;
+  const contentLen = boundArtifact.content.length;
+  const estTokens = Math.ceil(contentLen / 4);
   const overSoft = contentLen > SOFT_WARN_CHARS;
   const overHard = contentLen > HARD_BLOCK_CHARS;
 
@@ -58,8 +67,11 @@ const ArtifactUpdateBinding: React.FC = () => {
       <Edit3 size={13} />
       <span className="artifact-binding-pill-label">Updating:</span>
       <span className="artifact-binding-pill-title">
-        {boundArtifact?.title || 'Targeted artifact'}
-        {typeof boundArtifact?.version === 'number' ? ` · V${boundArtifact.version}` : ''}
+        {boundArtifact.title}
+        {typeof boundArtifact.version === 'number' ? ` · V${boundArtifact.version}` : ''}
+      </span>
+      <span className="artifact-binding-pill-meta">
+        ~{Math.round(estTokens / 1000)}k tok
       </span>
       {overHard && (
         <span className="artifact-binding-pill-warn-text">
@@ -68,7 +80,7 @@ const ArtifactUpdateBinding: React.FC = () => {
       )}
       {overSoft && !overHard && (
         <span className="artifact-binding-pill-warn-text">
-          <AlertTriangle size={12} /> {Math.round(contentLen / 1000)}k chars — patch will be slow
+          <AlertTriangle size={12} /> {Math.round(contentLen / 1000)}k chars — patch may cost more (retries add extra tokens)
         </span>
       )}
       <button

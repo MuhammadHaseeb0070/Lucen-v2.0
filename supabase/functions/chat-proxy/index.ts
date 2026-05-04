@@ -594,28 +594,6 @@ Deno.serve(async (req: Request) => {
 
                 totalTokensNum = totalTokensNum > 0 ? totalTokensNum : (promptTokens + completionTokens);
 
-                const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
-                const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const actualWebSearchHappened = webSearchUsed || webSearchFallback;
-                const searchCost = actualWebSearchHappened ? computeWebSearchCredits(webSearchMaxResults) : 0;
-                const totalCost = textCost + imageCost + searchCost;
-
-                try {
-                    await supabaseAdmin.rpc('deduct_user_credits', {
-                        p_user_id: user.id,
-                        p_amount: totalCost,
-                    });
-
-                    if (subscriptionStatus === 'free' && actualWebSearchHappened) {
-                        await supabaseAdmin
-                            .from('user_credits')
-                            .update({ free_searches_used: freeSearchesUsed + 1 })
-                            .eq('user_id', user.id);
-                    }
-                } catch (dbErr) {
-                    console.error('Failed to deduct stream credits:', dbErr);
-                }
-
                 // Derive status from stream end state.
                 let status: UsageStatus;
                 let statusReason: string | null = null;
@@ -637,6 +615,32 @@ Deno.serve(async (req: Request) => {
                     statusReason = 'eof_without_done';
                 } else {
                     status = 'completed';
+                }
+
+                const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
+                const imageCost = imageCount * CREDITS_PER_IMAGE;
+                const actualWebSearchHappened = webSearchUsed || webSearchFallback;
+                const searchCost = actualWebSearchHappened ? computeWebSearchCredits(webSearchMaxResults) : 0;
+                const shouldCharge =
+                    status === 'completed' || status === 'truncated' || (promptTokens + completionTokens) > 0;
+                const totalCost = shouldCharge ? (textCost + imageCost + searchCost) : 0;
+
+                try {
+                    if (shouldCharge && totalCost > 0) {
+                        await supabaseAdmin.rpc('deduct_user_credits', {
+                            p_user_id: user.id,
+                            p_amount: totalCost,
+                        });
+                    }
+
+                    if (shouldCharge && subscriptionStatus === 'free' && actualWebSearchHappened) {
+                        await supabaseAdmin
+                            .from('user_credits')
+                            .update({ free_searches_used: freeSearchesUsed + 1 })
+                            .eq('user_id', user.id);
+                    }
+                } catch (dbErr) {
+                    console.error('Failed to deduct stream credits:', dbErr);
                 }
 
                 accounting.finalized = true;

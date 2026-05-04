@@ -414,6 +414,9 @@ const UserUsageTab: React.FC = () => {
                     <h2>Recent AI Requests</h2>
                     <span>Every call the app makes — including background helpers and errors</span>
                 </div>
+                <p className="usage-logs-note">
+                    Patch updates can cost more than original generation because the full artifact body is included in prompt context, and retries/continuations add additional calls.
+                </p>
 
                 <div className="usage-filter-chips">
                     {([

@@ -128,6 +128,8 @@ export interface ArtifactVersion {
   messageId: string | null;
   /** Server timestamp (ms) when this version was inserted. */
   createdAt: number;
+  /** True when this version is the DB head for the lineage. */
+  isHead?: boolean;
 }
 
 export interface Artifact {
@@ -154,6 +156,8 @@ export interface Artifact {
   parentId?: string;
   /** Stable id shared by every version of this artifact. Used by the version selector to enumerate the chain. */
   lineageId?: string;
+  /** True when this artifact reflects the lineage head in DB. */
+  isHead?: boolean;
   /** Cached full version chain. Lazy-loaded by useLineageHistory; absence does NOT mean no history exists. */
   versionHistory?: ArtifactVersion[];
   /** Latest captured runtime error from the iframe / mermaid renderer. Cleared when a successful patch lands. */

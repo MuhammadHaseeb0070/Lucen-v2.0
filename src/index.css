@@ -4619,9 +4619,9 @@ h4 {
     gap: 8px;
     margin: 0 16px 6px;
     padding: 6px 10px 6px 12px;
-    background: var(--accent-soft, rgba(11, 186, 168, 0.08));
+    background: linear-gradient(180deg, var(--accent-soft, rgba(11, 186, 168, 0.11)), rgba(11, 186, 168, 0.04));
     border: 1px solid var(--accent);
-    border-radius: 999px;
+    border-radius: 12px;
     color: var(--accent);
     font-size: 0.78rem;
     font-weight: 500;
@@ -4642,7 +4642,17 @@ h4 {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 280px;
+    max-width: 250px;
+}
+
+.artifact-binding-pill-meta {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border: 1px solid var(--divider);
+    border-radius: 999px;
+    background: var(--bg-primary);
 }
 
 .artifact-binding-pill-warn-text {
@@ -6880,6 +6890,15 @@ h4 {
 .attachment-chip--image {
     border-color: var(--accent);
     background: var(--accent-soft);
+}
+
+.attachment-chip--update-target {
+    border-color: var(--accent);
+    background: var(--accent-soft, rgba(11, 186, 168, 0.08));
+}
+
+.attachment-chip--update-target .attachment-chip-name {
+    max-width: 170px;
 }
 
 .attachment-chip-thumb {

@@ -97,6 +97,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_prev_version  INTEGER;
+  v_head_id       UUID;
   v_new_id        UUID;
   v_new_version   INTEGER;
 BEGIN
@@ -109,6 +110,22 @@ BEGIN
 
   IF v_prev_version IS NULL THEN
     RAISE EXCEPTION 'Lineage % not found for user %', p_lineage_id, p_user_id;
+  END IF;
+
+  -- Guard against stale clients: patch parent must match current head.
+  SELECT id INTO v_head_id
+    FROM artifacts
+    WHERE artifacts.lineage_id = p_lineage_id
+      AND artifacts.user_id = p_user_id
+      AND artifacts.is_head = true
+    FOR UPDATE;
+
+  IF v_head_id IS NULL THEN
+    RAISE EXCEPTION 'Head not found for lineage % user %', p_lineage_id, p_user_id;
+  END IF;
+
+  IF v_head_id <> p_parent_id THEN
+    RAISE EXCEPTION 'Stale parent. Expected head %, got %', v_head_id, p_parent_id;
   END IF;
 
   v_new_version := v_prev_version + 1;

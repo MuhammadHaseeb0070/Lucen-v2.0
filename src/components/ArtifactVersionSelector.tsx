@@ -40,7 +40,8 @@ const ArtifactVersionSelector: React.FC<ArtifactVersionSelectorProps> = ({ artif
 
   const lineageId = artifact.lineageId || artifact.dbId;
   const chain = lineageId ? lineages[lineageId] || [] : [];
-  const headVersionNo = chain.length > 0 ? chain[chain.length - 1].versionNo : (artifact.version ?? 1);
+  const headEntry = chain.find((v) => v.isHead) || (chain.length > 0 ? chain[chain.length - 1] : undefined);
+  const headVersionNo = headEntry?.versionNo ?? (artifact.version ?? 1);
   const viewedVersionNo: number =
     (lineageId ? currentVersionByLineage[lineageId] : undefined) ??
     artifact.version ??
@@ -60,7 +61,7 @@ const ArtifactVersionSelector: React.FC<ArtifactVersionSelectorProps> = ({ artif
       if (versions.length === 0) return;
       const lid = versions[0].lineageId;
       setLineage(lid, versions);
-      const head = versions[versions.length - 1];
+      const head = versions.find((v) => v.isHead) || versions[versions.length - 1];
       setCurrentVersion(lid, head.versionNo);
     })();
     return () => {

@@ -45,6 +45,7 @@ function rowToVersion(row: DbVersionRow): ArtifactVersion {
     type: row.type,
     messageId: row.message_id,
     createdAt: new Date(row.created_at).getTime(),
+    isHead: row.is_head,
   };
 }
 
@@ -175,6 +176,7 @@ export async function createPatchedVersion(params: {
     type: params.type,
     messageId: params.messageId,
     createdAt: Date.now(),
+    isHead: true,
   };
 }
 

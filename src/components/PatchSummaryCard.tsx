@@ -28,11 +28,28 @@ interface PatchSummaryCardProps {
 const PatchSummaryCard: React.FC<PatchSummaryCardProps> = ({ patch, isStreaming }) => {
   const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
   const activeArtifact = useArtifactStore((s) => s.activeArtifact);
+  const lineages = useArtifactStore((s) => s.lineages);
+  const lineageHit = Object.values(lineages)
+    .flat()
+    .find((v) => v.dbId === patch.artifactId || v.lineageId === patch.artifactId);
 
   const targetArtifact =
     activeArtifact && (activeArtifact.id === patch.artifactId || activeArtifact.dbId === patch.artifactId)
       ? activeArtifact
-      : null;
+      : lineageHit
+        ? {
+            id: patch.artifactId,
+            type: lineageHit.type,
+            title: lineageHit.title,
+            content: lineageHit.content,
+            messageId: lineageHit.messageId || '',
+            dbId: lineageHit.dbId,
+            lineageId: lineageHit.lineageId,
+            parentId: lineageHit.parentDbId,
+            version: lineageHit.versionNo,
+            isHead: lineageHit.isHead,
+          }
+        : null;
 
   const handleClick = () => {
     if (!targetArtifact) return;

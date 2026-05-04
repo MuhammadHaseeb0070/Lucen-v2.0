@@ -58,15 +58,24 @@ export async function saveArtifact(params: {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return null;
 
+  const rowId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   const { data, error } = await supabase
     .from('artifacts')
     .insert({
+      id: rowId,
       user_id: session.user.id,
       conversation_id: params.conversationId,
       message_id: params.messageId,
       type: params.type,
       title: params.title,
       content: params.content,
+      lineage_id: rowId,
+      version_no: 1,
+      is_head: true,
       is_public: false,
     })
     .select('id')
@@ -110,6 +119,7 @@ export async function fetchMyArtifacts(): Promise<DbArtifact[]> {
     .from('artifacts')
     .select('*')
     .eq('user_id', session.user.id)
+    .eq('is_head', true)
     .order('updated_at', { ascending: false });
 
   if (error) {
@@ -137,7 +147,8 @@ export async function fetchPublicArtifacts(opts: {
   let query = supabase
     .from('artifacts')
     .select('*')
-    .eq('is_public', true);
+    .eq('is_public', true)
+    .eq('is_head', true);
 
   if (search && search.trim().length > 0) {
     const s = search.trim();

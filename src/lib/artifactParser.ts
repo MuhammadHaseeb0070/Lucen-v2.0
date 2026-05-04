@@ -19,11 +19,26 @@ function getAttr(attrs: string, name: string): string | undefined {
   return m?.[1];
 }
 
-function parseArtifactAttrs(attrs: string): { type: string; title: string; filename?: string; imported: boolean } {
+function parseArtifactAttrs(attrs: string): {
+  type: string;
+  title: string;
+  filename?: string;
+  imported: boolean;
+  dbId?: string;
+  lineageId?: string;
+  parentId?: string;
+  version?: number;
+  isHead?: boolean;
+} {
   const typeRaw = getAttr(attrs, 'type');
   const titleRaw = getAttr(attrs, 'title');
   const filenameRaw = getAttr(attrs, 'filename');
   const importedRaw = getAttr(attrs, 'imported');
+  const dbIdRaw = getAttr(attrs, 'db_id');
+  const lineageIdRaw = getAttr(attrs, 'lineage_id');
+  const parentIdRaw = getAttr(attrs, 'parent_id');
+  const versionRaw = getAttr(attrs, 'version_no') || getAttr(attrs, 'version');
+  const isHeadRaw = getAttr(attrs, 'is_head');
 
   const type = (typeRaw || 'html').trim().toLowerCase();
   const filename = filenameRaw?.trim();
@@ -35,7 +50,21 @@ function parseArtifactAttrs(attrs: string): { type: string; title: string; filen
   // - generic fallback
   const title = (titleRaw?.trim() || filename || 'Artifact').trim();
 
-  return { type, title, filename, imported };
+  const parsedVersion = Number(versionRaw);
+  const version = Number.isFinite(parsedVersion) && parsedVersion > 0 ? parsedVersion : undefined;
+  const isHead = isHeadRaw === 'true' ? true : isHeadRaw === 'false' ? false : undefined;
+
+  return {
+    type,
+    title,
+    filename,
+    imported,
+    dbId: dbIdRaw?.trim() || undefined,
+    lineageId: lineageIdRaw?.trim() || undefined,
+    parentId: parentIdRaw?.trim() || undefined,
+    version,
+    isHead,
+  };
 }
 
 export interface ParseResult {
@@ -101,12 +130,17 @@ export function parseArtifacts(
   cleanContent = cleanContent.replace(
     COMPLETE_ARTIFACT_RE,
     (_match, attrs: string, code: string) => {
-      const { type, title, filename, imported } = parseArtifactAttrs(attrs || '');
+      const { type, title, filename, imported, dbId, lineageId, parentId, version, isHead } = parseArtifactAttrs(attrs || '');
       artifacts.push({
         id: `${messageId}-artifact-${index++}`,
         type: (SUPPORTED_TYPES.has(type) ? type : 'html') as ArtifactType,
         title: title || 'Artifact',
         filename,
+        dbId,
+        lineageId,
+        parentId,
+        version,
+        isHead,
         content: code.trim(),
         messageId,
         isImported: imported,
@@ -119,12 +153,17 @@ export function parseArtifacts(
   const partialMatch = cleanContent.match(PARTIAL_OPEN_RE);
   if (partialMatch) {
     const [fullMatch, attrs, partialCode] = partialMatch;
-    const { type, title, filename, imported } = parseArtifactAttrs(attrs || '');
+    const { type, title, filename, imported, dbId, lineageId, parentId, version, isHead } = parseArtifactAttrs(attrs || '');
     artifacts.push({
       id: `${messageId}-artifact-${index}`,
       type: (SUPPORTED_TYPES.has(type) ? type : 'html') as ArtifactType,
       title: title || 'Artifact',
       filename,
+      dbId,
+      lineageId,
+      parentId,
+      version,
+      isHead,
       content: (partialCode || '').trim(),
       messageId,
       isImported: imported,

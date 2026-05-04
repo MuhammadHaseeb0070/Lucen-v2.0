@@ -169,7 +169,9 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
       const existing = state.lineages[lineageId] || [];
       // Avoid duplicates if the same version is appended twice (e.g. eager
       // optimistic write + later refetch).
-      const filtered = existing.filter((v) => v.versionNo !== version.versionNo);
+      const filtered = existing
+        .filter((v) => v.versionNo !== version.versionNo)
+        .map((v) => ({ ...v, isHead: false }));
       const next = [...filtered, version].sort((a, b) => a.versionNo - b.versionNo);
       return {
         lineages: { ...state.lineages, [lineageId]: next },
@@ -190,7 +192,7 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
     if (!lineageId) return undefined;
     const chain = get().lineages[lineageId];
     if (!chain || chain.length === 0) return undefined;
-    return chain[chain.length - 1];
+    return chain.find((v) => v.isHead) || chain[chain.length - 1];
   },
 
   setCurrentVersion: (lineageId, versionNo) => {
