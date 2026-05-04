@@ -17,7 +17,7 @@ import { processFiles } from '../services/fileProcessor';
 import type { Artifact, FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
-import { createPatchedVersion, ensureLineageId } from '../services/artifactVersionDb';
+import { createPatchedVersion, ensureLineageId, getHead } from '../services/artifactVersionDb';
 import { parsePatches } from '../lib/artifactPatchParser';
 import { applyPatch } from '../lib/artifactPatcher';
 import ArtifactUpdateBinding from './ArtifactUpdateBinding';
@@ -483,6 +483,23 @@ const ChatArea: React.FC = () => {
         const retryCount = runOptions.patchRetryCount ?? 0;
         const attemptLogs = [...(runOptions.patchAttemptLogs ?? [])];
         const attemptNo = retryCount + 1;
+        const toLinearReport = (
+            status: 'running' | 'success' | 'failed' | 'skipped',
+            notes: string[],
+            appliedBlocks?: number,
+        ) => {
+            const lines: string[] = [];
+            lines.push('Patch update report');
+            lines.push(`- Status: ${status}`);
+            lines.push(`- Attempt: ${attemptNo} (${retryCount} retr${retryCount === 1 ? 'y' : 'ies'})`);
+            if (typeof appliedBlocks === 'number') {
+                lines.push(`- Blocks applied: ${appliedBlocks}`);
+            } else {
+                lines.push(`- Blocks seen: ${attemptLogs.reduce((n, a) => n + a.blockCount, 0)}`);
+            }
+            notes.slice(-4).forEach((n, idx) => lines.push(`${idx + 1}. ${n}`));
+            return lines.join('\n');
+        };
 
         const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
         const assistantMsg = conv?.messages.find((m) => m.id === assistantMsgId);
@@ -501,7 +518,10 @@ const ChatArea: React.FC = () => {
             useChatStore.getState().setTargetArtifact(convId, null);
             useArtifactStore.getState().setPatchStatus(target.id, 'idle');
             updateMessage(convId, assistantMsgId, {
-                content: visibleContent,
+                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                    'skipped',
+                    ['No <lucen_patch> block detected in model output.'],
+                )}`,
                 patchReport: {
                     targetArtifactId: target.id,
                     targetTitle: target.title,
@@ -526,7 +546,21 @@ const ChatArea: React.FC = () => {
             status: 'running',
             note: `Attempt ${attemptNo}: parsed ${allBlocks.length} patch block${allBlocks.length === 1 ? '' : 's'}.`,
         });
-        const patchResult = applyPatch(target.content, allBlocks);
+        let baseArtifact = target;
+        if (target.lineageId) {
+            const head = await getHead(target.lineageId);
+            if (head) {
+                baseArtifact = {
+                    ...target,
+                    content: head.content,
+                    dbId: head.dbId,
+                    version: head.versionNo,
+                    parentId: head.parentDbId,
+                    lineageId: head.lineageId,
+                };
+            }
+        }
+        const patchResult = applyPatch(baseArtifact.content, allBlocks);
 
         if (!patchResult.ok) {
             // ── NFR1.3 retry loop ──
@@ -586,7 +620,10 @@ const ChatArea: React.FC = () => {
             useArtifactStore.getState().setPatchStatus(target.id, 'failed');
             useChatStore.getState().setTargetArtifact(convId, null);
             updateMessage(convId, assistantMsgId, {
-                content: visibleContent,
+                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                    'failed',
+                    [...attemptLogs.map((a) => a.note), `Final failure: ${reasonText}`],
+                )}`,
                 patchReport: {
                     targetArtifactId: target.id,
                     targetTitle: target.title,
@@ -656,7 +693,10 @@ const ChatArea: React.FC = () => {
                 useArtifactStore.getState().setPatchStatus(target.id, 'failed');
                 useChatStore.getState().setTargetArtifact(convId, null);
                 updateMessage(convId, assistantMsgId, {
-                    content: visibleContent,
+                    content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                        'failed',
+                        [...attemptLogs.map((a) => a.note), `Final failure: invalid Mermaid syntax (${parseErr.slice(0, 120)})`],
+                    )}`,
                     patchReport: {
                         targetArtifactId: target.id,
                         targetTitle: target.title,
@@ -674,23 +714,30 @@ const ChatArea: React.FC = () => {
         // ── Patch applied successfully — persist the new version. ──
         // Make sure the source artifact has a lineage_id (defensive
         // backfill for artifacts created before the migration ran).
-        const parentDbId = target.dbId
-            ?? useArtifactStore.getState().getDbId(target.id);
+        const parentDbId = baseArtifact.dbId
+            ?? useArtifactStore.getState().getDbId(baseArtifact.id);
         if (!parentDbId) {
             // Source artifact never made it to the DB — fall back to the
             // legacy save path with the patched content. Clear binding.
             const dbId = await saveArtifact({
-                clientId: target.id,
+                clientId: baseArtifact.id,
                 conversationId: convId,
                 messageId: assistantMsgId,
-                type: target.type,
-                title: target.title,
+                type: baseArtifact.type,
+                title: baseArtifact.title,
                 content: newContent,
             });
-            if (dbId) useArtifactStore.getState().setDbId(target.id, dbId);
-            useArtifactStore.getState().patchActiveArtifact({ content: newContent });
+            if (dbId) useArtifactStore.getState().setDbId(baseArtifact.id, dbId);
+            useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent, dbId: dbId ?? baseArtifact.dbId });
             useArtifactStore.getState().setPatchStatus(target.id, 'idle');
             useChatStore.getState().setTargetArtifact(convId, null);
+            updateMessage(convId, assistantMsgId, {
+                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                    'success',
+                    [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+                    allBlocks.length,
+                )}`,
+            });
             return;
         }
 
@@ -703,8 +750,8 @@ const ChatArea: React.FC = () => {
             parentDbId,
             conversationId: convId,
             messageId: assistantMsgId,
-            type: target.type,
-            title: target.title,
+            type: baseArtifact.type,
+            title: baseArtifact.title,
             content: newContent,
         });
 
@@ -712,19 +759,20 @@ const ChatArea: React.FC = () => {
             // DB write failed — keep the patch in memory so the user still
             // sees their change, but warn so we know something's off.
             console.warn('[Patch] createPatchedVersion failed; keeping change in-memory only.');
-            useArtifactStore.getState().patchActiveArtifact({ content: newContent });
+            useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent });
         } else {
             // Push the new version into the lineage cache and update the
             // active artifact so the renderer immediately reflects V_n+1.
             useArtifactStore.getState().appendLineageVersion(lineageId, newVersion);
-            useArtifactStore.getState().patchActiveArtifact({
+            useArtifactStore.getState().setActiveArtifact({
+                ...baseArtifact,
                 content: newContent,
                 dbId: newVersion.dbId,
                 version: newVersion.versionNo,
                 parentId: newVersion.parentDbId,
                 lineageId,
             });
-            useArtifactStore.getState().setDbId(target.id, newVersion.dbId);
+            useArtifactStore.getState().setDbId(baseArtifact.id, newVersion.dbId);
         }
 
         // Reset error/heal state on success.
@@ -733,7 +781,11 @@ const ChatArea: React.FC = () => {
         useArtifactStore.getState().setPatchStatus(target.id, 'idle');
         useChatStore.getState().setTargetArtifact(convId, null);
         updateMessage(convId, assistantMsgId, {
-            content: visibleContent,
+            content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
+                'success',
+                [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
+                allBlocks.length,
+            )}`,
             patchReport: {
                 targetArtifactId: target.id,
                 targetTitle: target.title,
