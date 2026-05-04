@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { X, Palette, Info, Keyboard, Check, Activity, Shield, LogOut, Loader2 } from 'lucide-react';
-import { useThemeStore, THEME_PRESETS, applyTheme } from '../store/themeStore';
+import { useThemeStore, THEME_PRESETS } from '../store/themeStore';
 import type { ThemePreset } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import UserUsageTab from './UserUsageTab';
+import ChatAppearanceSection from './ChatAppearanceSection';
 
 const CATEGORIES = [
     { id: 'curated', label: 'Curated' },
@@ -54,16 +55,14 @@ const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () 
 
 // ─── Appearance Tab ───
 const AppearanceTab: React.FC = () => {
-    const { activeThemeId, setTheme } = useThemeStore();
+    const { activeThemeId, themeSource, setTheme } = useThemeStore();
 
     const handleSelect = (id: string) => {
         setTheme(id);
-        const preset = THEME_PRESETS.find((t) => t.id === id);
-        if (preset) applyTheme(preset);
     };
 
     return (
-        <div className="settings-tab-body">
+        <div className="settings-tab-body settings-tab-body--appearance">
             <p className="settings-desc">Pick a theme that feels right for you.</p>
             {CATEGORIES.map((cat) => {
                 const themes = THEME_PRESETS.filter((t) => t.category === cat.id);
@@ -73,12 +72,18 @@ const AppearanceTab: React.FC = () => {
                         <h4 className="theme-section__title">{cat.label}</h4>
                         <div className="theme-grid">
                             {themes.map((p) => (
-                                <ThemeCard key={p.id} preset={p} isActive={activeThemeId === p.id} onClick={() => handleSelect(p.id)} />
+                                <ThemeCard
+                                    key={p.id}
+                                    preset={p}
+                                    isActive={themeSource === 'preset' && activeThemeId === p.id}
+                                    onClick={() => handleSelect(p.id)}
+                                />
                             ))}
                         </div>
                     </div>
                 );
             })}
+            <ChatAppearanceSection />
         </div>
     );
 };

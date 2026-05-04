@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import { useAuthStore } from '../store/authStore';
-import { useThemeStore, THEME_PRESETS, applyTheme } from '../store/themeStore';
+import { useThemeStore, THEME_PRESETS } from '../store/themeStore';
 import type { ThemePreset } from '../store/themeStore';
 
 // ─── Inline ThemeCard for Landing Page ───
@@ -271,12 +271,10 @@ const COMPARISON_DATA: ComparisonRow[] = [
 
 const HomePage: React.FC = () => {
     const { user } = useAuthStore();
-    const { activeThemeId, setTheme } = useThemeStore();
+    const { activeThemeId, themeSource, setTheme } = useThemeStore();
 
     const handleThemeSelect = (id: string) => {
         setTheme(id);
-        const preset = THEME_PRESETS.find((t) => t.id === id);
-        if (preset) applyTheme(preset);
     };
 
     const showcaseThemes = THEME_PRESETS;
@@ -382,7 +380,7 @@ const HomePage: React.FC = () => {
                             <LandingThemeCard
                                 key={preset.id}
                                 preset={preset}
-                                isActive={activeThemeId === preset.id}
+                                isActive={themeSource === 'preset' && activeThemeId === preset.id}
                                 onClick={() => handleThemeSelect(preset.id)}
                             />
                         ))}

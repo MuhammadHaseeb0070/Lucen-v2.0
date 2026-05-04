@@ -13,7 +13,7 @@ import AttachmentViewer from './AttachmentViewer';
 import ArtifactHub from './ArtifactHub';
 
 import OwnerDashboard from './OwnerDashboard';
-import { useThemeStore, applyTheme } from '../store/themeStore';
+import { useThemeStore, applyThemeFromStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
 import { useArtifactStore } from '../store/artifactStore';
@@ -22,7 +22,7 @@ import { isAdminUser } from '../config/admin';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 const Layout: React.FC = () => {
-    const { getActiveTheme } = useThemeStore();
+    useThemeStore();
     const { user, isLoading, isInitialized, sessionExpired, initialize } = useAuthStore();
     const { setIsAdminView, isAdminView, sidebarCollapsed, toggleSidebar } = useUIStore();
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
@@ -53,11 +53,10 @@ const Layout: React.FC = () => {
         }
     }, [user, isAdminView, setIsAdminView]);
 
-    // Apply theme on mount and when theme changes
     useEffect(() => {
-        const theme = getActiveTheme();
-        applyTheme(theme);
-    });
+        applyThemeFromStore();
+        return useThemeStore.subscribe(applyThemeFromStore);
+    }, []);
 
     // Global Ctrl+K / Cmd+K listener
     const handleGlobalKeyDown = useCallback((e: KeyboardEvent) => {

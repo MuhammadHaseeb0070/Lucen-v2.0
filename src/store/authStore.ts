@@ -4,6 +4,8 @@ import type { AppUser } from '../services/auth';
 import { getUser } from '../services/auth';
 import { useChatStore } from './chatStore';
 import { useCreditsStore } from './creditsStore';
+import { useThemeStore } from './themeStore';
+import { fetchUserSettingsRow } from '../services/userSettings';
 
 let initPromise: Promise<void> | null = null;
 
@@ -323,8 +325,13 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
  */
 function syncDataOnLogin() {
     // Small delay to ensure auth state is propagated to session cache
-    setTimeout(() => {
+    setTimeout(async () => {
         useChatStore.getState().loadFromSupabase();
+
+        const row = await fetchUserSettingsRow();
+        if (row) {
+            useThemeStore.getState().hydrateFromServerRow(row);
+        }
 
         // Detect post-checkout redirect (payment provider sends user back with this param).
         const url = new URL(window.location.href);

@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import Logo from './Logo';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore, applyThemeFromStore } from '../store/themeStore';
 
 const MarketingLayout: React.FC = () => {
     const { user, signOut, initialize } = useAuthStore();
@@ -11,6 +12,11 @@ const MarketingLayout: React.FC = () => {
     React.useEffect(() => {
         initialize();
     }, [initialize]);
+
+    React.useEffect(() => {
+        applyThemeFromStore();
+        return useThemeStore.subscribe(applyThemeFromStore);
+    }, []);
 
     const handleLogout = async () => {
         await signOut();

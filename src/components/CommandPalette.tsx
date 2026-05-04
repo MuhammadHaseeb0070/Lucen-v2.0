@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
-import { useThemeStore, THEME_PRESETS, applyTheme } from '../store/themeStore';
+import { useThemeStore, THEME_PRESETS } from '../store/themeStore';
 import { useSideChatStore } from '../store/sideChatStore';
 
 // ─── Types ───
@@ -86,6 +86,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
         setSettingsTab,
         setTheme,
         activeThemeId,
+        themeSource,
     } = useThemeStore();
 
     const { clearMessages: clearSideChatMessages } = useSideChatStore();
@@ -230,14 +231,17 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
                 category: 'Themes',
                 keywords: ['theme', preset.category, preset.isDark ? 'dark' : 'light', 'color', 'switch'],
                 icon: <span className="command-palette-emoji">{preset.emoji}</span>,
-                rightLabel: activeThemeId === preset.id ? '✓ Active' : undefined,
-                action: () => { setTheme(preset.id); applyTheme(preset); },
+                rightLabel:
+                    themeSource === 'preset' && activeThemeId === preset.id ? '✓ Active' : undefined,
+                action: () => {
+                    setTheme(preset.id);
+                },
             });
         });
 
         return cmds;
     }, [
-        activeConversationId, sideChatOpen, sidebarCollapsed, activeThemeId,
+        activeConversationId, sideChatOpen, sidebarCollapsed, activeThemeId, themeSource,
         createConversation, deleteConversation, getActiveConversation,
         toggleSideChat, clearSideChatMessages, toggleSidebar,
         setBillingOpen, onClose,
