@@ -40,14 +40,29 @@ export interface Message {
     appliedBlocks?: number;
     status: 'running' | 'success' | 'failed' | 'skipped';
     notes: string[];
-    /** Full patched artifact snapshot for immediate post-patch visibility. */
+    /** Version label chosen by the AI (e.g. "2.1", "3.0"). Ephemeral — not persisted to DB. */
+    versionLabel?: string;
+    /** Metadata of the patched artifact (no content — use the lucen_artifact tag in message content). */
     patchedArtifact?: {
       title: string;
       type: ArtifactType;
       version?: number;
-      content: string;
+      versionLabel?: string;
     };
   };
+  /** Artifact suggestions for ambiguous update-intent detection. Rendered as an inline picker. */
+  artifactSuggestions?: Array<{
+    id: string;
+    title: string;
+    type: ArtifactType;
+    version?: number;
+    versionLabel?: string;
+    dbId?: string;
+    lineageId?: string;
+    content: string;
+  }>;
+  /** The original user prompt that triggered an artifact suggestion response, for re-queueing. */
+  artifactSuggestionOriginalPrompt?: string;
 }
 
 export interface Conversation {
@@ -137,6 +152,11 @@ export interface ArtifactVersion {
   createdAt: number;
   /** True when this version is the DB head for the lineage. */
   isHead?: boolean;
+  /**
+   * Human-readable version label chosen by the AI (e.g. "2.1" for minor, "3.0" for major).
+   * Ephemeral — stored in-memory only, not persisted to DB. Falls back to `V${versionNo}`.
+   */
+  versionLabel?: string;
 }
 
 export interface Artifact {

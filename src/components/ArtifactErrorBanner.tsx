@@ -55,20 +55,53 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     // Bind the artifact so the next prompt routes through the patching flow.
     setTargetArtifact(activeConversationId, artifact);
 
-    // Compose a precise, structured fix prompt. The patching prompt
-    // already tells the model how to format <lucen_patch>; we just feed
-    // the error context.
+    // Build a renderer-specific fix prompt. Each renderer has different
+    // constraints the model must understand to avoid producing broken patches.
     const lines: string[] = [];
-    lines.push('Fix the following runtime error in this artifact.');
-    lines.push('');
-    lines.push(`Error origin: ${runtimeError.origin}`);
-    lines.push(`Error message: ${runtimeError.message}`);
-    if (runtimeError.line) lines.push(`Line: ${runtimeError.line}${runtimeError.column ? `:${runtimeError.column}` : ''}`);
-    if (runtimeError.source) lines.push(`Source: ${runtimeError.source}`);
-    if (runtimeError.stack) {
-      lines.push('Stack:');
-      lines.push(runtimeError.stack.split('\n').slice(0, 8).join('\n'));
+    const origin = runtimeError.origin;
+
+    if (origin === 'iframe') {
+      // HTML artifact running in a sandboxed iframe.
+      lines.push('Fix the following runtime error in this HTML artifact.');
+      lines.push('');
+      lines.push('Environment: sandboxed iframe (allow-scripts allow-same-origin allow-forms allow-popups allow-modals)');
+      lines.push('Constraints: No Node.js, no filesystem, no require(), no npm imports, no cross-origin localStorage. CDN script tags are fine.');
+      lines.push(`Error message: ${runtimeError.message}`);
+      if (runtimeError.line) lines.push(`Line: ${runtimeError.line}${runtimeError.column ? `:${runtimeError.column}` : ''}`);
+      if (runtimeError.source && runtimeError.source !== 'about:srcdoc') lines.push(`Source: ${runtimeError.source}`);
+      if (runtimeError.stack) {
+        lines.push('Stack trace (first 8 lines):');
+        lines.push(runtimeError.stack.split('\n').slice(0, 8).join('\n'));
+      }
+    } else if (origin === 'mermaid') {
+      // Mermaid diagram syntax error.
+      lines.push('Fix the following Mermaid diagram syntax error.');
+      lines.push('');
+      lines.push('Mermaid constraints:');
+      lines.push('- No box-shadow, drop-shadow, or backdrop-filter in CSS styling');
+      lines.push('- Node labels containing parentheses MUST be quoted: Node["Label (stuff)"]');
+      lines.push('- Use default theme only; limited custom theming support');
+      lines.push(`Parse error: ${runtimeError.message}`);
+      if (runtimeError.stack) lines.push(`Detail: ${runtimeError.stack.split('\n')[0]}`);
+    } else if (origin === 'svg') {
+      // SVG render/parse error.
+      lines.push('Fix the following SVG render error in this artifact.');
+      lines.push('');
+      lines.push('SVG constraints: Only the <svg>...</svg> element is supported. No script tags, no external font loads, no HTML inside SVG.');
+      lines.push(`Error: ${runtimeError.message}`);
+    } else {
+      // Generic fallback for unknown origins.
+      lines.push('Fix the following runtime error in this artifact.');
+      lines.push('');
+      lines.push(`Error origin: ${origin}`);
+      lines.push(`Error message: ${runtimeError.message}`);
+      if (runtimeError.line) lines.push(`Line: ${runtimeError.line}${runtimeError.column ? `:${runtimeError.column}` : ''}`);
+      if (runtimeError.stack) {
+        lines.push('Stack:');
+        lines.push(runtimeError.stack.split('\n').slice(0, 8).join('\n'));
+      }
     }
+
     lines.push('');
     lines.push('Use a <lucen_patch> with the smallest possible change that resolves this error. Do NOT regenerate the entire artifact.');
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);

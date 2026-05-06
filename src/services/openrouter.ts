@@ -92,7 +92,7 @@ interface CallAccounting {
     parentRequestId: string;
     messageId?: string;
     conversationId?: string;
-    callKind: 'chat' | 'chat_continuation';
+    callKind: 'chat' | 'chat_continuation' | 'patch' | 'patch_retry' | 'patch_continuation';
     inputCostPer1M: number;
     outputCostPer1M: number;
 }
@@ -815,11 +815,18 @@ export async function streamChat(
 
     // Accounting: one parent id per user turn. All continuation chunks share
     // this parent so the Usage UI can group them under the original turn.
+    const rootRequestId = generateRequestId();
+    const baseKind = options.targetedArtifact
+        ? (options.patchRetryCount ? 'patch_retry' : 'patch')
+        : 'chat';
+
     const accounting: CallAccounting = {
-        parentRequestId: generateRequestId(),
+        parentRequestId: rootRequestId,
         messageId: options.messageId,
         conversationId: options.conversationId,
-        callKind: isContinuation ? 'chat_continuation' : 'chat',
+        callKind: isContinuation 
+            ? (baseKind === 'patch' || baseKind === 'patch_retry' ? 'patch_continuation' : 'chat_continuation')
+            : baseKind,
         inputCostPer1M: model.inputCostPer1m || 0,
         outputCostPer1M: model.outputCostPer1m || 0,
     };
@@ -1075,7 +1082,15 @@ async function streamViaEdgeFunctionWrapper(
                 continuationCount + 1,
                 fullResponse,
                 accounting
-                    ? { ...accounting, callKind: 'chat_continuation' }
+                    ? {
+                          ...accounting,
+                          callKind:
+                              accounting.callKind === 'patch' ||
+                              accounting.callKind === 'patch_retry' ||
+                              accounting.callKind === 'patch_continuation'
+                                  ? 'patch_continuation'
+                                  : 'chat_continuation',
+                      }
                     : undefined,
             );
         },
@@ -1506,7 +1521,7 @@ async function streamViaEdgeFunction(
     const finalizeChat = captureCall({
         id: perCallRequestId,
         parentId: accounting?.parentRequestId,
-        kind: (accounting?.callKind === 'chat_continuation' ? 'chat' : 'chat') as 'chat',
+        kind: accounting?.callKind ?? 'chat',
         endpoint: chatEndpoint,
         modelId: model.id,
         request: { ...requestPayload, stream: true },

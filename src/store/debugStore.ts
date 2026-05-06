@@ -25,6 +25,10 @@ export const DEBUG_CAPTURE_ENABLED = (import.meta.env.VITE_DEV_PAYLOAD_CAPTURE a
 
 export type DebugEntryKind =
     | 'chat'
+    | 'chat_continuation'
+    | 'patch'
+    | 'patch_retry'
+    | 'patch_continuation'
     | 'classify_intent'
     | 'describe_image'
     | 'embed'

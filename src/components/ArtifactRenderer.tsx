@@ -254,10 +254,11 @@ const PanZoomContainer: React.FC<{ children: React.ReactNode; vectorMode?: boole
 
 // ── SVG Renderer ──
 
-const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false }) => {
+const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false, artifactId }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
+  const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -269,12 +270,16 @@ const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false }) 
         if (m) svgContent = m[0];
       }
       if (!svgContent.toLowerCase().includes('<svg')) {
-        setRenderError('Content does not contain valid SVG markup');
+        const errMsg = 'Content does not contain valid SVG markup';
+        setRenderError(errMsg);
         el.innerHTML = '';
+        if (artifactId) setRuntimeError(artifactId, { message: errMsg, origin: 'svg', capturedAt: Date.now() });
         return;
       }
       el.innerHTML = svgContent;
       setRenderError(null);
+      // Clear any prior SVG error on successful render.
+      if (artifactId) setRuntimeError(artifactId, null);
       const svgEl = el.querySelector('svg');
       if (svgEl) {
         if (!svgEl.getAttribute('viewBox') && svgEl.getAttribute('width') && svgEl.getAttribute('height')) {
@@ -286,10 +291,12 @@ const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false }) 
         svgEl.removeAttribute('height');
       }
     } catch (err) {
-      setRenderError(err instanceof Error ? err.message : 'Failed to render SVG');
+      const errMsg = err instanceof Error ? err.message : 'Failed to render SVG';
+      setRenderError(errMsg);
       if (containerRef.current) containerRef.current.innerHTML = '';
+      if (artifactId) setRuntimeError(artifactId, { message: errMsg, origin: 'svg', capturedAt: Date.now() });
     }
-  }, [previewContent]);
+  }, [previewContent, artifactId, setRuntimeError]);
 
   if (renderError) {
     return (

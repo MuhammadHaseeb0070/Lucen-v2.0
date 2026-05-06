@@ -8604,3 +8604,204 @@ mark.search-highlight.is-active {
     position: relative;
     z-index: 2;
 }
+
+/* ─── Patching Engine UI ─── */
+.artifact-suggestion-picker {
+    margin-top: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--bg-surface) 90%, var(--accent) 10%);
+    border-radius: var(--r-md);
+    padding: 12px;
+    box-shadow: 0 4px 12px var(--shadow-color);
+}
+
+.artifact-suggestion-picker-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 12px;
+}
+
+.artifact-suggestion-picker-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+}
+.artifact-suggestion-picker-dismiss:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface-hover);
+}
+
+.artifact-suggestion-picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.artifact-suggestion-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: var(--bg-surface);
+    border: 1px solid var(--divider);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    text-align: left;
+    transition: all var(--dur-fast) var(--ease);
+}
+.artifact-suggestion-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.artifact-suggestion-card-icon {
+    color: var(--text-tertiary);
+}
+.artifact-suggestion-card:hover .artifact-suggestion-card-icon {
+    color: var(--accent);
+}
+
+.artifact-suggestion-card-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.artifact-suggestion-card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.artifact-suggestion-card-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.artifact-suggestion-card-version {
+    background: var(--bg-muted);
+    padding: 1px 6px;
+    border-radius: var(--r-full);
+    font-weight: 600;
+}
+
+.artifact-suggestion-picker-hint {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+/* PatchTurnReportCard */
+.patch-report-card {
+    margin-top: 12px;
+    border: 1px solid var(--divider);
+    background: var(--bg-surface);
+    border-radius: var(--r-md);
+    padding: 12px;
+}
+.patch-report-card--success { border-left: 3px solid var(--success); }
+.patch-report-card--failed { border-left: 3px solid var(--danger); }
+.patch-report-card--skipped { border-left: 3px solid var(--warning); }
+.patch-report-card--running { border-left: 3px solid var(--accent); }
+
+.patch-report-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.patch-report-card-icon { display: flex; }
+.patch-report-card--success .patch-report-card-icon { color: var(--success); }
+.patch-report-card--failed .patch-report-card-icon { color: var(--danger); }
+.patch-report-card--skipped .patch-report-card-icon { color: var(--warning); }
+.patch-report-card--running .patch-report-card-icon { color: var(--accent); }
+.patch-report-card-spin { animation: spin 1s linear infinite; }
+
+.patch-report-card-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+.patch-report-card-meta {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.patch-report-card-badges {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 0.75rem;
+}
+.patch-report-card-version-badge {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: var(--r-full);
+    font-weight: 600;
+}
+.patch-report-card-blocks-badge {
+    background: var(--bg-muted);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: var(--r-full);
+}
+.patch-report-card-artifact-name {
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.patch-report-card-notes {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+.patch-report-card-note {
+    margin-bottom: 2px;
+}
+
+.patch-report-card-open-hint {
+    font-size: 0.75rem;
+    color: var(--success);
+    font-style: italic;
+    margin-top: 4px;
+}
+.patch-report-card-open-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bg-muted);
+    border: none;
+    border-radius: var(--r-sm);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background var(--dur-fast) var(--ease);
+}
+.patch-report-card-open-btn:hover {
+    background: var(--bg-surface-hover);
+}

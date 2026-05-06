@@ -50,6 +50,12 @@ export interface PatchBlock {
 export interface ParsedPatch {
   /** The artifact_id attribute on the patch container, when present. */
   artifactId?: string;
+  /**
+   * AI-chosen semantic version label (e.g. "2.1" for minor, "3.0" for major).
+   * Parsed from the `version_label` attribute on the `<lucen_patch>` tag.
+   * Validated: must match /^\d+\.\d+$/ or /^\d+$/ (e.g. "2", "2.1", "3.0").
+   */
+  versionLabel?: string;
   /** Ordered list of search/replace blocks. */
   blocks: PatchBlock[];
   /** True if the patch container was unclosed when parsing happened. */
@@ -156,8 +162,14 @@ export function parsePatches(
     COMPLETE_PATCH_RE,
     (match, attrs: string, body: string, offset: number) => {
       const artifactId = getAttr(attrs || '', 'artifact_id');
+      const rawVersionLabel = getAttr(attrs || '', 'version_label');
+      // Validate version label: only accept N or N.M patterns to prevent garbage injection.
+      const versionLabel = rawVersionLabel && /^\d+(\.\d+)?$/.test(rawVersionLabel.trim())
+        ? rawVersionLabel.trim()
+        : undefined;
       patches.push({
         artifactId,
+        versionLabel,
         blocks: parseBlocks(body),
         isStreaming: false,
         startOffset: offset,
@@ -172,9 +184,14 @@ export function parsePatches(
   if (partialMatch) {
     const [fullMatch, attrs, body] = partialMatch;
     const artifactId = getAttr(attrs || '', 'artifact_id');
+    const rawVersionLabel = getAttr(attrs || '', 'version_label');
+    const versionLabel = rawVersionLabel && /^\d+(\.\d+)?$/.test(rawVersionLabel.trim())
+      ? rawVersionLabel.trim()
+      : undefined;
     const matchOffset = cleanContent.indexOf(fullMatch);
     patches.push({
       artifactId,
+      versionLabel,
       blocks: parseBlocks(body || ''),
       isStreaming: !forceClose,
       startOffset: matchOffset,

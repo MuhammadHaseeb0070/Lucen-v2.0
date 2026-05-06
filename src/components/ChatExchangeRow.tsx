@@ -57,6 +57,11 @@ export type ChatExchangeRowProps = {
     handlePin: (msgId: string) => void;
     handleDelete: (msgId: string) => void;
     setHighlightedPairId: (id: string | null) => void;
+    onArtifactSuggestionSelect?: (
+        suggestion: NonNullable<import('../types').Message['artifactSuggestions']>[0],
+        originalPrompt: string,
+        messageId: string,
+    ) => void;
 };
 
 const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
@@ -76,6 +81,7 @@ const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
     handlePin,
     handleDelete,
     setHighlightedPairId,
+    onArtifactSuggestionSelect,
 }) => {
     const q = searchQuery.trim();
 
@@ -171,6 +177,7 @@ const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
                                 showDelete
                                 onDelete={() => handleDelete(msg.id)}
                                 onDeleteHover={(h) => setHighlightedPairId(h ? msg.id : null)}
+                                onArtifactSuggestionSelect={onArtifactSuggestionSelect}
                             />
                         </div>
                     </div>
@@ -203,6 +210,7 @@ const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
                         showRetry={msg.id === lastAssistantMsgId}
                         searchQuery={q || undefined}
                         showDelete={false}
+                        onArtifactSuggestionSelect={onArtifactSuggestionSelect}
                     />
                 </div>
             </div>

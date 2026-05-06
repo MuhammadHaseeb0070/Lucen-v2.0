@@ -558,6 +558,8 @@ const ChatArea: React.FC = () => {
         // Apply all blocks across all patches sequentially. If multiple
         // patch tags arrive, treat them as one logical patch (FR6 multi-step).
         const allBlocks = patches.flatMap((p) => p.blocks);
+        // Use the first AI-supplied version label (if any). Validated in parser.
+        const patchVersionLabel = patches.find((p) => p.versionLabel)?.versionLabel;
         attemptLogs.push({
             attemptNo,
             blockCount: allBlocks.length,
@@ -597,8 +599,8 @@ const ChatArea: React.FC = () => {
                 `Re-emit the FULL <lucen_patch> with corrected blocks. Copy <search> verbatim from the artifact above.`;
 
             if (retryCount < MAX_PATCH_RETRIES) {
-                // Keep everything in the SAME assistant bubble; reset stream
-                // content and retry in-place.
+                // Keep everything in the SAME assistant bubble; show a retry
+                // status badge instead of wiping content blank (avoids flash).
                 useArtifactStore.getState().setPatchStatus(target.id, 'failed');
                 attemptLogs.push({
                     attemptNo,
@@ -606,8 +608,9 @@ const ChatArea: React.FC = () => {
                     status: 'failed',
                     note: reasonText,
                 });
+                const retryBadge = `_Patch attempt ${attemptNo} failed — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
                 updateMessage(convId, assistantMsgId, {
-                    content: '',
+                    content: retryBadge,
                     reasoning: '',
                     isStreaming: true,
                     isReasoningStreaming: false,
@@ -683,8 +686,9 @@ const ChatArea: React.FC = () => {
                         status: 'failed',
                         note: `Mermaid validation failed: ${parseErr.slice(0, 180)}`,
                     });
+                    const mermaidRetryBadge = `_Patch attempt ${attemptNo} failed (invalid Mermaid) — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
                     updateMessage(convId, assistantMsgId, {
-                        content: '',
+                        content: mermaidRetryBadge,
                         reasoning: '',
                         isStreaming: true,
                         isReasoningStreaming: false,
@@ -770,13 +774,14 @@ const ChatArea: React.FC = () => {
                     retries: retryCount,
                     totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
                     appliedBlocks: allBlocks.length,
+                    versionLabel: patchVersionLabel,
                     status: 'success',
                     notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
                     patchedArtifact: {
                         title: fallbackArtifact.title,
                         type: fallbackArtifact.type,
                         version: fallbackArtifact.version,
-                        content: fallbackArtifact.content,
+                        versionLabel: patchVersionLabel,
                     },
                 },
             });
@@ -860,13 +865,14 @@ const ChatArea: React.FC = () => {
                     retries: retryCount,
                     totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
                     appliedBlocks: allBlocks.length,
+                    versionLabel: patchVersionLabel,
                     status: 'success',
                     notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
                     patchedArtifact: {
                         title: persistedArtifact.title,
                         type: persistedArtifact.type,
                         version: persistedArtifact.version,
-                        content: persistedArtifact.content,
+                        versionLabel: patchVersionLabel,
                     },
                 },
             });
@@ -934,12 +940,33 @@ const ChatArea: React.FC = () => {
             const parsedArtifacts = (conv?.messages || []).flatMap((msg) =>
                 parseArtifacts(msg.content || '', msg.id, true).artifacts,
             );
-            const artifactsInConv = parsedArtifacts.length;
+            // Dedup by lineageId — only show the latest version of each
+            // lineage so stale patched versions don't clutter the list.
+            const seenLineages = new Set<string>();
+            const uniqueArtifacts = parsedArtifacts.filter((a) => {
+                const key = a.lineageId ?? a.id;
+                if (seenLineages.has(key)) return false;
+                seenLineages.add(key);
+                return true;
+            });
+            const artifactsInConv = uniqueArtifacts.length;
             if (artifactsInConv > 0) {
-                const previews = parsedArtifacts
+                const previews = uniqueArtifacts
                     .slice(0, 3)
                     .map((a, i) => `${i + 1}. ${a.title}${typeof a.version === 'number' ? ` (V${a.version})` : ''}`)
                     .join('\n');
+                // Build suggestion objects for the picker UI.
+                const suggestions: NonNullable<import('../types').Message['artifactSuggestions']> = uniqueArtifacts
+                    .slice(0, 5)
+                    .map((a) => ({
+                        id: a.id,
+                        title: a.title,
+                        type: a.type,
+                        version: typeof a.version === 'number' ? a.version : undefined,
+                        dbId: a.dbId,
+                        lineageId: a.lineageId,
+                        content: a.content,
+                    }));
                 if (!opts?.hideUserMessage) {
                     await addMessage(convId, {
                         id: uuidv4(), role: 'user', content, timestamp: Date.now(),
@@ -950,10 +977,11 @@ const ChatArea: React.FC = () => {
                     id: uuidv4(),
                     role: 'assistant',
                     content:
-                        `Choose which artifact to update first: click **Update** on the artifact card/workspace, then send your update prompt again.\n\n` +
-                        `Detected artifact${artifactsInConv === 1 ? '' : 's'} in this chat:\n${previews}${artifactsInConv > 3 ? `\n…and ${artifactsInConv - 3} more` : ''}\n\n` +
-                        `I do not auto-patch without an explicit target selection.`,
+                        `Which artifact should be updated? Select one below, or click **Update** (✏) on any open artifact workspace.\n\n` +
+                        `Detected artifact${artifactsInConv === 1 ? '' : 's'} in this chat:\n${previews}${artifactsInConv > 3 ? `\n…and ${artifactsInConv - 3} more` : ''}`,
                     timestamp: Date.now(),
+                    artifactSuggestions: suggestions,
+                    artifactSuggestionOriginalPrompt: content,
                 });
                 return;
             }
@@ -1204,6 +1232,49 @@ const ChatArea: React.FC = () => {
             setIsForking(false);
         }
     };
+
+    /**
+     * Artifact suggestion picker — called when user clicks a candidate in
+     * the inline picker rendered inside an ambiguous-update assistant message.
+     * If originalPrompt is empty the user dismissed without selecting.
+     */
+    const handleArtifactSuggestionSelect = useCallback(async (
+        suggestion: NonNullable<import('../types').Message['artifactSuggestions']>[0],
+        originalPrompt: string,
+        suggestionMessageId: string,
+    ) => {
+        const convId = activeConversationId;
+        if (!convId) return;
+
+        // Always clear the suggestion picker from the message (whether dismissed or selected).
+        updateMessage(convId, suggestionMessageId, { artifactSuggestions: undefined, artifactSuggestionOriginalPrompt: undefined });
+
+        if (!originalPrompt.trim()) {
+            // Dismissed — user will click Update manually.
+            return;
+        }
+
+        // Bind the selected artifact as the patch target.
+        const artifactForBinding = {
+            id: suggestion.id,
+            type: suggestion.type,
+            title: suggestion.title,
+            content: suggestion.content,
+            messageId: '',
+            dbId: suggestion.dbId,
+            lineageId: suggestion.lineageId,
+            version: suggestion.version,
+        };
+        // Open the artifact workspace if it's not already visible.
+        const currentActive = useArtifactStore.getState().activeArtifact;
+        if (!currentActive || currentActive.id !== suggestion.id) {
+            useArtifactStore.getState().setActiveArtifact(artifactForBinding);
+        }
+        useChatStore.getState().setTargetArtifact(convId, artifactForBinding);
+
+        // Re-send the original prompt — it now routes through the patch engine.
+        await handleSend(originalPrompt, undefined, { hideUserMessage: false });
+    }, [activeConversationId, handleSend, updateMessage]);
 
     const scrollToMessage = useCallback((msgId: string) => {
         pinJumpLockUntilRef.current = Date.now() + 900;
@@ -1746,6 +1817,7 @@ const ChatArea: React.FC = () => {
                                                 handlePin={handlePin}
                                                 handleDelete={handleDelete}
                                                 setHighlightedPairId={setHighlightedPairId}
+                                                onArtifactSuggestionSelect={handleArtifactSuggestionSelect}
                                             />
                                         </div>
                                     );
@@ -1771,6 +1843,7 @@ const ChatArea: React.FC = () => {
                                         handlePin={handlePin}
                                         handleDelete={handleDelete}
                                         setHighlightedPairId={setHighlightedPairId}
+                                        onArtifactSuggestionSelect={handleArtifactSuggestionSelect}
                                     />
                                 </React.Fragment>
                             ))

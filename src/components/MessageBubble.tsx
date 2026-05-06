@@ -4,6 +4,7 @@ import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import PatchSummaryCard from './PatchSummaryCard';
 import PatchTurnReportCard from './PatchTurnReportCard';
+import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
 import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
 import { parsePatches, type ParsedPatch } from '../lib/artifactPatchParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
@@ -26,6 +27,12 @@ interface MessageBubbleProps {
     searchQuery?: string;
     disableReasoning?: boolean;
     disableArtifacts?: boolean;
+    /** Called when user selects an artifact from the suggestion picker. */
+    onArtifactSuggestionSelect?: (
+        suggestion: NonNullable<Message['artifactSuggestions']>[0],
+        originalPrompt: string,
+        messageId: string,
+    ) => void;
 }
 
 /** Beyond this size, artifact tag parsing runs in a Web Worker to avoid main-thread stalls. */
@@ -47,6 +54,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     searchQuery,
     disableReasoning = false,
     disableArtifacts = false,
+    onArtifactSuggestionSelect,
 }) => {
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [searchSourcesOpen, setSearchSourcesOpen] = useState(false);
@@ -335,6 +343,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         />
                     ))}
                     {message.patchReport && <PatchTurnReportCard report={message.patchReport} />}
+                    {!disableArtifacts && message.artifactSuggestions && message.artifactSuggestions.length > 0 && (
+                        <ArtifactSuggestionPicker
+                            message={message}
+                            onSelect={(suggestion, originalPrompt) => {
+                                onArtifactSuggestionSelect?.(suggestion, originalPrompt, message.id);
+                            }}
+                            onDismiss={() => {
+                                // Dismiss handled externally via onArtifactSuggestionSelect with empty prompt
+                                onArtifactSuggestionSelect?.(
+                                    message.artifactSuggestions![0],
+                                    '',
+                                    message.id,
+                                );
+                            }}
+                        />
+                    )}
                 </>
             )}
 

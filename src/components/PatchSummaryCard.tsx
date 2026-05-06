@@ -59,8 +59,18 @@ const PatchSummaryCard: React.FC<PatchSummaryCardProps> = ({ patch, isStreaming 
   };
 
   const blockCount = patch.blocks.length;
-  const versionLabel =
-    targetArtifact?.version ? `→ V${targetArtifact.version}` : '';
+  // Prefer the AI-supplied semantic version label over the numeric version.
+  // Show "V1 → 2.1" or "V1 → V2" depending on what is available.
+  const currentVersionNo = targetArtifact?.version;
+  const prevVersionNo = currentVersionNo != null && currentVersionNo > 1 ? currentVersionNo - 1 : null;
+  const aiLabel = patch.versionLabel;
+  const prevLabel = prevVersionNo != null ? `V${prevVersionNo}` : null;
+  const nextLabel = aiLabel ?? (currentVersionNo != null ? `V${currentVersionNo}` : null);
+  const versionArrow = prevLabel && nextLabel
+    ? `${prevLabel} → ${nextLabel}`
+    : nextLabel
+      ? `→ ${nextLabel}`
+      : '';
   const titleText = targetArtifact?.title || 'Targeted artifact';
 
   return (
@@ -71,7 +81,7 @@ const PatchSummaryCard: React.FC<PatchSummaryCardProps> = ({ patch, isStreaming 
       <div className="patch-summary-card-info">
         <span className="patch-summary-card-title">
           {isStreaming ? 'Patching ' : 'Patched '}
-          <strong>{titleText}</strong> {versionLabel}
+          <strong>{titleText}</strong> {versionArrow}
         </span>
         <span className="patch-summary-card-meta">
           <GitBranch size={11} />
