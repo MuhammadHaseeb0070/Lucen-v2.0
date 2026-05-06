@@ -122,7 +122,7 @@ export interface ArtifactRuntimeError {
   /** Source URL/file when known. Often the iframe srcDoc origin. */
   source?: string;
   /** Where the error originated. */
-  origin: 'iframe' | 'mermaid' | 'patch';
+  origin: 'iframe' | 'mermaid' | 'svg' | 'patch';
   /** Timestamp (ms) when captured. */
   capturedAt: number;
 }

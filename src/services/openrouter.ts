@@ -79,6 +79,11 @@ interface StreamOptions {
      * back to the model.
      */
     patchHint?: string;
+    /**
+     * Patching engine: how many times the system has automatically
+     * retried this patch request. If >0, callKind is set to 'patch_retry'.
+     */
+    patchRetryCount?: number;
 }
 
 /**
