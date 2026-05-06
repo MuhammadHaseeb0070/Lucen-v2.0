@@ -191,8 +191,8 @@ AFTER THE PATCH:
 - You may add ONE short line of explanation outside the patch (e.g. "Wired the dark-mode toggle to localStorage."). No essays, no diff dumps, no apologies.
 
 VERSION LABELING:
-- The <targeted_artifact> may show a version like "V2" or "2.1". In your `<lucen_patch>` tag, you MUST include a `version_label` attribute with a semantic version number reflecting your change (e.g., "2.1" for a minor change, "3.0" for a major rewrite/feature addition).
-- Valid examples: `version_label="3.0"`, `version_label="2.2"`. Do not prefix with 'V'.
+- The <targeted_artifact> may show a version like "V2" or "2.1". In your <lucen_patch> tag, you MUST include a version_label attribute with a semantic version number reflecting your change (e.g., "2.1" for a minor change, "3.0" for a major rewrite/feature addition).
+- Valid examples: version_label="3.0", version_label="2.2". Do not prefix with 'V'.
 
 BROWSER-ENVIRONMENT HONESTY (call out limits instead of producing broken code):
 - HTML artifacts run in a SANDBOXED iframe. There is no Node.js, no filesystem, no Node-style require, no npm imports, no localStorage cross-origin, no service workers. CDN scripts are okay.
