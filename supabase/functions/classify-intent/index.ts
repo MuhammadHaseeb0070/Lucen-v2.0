@@ -324,6 +324,21 @@ Deno.serve(async (req: Request) => {
         const query = String(intent.query || extractText(contextWindow[contextWindow.length - 1]?.content));
 
         if (!tavilyApiKey) {
+            await recordUsage({
+                userId: userId ?? 'unknown',
+                conversationId: intentAccounting.conversationId,
+                messageId: intentAccounting.messageId,
+                requestId: searchReqId,
+                parentRequestId: intentAccounting.requestId,
+                callKind: 'web_search',
+                status: 'internal_error',
+                statusReason: 'TAVILY_API_KEY missing',
+                errorMessage: 'Tavily API key is not configured in Supabase secrets.',
+                modelId: 'tavily',
+                provider: 'tavily',
+                durationMs: Date.now() - startedAt,
+                webSearchEnabled: true,
+            });
             return new Response(JSON.stringify({
                 state: 'search', query, results: null,
                 _debug: { error: 'TAVILY_API_KEY is not configured on the server.' }
@@ -451,7 +466,14 @@ Deno.serve(async (req: Request) => {
                 inputCostPer1M: INTENT_INPUT_COST_PER_1M,
                 outputCostPer1M: INTENT_OUTPUT_COST_PER_1M,
             });
+            return new Response(JSON.stringify({ error: intentAccounting.errorMessage }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+        } else {
+            // Phase 2 crashed
+            console.error('[classify-intent] Phase 2 crash:', err);
+            return new Response(JSON.stringify({
+                state: 'search', query: null, results: null,
+                _debug: { error: `Phase 2 crash: ${err instanceof Error ? err.message : 'unknown'}` }
+            }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
-        return new Response(JSON.stringify({ state: 'search', query: null, results: null }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 });
