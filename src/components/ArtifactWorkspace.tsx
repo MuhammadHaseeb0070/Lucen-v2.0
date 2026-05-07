@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, Edit3 } from 'lucide-react';
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
-import ArtifactStatusPipeline from './ArtifactStatusPipeline';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactErrorBanner from './ArtifactErrorBanner';
 import { useArtifactStore } from '../store/artifactStore';
@@ -147,12 +146,6 @@ const ArtifactWorkspace: React.FC = () => {
     setTargetArtifact(activeConversationId, isTargeted ? null : activeArtifact);
   }, [activeArtifact, activeConversationId, isTargeted, setTargetArtifact]);
 
-  // Subscribe to per-artifact patch status. We read it via getPatchStatus
-  // so the pipeline component re-renders when the status map changes.
-  const patchStatusMap = useArtifactStore((s) => s.patchStatus);
-  const currentPatchStatus = activeArtifact
-    ? patchStatusMap[activeArtifact.id] ?? 'idle'
-    : 'idle';
 
   const prevStreamingRef = useRef(false);
   useEffect(() => {
@@ -380,9 +373,6 @@ const ArtifactWorkspace: React.FC = () => {
       </div>
 
       <div className="artifact-workspace-body">
-        {currentPatchStatus !== 'idle' && (
-          <ArtifactStatusPipeline status={currentPatchStatus} title={activeArtifact.title} />
-        )}
         <ArtifactErrorBanner artifact={activeArtifact} />
         <ArtifactRenderer
           content={activeArtifact.content}

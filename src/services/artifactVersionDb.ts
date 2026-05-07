@@ -139,10 +139,10 @@ export async function createPatchedVersion(params: {
   title: string;
   content: string;
 }): Promise<ArtifactVersion | null> {
-  if (!hasActiveSessionSync() || !supabase) return null;
+  if (!hasActiveSessionSync() || !supabase) throw new Error('Client is offline or disconnected.');
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return null;
+  if (!session?.user) throw new Error('User session not found. Please log in again.');
 
   const { data, error } = await supabase.rpc('create_patched_artifact_version', {
     p_lineage_id: params.lineageId,
@@ -157,13 +157,13 @@ export async function createPatchedVersion(params: {
 
   if (error) {
     console.warn('[artifactVersionDb] createPatchedVersion error:', error);
-    return null;
+    throw new Error(`Database error: ${error.message || 'Failed to execute RPC'}`);
   }
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.new_id) {
     console.warn('[artifactVersionDb] createPatchedVersion: no row returned');
-    return null;
+    throw new Error('Database returned empty result after inserting version.');
   }
 
   return {

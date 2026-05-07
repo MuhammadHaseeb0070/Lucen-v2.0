@@ -181,7 +181,10 @@ Deno.serve(async (req: Request) => {
             parent_request_id,
             conversation_id,
             message_id,
+            search_request_id,
         } = body ?? {};
+
+        const searchReqId = search_request_id || request_id;
 
         if (typeof request_id === 'string') intentAccounting.requestId = request_id;
         if (typeof parent_request_id === 'string') intentAccounting.parentRequestId = parent_request_id;
@@ -264,7 +267,10 @@ Deno.serve(async (req: Request) => {
                 outputCostPer1M: INTENT_OUTPUT_COST_PER_1M,
             });
             // Fall back to a permissive response so caller can proceed.
-            return new Response(JSON.stringify({ state: 'search', query: null, results: null }), {
+            return new Response(JSON.stringify({
+                state: 'search', query: null, results: null,
+                _debug: { error: `OpenRouter Intent API failed: HTTP ${orResponse.status} ${errText.slice(0, 200)}` }
+            }), {
                 headers: { ...cors, 'Content-Type': 'application/json' },
             });
         }
@@ -318,7 +324,10 @@ Deno.serve(async (req: Request) => {
         const query = String(intent.query || extractText(contextWindow[contextWindow.length - 1]?.content));
 
         if (!tavilyApiKey) {
-            return new Response(JSON.stringify({ state: 'search', query, results: null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+            return new Response(JSON.stringify({
+                state: 'search', query, results: null,
+                _debug: { error: 'TAVILY_API_KEY is not configured on the server.' }
+            }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
         console.log('[DEBUG] Firing Tavily SEARCH. Query:', query);
@@ -347,8 +356,8 @@ Deno.serve(async (req: Request) => {
                 userId: userId ?? 'unknown',
                 conversationId: intentAccounting.conversationId,
                 messageId: intentAccounting.messageId,
-                requestId: intentAccounting.requestId,
-                parentRequestId: intentAccounting.parentRequestId,
+                requestId: searchReqId,
+                parentRequestId: intentAccounting.requestId,
                 callKind: 'web_search',
                 status: 'upstream_error',
                 statusReason: `HTTP ${searchResponse.status}`,
@@ -361,7 +370,15 @@ Deno.serve(async (req: Request) => {
                 webSearchMaxResults: TAVILY_MAX_RESULTS,
                 webSearchResultsBilled: 0,
             });
-            return new Response(JSON.stringify({ state: 'search', query, results: null }), {
+            return new Response(JSON.stringify({
+                state: 'search', query, results: null,
+                _debug: {
+                    searchRequestId: searchReqId,
+                    tavilyPayload,
+                    tavilyResponse: searchRaw,
+                    error: `HTTP ${searchResponse.status}`
+                }
+            }), {
                 headers: { ...cors, 'Content-Type': 'application/json' }
             });
         }
@@ -384,8 +401,8 @@ Deno.serve(async (req: Request) => {
             userId: userId ?? 'unknown',
             conversationId: intentAccounting.conversationId,
             messageId: intentAccounting.messageId,
-            requestId: intentAccounting.requestId,
-            parentRequestId: intentAccounting.parentRequestId,
+            requestId: searchReqId,
+            parentRequestId: intentAccounting.requestId,
             callKind: 'web_search',
             status: 'completed',
             statusReason: `results=${organic.length}`,
@@ -407,7 +424,12 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({
             state: 'search',
             query,
-            results: { organic, answerBox, knowledgeGraph: null }
+            results: { organic, answerBox, knowledgeGraph: null },
+            _debug: {
+                searchRequestId: searchReqId,
+                tavilyPayload,
+                tavilyResponse: searchData
+            }
         }), { headers: { ...cors, 'Content-Type': 'application/json' } });
 
     } catch (err) {

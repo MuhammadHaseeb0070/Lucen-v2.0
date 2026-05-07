@@ -1239,10 +1239,12 @@ async function resolveWebSearchContext(
     if (!session?.access_token) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
 
     const intentRequestId = newRequestId();
+    const searchRequestId = newRequestId();
     const intentEndpoint = `${supabaseUrl}/functions/v1/classify-intent`;
     const intentBody = {
         messages: contextMessages,
         request_id: intentRequestId,
+        search_request_id: searchRequestId,
         parent_request_id: parentRequestId ?? null,
     };
     const finalizeIntent = captureCall({
@@ -1271,8 +1273,25 @@ async function resolveWebSearchContext(
         }
 
         const result = await intentResponse.json();
-        finalizeIntent({ status: intentResponse.status, response: result });
-        console.log('[classify-intent] result:', JSON.stringify(result));
+        
+        const intentLog = { ...result };
+        delete intentLog._debug;
+        finalizeIntent({ status: intentResponse.status, response: intentLog });
+        console.log('[classify-intent] result:', JSON.stringify(intentLog));
+
+        if (result._debug) {
+            const finalizeWebSearch = captureCall({
+                id: result._debug.searchRequestId,
+                parentId: intentRequestId,
+                kind: 'web_search',
+                endpoint: 'https://api.tavily.com/search',
+                request: result._debug.tavilyPayload || { error: result._debug.error },
+            });
+            finalizeWebSearch({ 
+                status: result._debug.error ? 500 : 200, 
+                response: result._debug.tavilyResponse || { error: result._debug.error } 
+            });
+        }
 
         if (result.state === 'skip') return noSearch;
 

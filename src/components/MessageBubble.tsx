@@ -335,7 +335,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}
-                    {!disableArtifacts && message.patchReport?.status === 'running' && artifacts.length === 0 && patches.map((patch, idx) => (
+                    {!disableArtifacts && !message.patchReport && artifacts.length === 0 && patches.length > 0 && patches.map((patch, idx) => (
                         <PatchSummaryCard
                             key={`patch-${message.id}-${idx}`}
                             patch={patch}

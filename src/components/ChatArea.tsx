@@ -21,7 +21,6 @@ import { createPatchedVersion, ensureLineageId, getHead } from '../services/arti
 import { parsePatches } from '../lib/artifactPatchParser';
 import { parseArtifacts } from '../lib/artifactParser';
 import { applyPatch } from '../lib/artifactPatcher';
-import ArtifactUpdateBinding from './ArtifactUpdateBinding';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
 
 // Max attempts to recover from a patch that failed to match (NFR1.3).
@@ -792,21 +791,28 @@ const ChatArea: React.FC = () => {
             ?? (await ensureLineageId(parentDbId))
             ?? parentDbId;
 
-        const newVersion = await createPatchedVersion({
-            lineageId,
-            parentDbId,
-            conversationId: convId,
-            messageId: assistantMsgId,
-            type: baseArtifact.type,
-            title: baseArtifact.title,
-            content: newContent,
-        });
+        let newVersion;
+        let persistErrorMsg = '';
+        try {
+            newVersion = await createPatchedVersion({
+                lineageId,
+                parentDbId,
+                conversationId: convId,
+                messageId: assistantMsgId,
+                type: baseArtifact.type,
+                title: baseArtifact.title,
+                content: newContent,
+            });
+        } catch (err: any) {
+            persistErrorMsg = err.message || 'Unknown persistence error';
+            console.error('[Patch] createPatchedVersion failed:', err);
+        }
 
         if (!newVersion) {
             // Never claim full success when we couldn't persist the patched
             // version. Keep the edited preview locally, but mark the turn as
             // failed-to-persist so users know refresh/device sync is unsafe.
-            console.warn('[Patch] createPatchedVersion failed; patch is local-only.');
+            console.warn(`[Patch] createPatchedVersion failed: ${persistErrorMsg}; patch is local-only.`);
             useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent, isHead: false });
             useArtifactStore.getState().setPatchStatus(target.id, 'failed');
             updateMessage(convId, assistantMsgId, {
@@ -815,6 +821,7 @@ const ChatArea: React.FC = () => {
                     [
                         ...attemptLogs.map((a) => a.note),
                         'Patch content was generated but could not be persisted as a new artifact version.',
+                        `Reason: ${persistErrorMsg}`,
                         'Please retry update so the patched version is saved and available across refresh/devices.',
                     ],
                 )}`,
@@ -828,6 +835,7 @@ const ChatArea: React.FC = () => {
                     notes: [
                         ...attemptLogs.map((a) => a.note),
                         'Patch content was generated but could not be persisted as a new artifact version.',
+                        `Reason: ${persistErrorMsg}`,
                     ],
                 },
             });
@@ -1862,7 +1870,6 @@ const ChatArea: React.FC = () => {
                     setPrefillCounter((c) => c + 1);
                 }}
             />
-            <ArtifactUpdateBinding />
             <MessageInput
                 onSend={handleSend} onStop={handleStop} onHaltAndEdit={handleHaltAndEdit}
                 isStreaming={isStreaming} disabled={!hasEnoughCredits()}
