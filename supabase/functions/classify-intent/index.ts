@@ -21,7 +21,7 @@ const INTENT_OUTPUT_COST_PER_1M = Number(
 const TAVILY_USD_PER_1K_SEARCHES = 4;
 const TAVILY_MAX_RESULTS = 5;
 
-const INTENT_SYSTEM = `You are a web search intent classifier. Analyze the conversation and decide if the latest user message needs a real-time web search.
+const INTENT_SYSTEM = `You are a web search intent classifier. The user has EXPLICITLY ENABLED the Web Search toggle for this turn. Your job is to generate the optimal search query.
 
 If a search is needed, you MUST craft a hyper-specific, Google-optimized search query. DO NOT use lazy shorthands (e.g., never use 'real madrid schedule'). Instead, explicitly expand the topic to cast a wide net (e.g., 'Real Madrid upcoming fixture schedule all competitions Champions League La Liga').
 
@@ -33,8 +33,8 @@ Formats:
 {"state":"clarify","query":null,"question":"one specific question"}
 
 Rules:
-- search: live scores, schedules, news, realtime data, OR if the user explicitly demands a search, OR if they paste a URL/link. If they paste a URL, the query MUST contain that URL.
-- skip: greetings, math, code, explanations, things already in conversation. (WARNING: Do not skip if user pasted a URL or explicitly said 'search for').`;
+- search: ALWAYS return 'search' for ANY question, explanation, coding task, or data request. Because the user manually enabled the search feature, you should assume they want you to search the web for context, documentation, or facts before answering. Expand the topic to cast a wide net.
+- skip: ONLY skip if the user's message is a pure, trivial greeting (e.g., 'hi', 'thanks') and nothing else.`;
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
     try {
@@ -219,7 +219,7 @@ Deno.serve(async (req: Request) => {
         const contextWindow = messages.slice(-6);
         const conversationText = contextWindow
             .filter((m: any) => m.role === 'user' || m.role === 'assistant')
-            .map((m: any) => (m.role === 'user' ? 'User: ' : 'Assistant: ') + extractText(m.content).slice(0, 400))
+            .map((m: any) => (m.role === 'user' ? 'User: ' : 'Assistant: ') + extractText(m.content).slice(-800))
             .join('\n');
 
         const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
