@@ -20,6 +20,7 @@ const INTENT_OUTPUT_COST_PER_1M = Number(
 // Tavily is billed $4 per 1,000 searches. One row per search.
 const TAVILY_USD_PER_1K_SEARCHES = 4;
 const TAVILY_MAX_RESULTS = 5;
+const WEBSEARCH_DEBUG = (Deno.env.get('WEBSEARCH_DEBUG') || '').toLowerCase() === 'true';
 
 const INTENT_SYSTEM = `You are a web search intent classifier. The user has EXPLICITLY ENABLED the Web Search toggle for this turn. Your job is to generate the optimal search query.
 
@@ -33,8 +34,37 @@ Formats:
 {"state":"clarify","query":null,"question":"one specific question"}
 
 Rules:
-- search: ALWAYS return 'search' for ANY question, explanation, coding task, or data request. Because the user manually enabled the search feature, you should assume they want you to search the web for context, documentation, or facts before answering. Expand the topic to cast a wide net.
-- skip: ONLY skip if the user's message is a pure, trivial greeting (e.g., 'hi', 'thanks') and nothing else.`;
+- search: return 'search' when web results would materially improve the answer (reviews, prices, availability, current events, documentation, references, comparisons, citations, \"find real reviews\", etc.). Output a query that a search engine would understand.
+- clarify: return 'clarify' only when the user has clearly enabled web search but the request is missing one key detail needed to search effectively.
+- skip: return 'skip' only for truly trivial messages (pure greetings/thanks) or when the request is purely subjective/personal and web search would not add value.`;
+
+function extractText(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return (content as Array<Record<string, unknown>>)
+            .filter((p) => !!p && p.type === 'text')
+            .map((p) => String(p.text || ''))
+            .join(' ');
+    }
+    return '';
+}
+
+function truncate(text: string, max: number): string {
+    const t = (text || '').trim();
+    if (t.length <= max) return t;
+    return t.slice(0, max) + '…';
+}
+
+function isTrivialGreeting(text: string): boolean {
+    const t = (text || '').trim().toLowerCase();
+    if (!t) return true;
+    return /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed|nice|awesome)[\s!.?]*$/.test(t);
+}
+
+function hasExplicitSearchRequest(text: string): boolean {
+    const t = (text || '').toLowerCase();
+    return /\b(use web|use the web|web search|search the web|search online|google|find real reviews|real reviews|reviews|sources|citations|latest|current|today|this week|2026|price in|availability|where to buy|news)\b/.test(t);
+}
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
     try {
@@ -210,13 +240,26 @@ Deno.serve(async (req: Request) => {
             return new Response(JSON.stringify({ state: 'skip', query: null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
-        const extractText = (content: unknown): string => {
-            if (typeof content === 'string') return content;
-            if (Array.isArray(content)) return (content as Array<Record<string, unknown>>).filter(p => !!p && p.type === 'text').map(p => String(p.text || '')).join(' ');
-            return '';
-        };
-
         const contextWindow = messages.slice(-6);
+        const lastUserMsg = [...contextWindow].reverse().find((m: any) => m?.role === 'user');
+        const lastUserText = truncate(extractText(lastUserMsg?.content).trim(), 1200);
+        const explicitSearch = hasExplicitSearchRequest(lastUserText);
+
+        // Deterministic gates BEFORE model call.
+        if (isTrivialGreeting(lastUserText)) {
+            const payload = WEBSEARCH_DEBUG ? {
+                state: 'skip',
+                query: null,
+                _debug: {
+                    reason: 'trivial_greeting',
+                    lastUserText: truncate(lastUserText, 200),
+                },
+            } : { state: 'skip', query: null };
+            return new Response(JSON.stringify(payload), { headers: { ...cors, 'Content-Type': 'application/json' } });
+        }
+        const forcedIntent: Record<string, unknown> | null = explicitSearch
+            ? { state: 'search', query: lastUserText }
+            : null;
         const conversationText = contextWindow
             .filter((m: any) => m.role === 'user' || m.role === 'assistant')
             .map((m: any) => (m.role === 'user' ? 'User: ' : 'Assistant: ') + extractText(m.content).slice(-800))
@@ -227,77 +270,86 @@ Deno.serve(async (req: Request) => {
         // Phase 1: classify intent
         console.log('[DEBUG] Classify Intent Input Context:', conversationText);
 
-        const orPayload = {
-            model: INTENT_MODEL,
-            messages: [
-                { role: 'system', content: INTENT_SYSTEM + "\nToday's exact date is: " + currentDate + ". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures')." },
-                { role: 'user', content: "Conversation:\n" + conversationText + "\n\nClassify intent." }
-            ],
-            max_tokens: 120,
-            stream: false,
-            temperature: 0,
-        };
-        console.log('[DEBUG] OpenRouter Intent Payload:', JSON.stringify(orPayload));
+        let intent: Record<string, unknown> = forcedIntent ?? { state: 'search', query: null };
+        let cleaned = '';
 
-        const orResponse = await fetch(OPENROUTER_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openrouterApiKey}` },
-            body: JSON.stringify(orPayload),
-        });
+        if (!forcedIntent) {
+            const orPayload = {
+                model: INTENT_MODEL,
+                messages: [
+                    { role: 'system', content: INTENT_SYSTEM + \"\\nToday's exact date is: \" + currentDate + \". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures').\" },
+                    { role: 'user', content: 'Conversation:\\n' + conversationText + '\\n\\nClassify intent.' }
+                ],
+                max_tokens: 120,
+                stream: false,
+                temperature: 0,
+            };
+            console.log('[DEBUG] OpenRouter Intent Payload:', JSON.stringify(orPayload));
 
-        if (!orResponse.ok) {
-            const errText = await orResponse.text().catch(() => '');
-            intentAccounting.finalized = true;
-            intentAccounting.status = 'upstream_error';
-            intentAccounting.errorMessage = `HTTP ${orResponse.status}`;
-            intentAccounting.statusReason = errText.slice(0, 500);
-            await recordUsage({
-                userId: userId ?? 'unknown',
-                conversationId: intentAccounting.conversationId,
-                messageId: intentAccounting.messageId,
-                requestId: intentAccounting.requestId,
-                parentRequestId: intentAccounting.parentRequestId,
-                callKind: 'classify_intent',
-                status: 'upstream_error',
-                statusReason: intentAccounting.statusReason,
-                errorMessage: intentAccounting.errorMessage,
-                modelId: INTENT_MODEL,
-                durationMs: Date.now() - startedAt,
-                inputCostPer1M: INTENT_INPUT_COST_PER_1M,
-                outputCostPer1M: INTENT_OUTPUT_COST_PER_1M,
+            const orResponse = await fetch(OPENROUTER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openrouterApiKey}` },
+                body: JSON.stringify(orPayload),
             });
-            // Fall back to a permissive response so caller can proceed.
-            return new Response(JSON.stringify({
-                state: 'search', query: null, results: null,
-                _debug: { error: `OpenRouter Intent API failed: HTTP ${orResponse.status} ${errText.slice(0, 200)}` }
-            }), {
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
-        }
 
-        const orData = await orResponse.json();
-        console.log('[DEBUG] OpenRouter RAW Response:', JSON.stringify(orData));
+            if (!orResponse.ok) {
+                const errText = await orResponse.text().catch(() => '');
+                intentAccounting.finalized = true;
+                intentAccounting.status = 'upstream_error';
+                intentAccounting.errorMessage = `HTTP ${orResponse.status}`;
+                intentAccounting.statusReason = errText.slice(0, 500);
+                await recordUsage({
+                    userId: userId ?? 'unknown',
+                    conversationId: intentAccounting.conversationId,
+                    messageId: intentAccounting.messageId,
+                    requestId: intentAccounting.requestId,
+                    parentRequestId: intentAccounting.parentRequestId,
+                    callKind: 'classify_intent',
+                    status: 'upstream_error',
+                    statusReason: intentAccounting.statusReason,
+                    errorMessage: intentAccounting.errorMessage,
+                    modelId: INTENT_MODEL,
+                    durationMs: Date.now() - startedAt,
+                    inputCostPer1M: INTENT_INPUT_COST_PER_1M,
+                    outputCostPer1M: INTENT_OUTPUT_COST_PER_1M,
+                });
+                // Fall back to a permissive response so caller can proceed.
+                return new Response(JSON.stringify({
+                    state: 'search', query: null, results: null,
+                    _debug: { error: `OpenRouter Intent API failed: HTTP ${orResponse.status} ${errText.slice(0, 200)}` }
+                }), {
+                    headers: { ...cors, 'Content-Type': 'application/json' },
+                });
+            }
 
-        const usage = orData?.usage || {};
-        intentAccounting.promptTokens = Number(usage.prompt_tokens) || 0;
-        intentAccounting.completionTokens = Number(usage.completion_tokens) || 0;
+            const orData = await orResponse.json();
+            console.log('[DEBUG] OpenRouter RAW Response:', JSON.stringify(orData));
 
-        const raw = orData?.choices?.[0]?.message?.content || '';
-        const cleaned = raw.replace(/```json|```/g, '').trim();
+            const usage = orData?.usage || {};
+            intentAccounting.promptTokens = Number(usage.prompt_tokens) || 0;
+            intentAccounting.completionTokens = Number(usage.completion_tokens) || 0;
 
-        let intent: Record<string, unknown> = { state: 'search', query: null };
-        try {
-            intent = JSON.parse(cleaned);
-            console.log('[DEBUG] Parsed Intent State:', JSON.stringify(intent));
-        } catch {
-            console.log('[DEBUG] Failed to parse intent JSON, defaulting to search');
+            const raw = orData?.choices?.[0]?.message?.content || '';
+            cleaned = raw.replace(/```json|```/g, '').trim();
+
+            try {
+                intent = JSON.parse(cleaned);
+                console.log('[DEBUG] Parsed Intent State:', JSON.stringify(intent));
+            } catch {
+                console.log('[DEBUG] Failed to parse intent JSON, defaulting to search');
+                intent = { state: 'search', query: null };
+            }
+        } else {
+            // Forced search trigger: treat as a completed classifier decision.
+            intentAccounting.promptTokens = 0;
+            intentAccounting.completionTokens = 0;
         }
 
         // Log the classify_intent row now, BEFORE potentially kicking off the
         // Tavily call (so even if Tavily fails we still have the intent row).
         intentAccounting.finalized = true;
         intentAccounting.status = 'completed';
-        intentAccounting.statusReason = `state=${intent.state}`;
+        intentAccounting.statusReason = forcedIntent ? `state=${intent.state}(forced_trigger)` : `state=${intent.state}`;
         await recordUsage({
             userId: userId ?? 'unknown',
             conversationId: intentAccounting.conversationId,
@@ -315,13 +367,23 @@ Deno.serve(async (req: Request) => {
             outputCostPer1M: INTENT_OUTPUT_COST_PER_1M,
         });
 
+        const debugBlock = WEBSEARCH_DEBUG ? {
+            intentModel: INTENT_MODEL,
+            conversationTextLen: conversationText.length,
+            lastUserText: truncate(lastUserText, 420),
+            intentRawContent: truncate(cleaned, 600),
+            intentParsed: intent,
+            searchRequestId: searchReqId,
+        } : undefined;
+
         // If skip or clarify, return immediately — no search
         if (intent.state !== 'search') {
-            return new Response(JSON.stringify(intent), { headers: { ...cors, 'Content-Type': 'application/json' } });
+            const payload = debugBlock ? { ...(intent as any), _debug: debugBlock } : intent;
+            return new Response(JSON.stringify(payload), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
         // Phase 2: if state=search and tavily available, do the actual search here
-        const query = String(intent.query || extractText(contextWindow[contextWindow.length - 1]?.content));
+        const query = String(intent.query || lastUserText || '');
 
         if (!tavilyApiKey) {
             await recordUsage({
