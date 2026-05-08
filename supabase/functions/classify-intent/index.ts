@@ -277,7 +277,7 @@ Deno.serve(async (req: Request) => {
             const orPayload = {
                 model: INTENT_MODEL,
                 messages: [
-                    { role: 'system', content: INTENT_SYSTEM + \"\\nToday's exact date is: \" + currentDate + \". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures').\" },
+                    { role: 'system', content: INTENT_SYSTEM + "\nToday's exact date is: " + currentDate + ". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures')." },
                     { role: 'user', content: 'Conversation:\\n' + conversationText + '\\n\\nClassify intent.' }
                 ],
                 max_tokens: 120,
