@@ -32,7 +32,7 @@ export type BlockFailureReason =
   | 'empty_search';
 
 /** Strategy used to locate the search block, when one succeeded. */
-export type MatchStrategy = 'exact' | 'crlf_normalized' | 'indent_normalized';
+export type MatchStrategy = 'exact' | 'crlf_normalized' | 'indent_normalized' | 'line_trimmed';
 
 export interface AppliedBlock {
   blockIndex: number;
@@ -315,6 +315,38 @@ function attemptIndentNormalized(original: string, search: string): MatchAttempt
   return { matchCount: 1, origStart: mapped.start, origLength: mapped.length };
 }
 
+/**
+ * Strategy 4: line-trimmed match. Trims trailing whitespace from each
+ * line in both the search and the original, then does an exact match on
+ * the trimmed versions. This handles models that add/remove trailing
+ * spaces on lines.
+ */
+function attemptLineTrimmed(original: string, search: string): MatchAttempt {
+  const trimLine = (text: string) =>
+    text.split('\n').map((l) => l.trimEnd()).join('\n');
+  const trimmedOriginal = trimLine(original);
+  const trimmedSearch = trimLine(search);
+  if (trimmedOriginal === original && trimmedSearch === search) {
+    return { matchCount: 0 };
+  }
+  const hits = findAllIndices(trimmedOriginal, trimmedSearch);
+  if (hits.length !== 1) return { matchCount: hits.length };
+  // Walk original to find the corresponding range. Since trimEnd only
+  // removes trailing spaces, line boundaries stay aligned — we can use
+  // a character mapping approach similar to CRLF normalization.
+  const proj = buildIndentProjection(original);
+  const projSearch = buildIndentProjection(search);
+  const projHits = findAllIndices(proj.projected, projSearch.projected);
+  if (projHits.length !== 1) {
+    // Fallback: use the trimmed offsets directly (close enough for
+    // line-aligned content).
+    return { matchCount: 1, origStart: hits[0], origLength: trimmedSearch.length };
+  }
+  const mapped = proj.unmap(projHits[0], projSearch.projected.length);
+  if (!mapped) return { matchCount: 1, origStart: hits[0], origLength: trimmedSearch.length };
+  return { matchCount: 1, origStart: mapped.start, origLength: mapped.length };
+}
+
 // ─── Top-level apply ──────────────────────────────────────────────────
 
 /**
@@ -399,6 +431,24 @@ export function applyBlock(content: string, block: PatchBlock): {
     return { ok: false, reason: 'multi_match', matchCount: indent.matchCount };
   }
 
+  // Strategy 4: line-trimmed (handles trailing whitespace differences).
+  const lineTrimmed = attemptLineTrimmed(content, search);
+  if (lineTrimmed.matchCount === 1) {
+    return {
+      ok: true,
+      newContent: spliceString(content, lineTrimmed.origStart!, lineTrimmed.origLength!, adjustedReplace),
+      applied: {
+        blockIndex: -1,
+        strategy: 'line_trimmed',
+        matchStart: lineTrimmed.origStart!,
+        matchLength: lineTrimmed.origLength!,
+      },
+    };
+  }
+  if (lineTrimmed.matchCount > 1) {
+    return { ok: false, reason: 'multi_match', matchCount: lineTrimmed.matchCount };
+  }
+
   return { ok: false, reason: 'no_match' };
 }
 
@@ -429,7 +479,7 @@ export function applyPatch(originalContent: string, blocks: PatchBlock[]): Patch
         blockIndex: i,
         reason: result.reason,
         matchCount: result.matchCount,
-        searchExcerpt: block.search.slice(0, 200),
+        searchExcerpt: block.search.slice(0, 500),
       };
     }
     current = result.newContent;

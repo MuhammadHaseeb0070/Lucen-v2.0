@@ -123,6 +123,8 @@ export interface ArtifactRuntimeError {
   source?: string;
   /** Where the error originated. */
   origin: 'iframe' | 'mermaid' | 'svg' | 'patch';
+  /** For iframe origin: the specific capture mechanism (window.onerror, unhandledrejection, console.error). */
+  sourceOrigin?: string;
   /** Timestamp (ms) when captured. */
   capturedAt: number;
 }

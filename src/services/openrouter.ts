@@ -411,24 +411,34 @@ function pruneMessagesForContext(
  * `omittedTurnsCount` > 0 adds a one-line summary note so the model knows
  * earlier history existed but was trimmed to fit the window.
  */
+// For large artifacts (>10k chars), the model's attention on the exact
+// search text degrades badly. We add a line-count summary and instruct
+// the model to include more surrounding context in <search> blocks.
+const LARGE_ARTIFACT_THRESHOLD = 10_000;
+
 function buildTargetedArtifactSystemMessage(artifact: Artifact, hint?: string): string {
-    // Compose the <targeted_artifact> system block. We DON'T HTML-encode the
-    // artifact body — the prompt instructs the model to copy <search>
-    // text verbatim from this block, so any encoding would break exact
-    // match. The risk of confusing the parser with literal `</...>` inside
-    // the artifact is mitigated by the fact that the artifact body is
-    // wrapped in a tag the patch parser doesn't look for.
     const versionLabel = typeof artifact.version === 'number' ? `V${artifact.version}` : 'V1';
     const idForPatch = artifact.dbId || artifact.id;
     const filenameAttr = artifact.filename ? ` filename="${artifact.filename}"` : '';
     const titleAttr = artifact.title ? ` title="${artifact.title.replace(/"/g, '&quot;')}"` : '';
     const hintBlock = hint ? `\n[PATCH GUIDANCE]\n${hint}\n` : '';
+
+    const isLarge = artifact.content.length > LARGE_ARTIFACT_THRESHOLD;
+    const lineCount = artifact.content.split('\n').length;
+    const sizeNote = isLarge
+        ? `\n[NOTE: This artifact is ${artifact.content.length} chars / ${lineCount} lines. ` +
+          `For <search> blocks, include at least 5-8 lines of surrounding context ` +
+          `to ensure unique matching. Copy text EXACTLY as it appears — do not ` +
+          `paraphrase or adjust whitespace.]\n`
+        : '';
+
     return [
         '<targeted_artifact',
         ` id="${idForPatch}" version="${versionLabel}" type="${artifact.type}"${titleAttr}${filenameAttr}>`,
         '\n',
         artifact.content,
         '\n</targeted_artifact>',
+        sizeNote,
         hintBlock,
         '\n[INSTRUCTION] The user has clicked "Update" on the artifact above. Output a <lucen_patch artifact_id="',
         idForPatch,
@@ -873,19 +883,16 @@ function generateRequestId(): string {
 // client concatenates chunks so the user sees one continuous stream.
 
 // ─── Continuation policy constants (env-driven; see src/config/models.ts) ──
-// These values are intentionally generous — the real safety net is the
-// per-call output cap from outputBudget.ts, which already keeps each call
-// under Supabase's 150s idle timeout.
-const STALL_MIN_CONTINUATION_CHARS = 8;          // below this, pass is stalled
+const STALL_MIN_CONTINUATION_CHARS = 200;        // below this, pass is stalled (model produced near-nothing)
 const REPETITION_WINDOW = 500;                   // chars compared for overlap
-// Higher threshold (85%) + minimum overlap length (120 chars) together avoid
-// false-positives on deliberately repetitive content like song choruses,
-// structured lists, or TOC entries. A natural "common hook phrase" at the
-// start of a pass (e.g. "The key points are:") would be ~20-40 chars and
-// won't cross the 120-char floor.
 const REPETITION_THRESHOLD = 0.85;
 const REPETITION_MIN_OVERLAP_CHARS = 120;
 const NETWORK_RETRY_DELAYS_MS = [500, 1000, 2000]; // exponential backoff per pass
+
+// Per-turn total output budget (characters). Prevents ghost loops from
+// burning unlimited tokens across many continuation passes. Roughly maps
+// to ~50k tokens at ~4 chars/token.
+const PER_TURN_OUTPUT_CHAR_BUDGET = 200_000;
 
 function getMaxChunksForMode(mode: ResponseMode): number {
     // These are imported as named exports from models.ts and refer to the
@@ -938,16 +945,85 @@ function isRepeatingLastWindow(prior: string, pass: string): boolean {
 }
 
 /**
+ * Entropy check: detects low-entropy (repetitive/garbage) output by
+ * counting unique character bigrams in the last N chars of the pass.
+ * Normal code/prose has 80+ unique bigrams per 500 chars; repetitive
+ * garbage (e.g. repeated console.log, infinite CSS blocks) has <20.
+ */
+function isLowEntropy(text: string, windowSize = 500, threshold = 20): boolean {
+    if (text.length < windowSize) return false;
+    const tail = text.slice(-windowSize);
+    const bigrams = new Set<string>();
+    for (let i = 0; i < tail.length - 1; i++) {
+        bigrams.add(tail[i] + tail[i + 1]);
+    }
+    return bigrams.size < threshold;
+}
+
+/**
+ * Structural validation: checks whether unclosed HTML tags are growing
+ * without progress (a sign the model is looping). Returns true when the
+ * output looks structurally unhealthy and continuation should stop.
+ */
+function hasStructuralRegression(text: string): boolean {
+    if (text.length < 2000) return false;
+    const tail = text.slice(-1500);
+    // If the last 1500 chars have >10 unclosed <script or <style tags,
+    // the model is likely stuck in a generation loop.
+    const scriptOpens = (tail.match(/<script[\s>]/gi) || []).length;
+    const scriptCloses = (tail.match(/<\/script>/gi) || []).length;
+    const styleOpens = (tail.match(/<style[\s>]/gi) || []).length;
+    const styleCloses = (tail.match(/<\/style>/gi) || []).length;
+    const unbalanced = (scriptOpens - scriptCloses) + (styleOpens - styleCloses);
+    return unbalanced > 5;
+}
+
+// Maximum chars of prior assistant text to include verbatim in a
+// continuation. Beyond this, we use a tail-anchor: a structural summary
+// of the truncated head + the verbatim tail. This prevents the context
+// window from filling up on long artifacts and leaving no room for new
+// generation.
+const CONTINUATION_FULL_TEXT_LIMIT = 12_000;
+const CONTINUATION_TAIL_CHARS = 4_000;
+
+/**
+ * Build a structural summary of HTML-like content for the truncated head.
+ * Extracts tag structure and key milestones (e.g. "opened <html><head>
+ * <style>... 240 lines of CSS ... <body>...") so the model knows what
+ * it already generated without seeing every character.
+ */
+function buildStructuralSummary(text: string, maxLen = 600): string {
+    const lines = text.split('\n');
+    const totalChars = text.length;
+    const totalLines = lines.length;
+    const parts: string[] = [];
+    parts.push(`[Prior output: ${totalChars} chars, ${totalLines} lines]`);
+
+    // Find key structural milestones
+    const tagRe = /<(\/?)(\w+)[\s>]/g;
+    const openStack: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = tagRe.exec(text)) !== null) {
+        if (m[1]) {
+            const idx = openStack.lastIndexOf(m[2]);
+            if (idx >= 0) openStack.splice(idx, 1);
+        } else {
+            openStack.push(m[2]);
+        }
+    }
+    if (openStack.length > 0) {
+        parts.push(`Currently open tags: ${openStack.slice(-8).join(' > ')}`);
+    }
+    return parts.join('\n').slice(0, maxLen);
+}
+
+/**
  * Build the message array for a continuation pass.
  *
- * This follows the same pattern ChatGPT's "Continue generating" uses: feed
- * the accumulated assistant output back verbatim as an `assistant` message,
- * then add a brief `user` nudge to continue without repetition. No
- * "system_continuation_protocol" block — it confuses smaller models and
- * isn't needed with modern instruction-tuned LLMs.
- *
- * For artifact mode we add a tiny system note if the model is in the
- * middle of an unclosed <lucen_artifact> tag, since that's app-specific.
+ * For short accumulated text (< CONTINUATION_FULL_TEXT_LIMIT), includes
+ * the full text verbatim. For long accumulated text, uses a tail-anchor
+ * strategy: structural summary + last CONTINUATION_TAIL_CHARS chars.
+ * This reduces input token cost by 80-90% on large artifacts.
  */
 export function buildContinuationMessages(
     apiMessages: Array<Record<string, unknown>>,
@@ -956,16 +1032,24 @@ export function buildContinuationMessages(
     const insideArtifact = isInsideArtifact(priorAssistantText);
     const insidePatch = isInsidePatch(priorAssistantText);
 
+    // Tail-anchor: for long outputs, only send summary + tail to save tokens.
+    let assistantContent: string;
+    if (priorAssistantText.length <= CONTINUATION_FULL_TEXT_LIMIT) {
+        assistantContent = priorAssistantText;
+    } else {
+        const summary = buildStructuralSummary(
+            priorAssistantText.slice(0, priorAssistantText.length - CONTINUATION_TAIL_CHARS),
+        );
+        const tail = priorAssistantText.slice(-CONTINUATION_TAIL_CHARS);
+        assistantContent = `${summary}\n\n[...truncated for context window...]\n\n${tail}`;
+    }
+
     const messages: Array<Record<string, unknown>> = [
         ...apiMessages,
-        { role: 'assistant', content: priorAssistantText },
+        { role: 'assistant', content: assistantContent },
     ];
 
     if (insidePatch) {
-        // Patch mid-stream: the most common failure mode here is the model
-        // re-emitting <lucen_patch> or restarting <block> halfway. Tell it
-        // explicitly NOT to do either and just keep typing inside the
-        // current <search>/<replace>/<block> body.
         messages.push({
             role: 'system',
             content:
@@ -1037,9 +1121,12 @@ async function streamViaEdgeFunctionWrapper(
             const hitChunkCeiling = continuationCount >= maxChunks;
             const stalled = passChars < STALL_MIN_CONTINUATION_CHARS;
             const hitOutputCeiling = fullResponse.length >= ABSOLUTE_OUTPUT_CEILING * 8; // ~8 chars/token
+            const hitTurnBudget = fullResponse.length >= PER_TURN_OUTPUT_CHAR_BUDGET;
             const repeating =
                 continuationCount > 0 &&
                 isRepeatingLastWindow(accumulated, passText);
+            const lowEntropy = continuationCount > 0 && isLowEntropy(passText);
+            const structuralIssue = continuationCount > 0 && hasStructuralRegression(fullResponse);
 
             const shouldContinue =
                 truncated === true
@@ -1047,19 +1134,26 @@ async function streamViaEdgeFunctionWrapper(
                 && !hitChunkCeiling
                 && !stalled
                 && !repeating
-                && !hitOutputCeiling;
+                && !hitOutputCeiling
+                && !hitTurnBudget
+                && !lowEntropy
+                && !structuralIssue;
 
             if (!shouldContinue) {
-                // Surface truncated=true to the UI whenever the model ran into
-                // a ceiling (chunk cap, stall, repetition, output cap). This
-                // exposes the manual "Continue generating" button.
                 const surfaceTruncated =
                     truncated === true &&
-                    (hitChunkCeiling || stalled || repeating || hitOutputCeiling);
-                if (repeating) {
+                    (hitChunkCeiling || stalled || repeating || hitOutputCeiling
+                        || hitTurnBudget || lowEntropy || structuralIssue);
+                if (lowEntropy) {
+                    console.warn('[Continuation] low entropy detected (repetitive output) — stopping loop');
+                } else if (structuralIssue) {
+                    console.warn('[Continuation] structural regression detected — stopping loop');
+                } else if (repeating) {
                     console.warn('[Continuation] repetition detected — stopping loop');
                 } else if (stalled && truncated) {
                     console.warn('[Continuation] pass produced too few chars — stalled');
+                } else if (hitTurnBudget) {
+                    console.info('[Continuation] per-turn output budget reached — stopping');
                 } else if (hitChunkCeiling) {
                     console.info(`[Continuation] max chunks reached (${maxChunks}) — stopping`);
                 } else if (hitOutputCeiling) {

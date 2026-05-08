@@ -3,6 +3,7 @@ import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
 import { v4 as uuidv4 } from 'uuid';
 import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Pencil, Check, Loader2 } from 'lucide-react';
 import MessageInput from './MessageInput';
+import ArtifactUpdateBinding from './ArtifactUpdateBinding';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -254,7 +255,6 @@ const ChatArea: React.FC = () => {
     const searchActive = searchOpen && searchQuery.trim().length >= 2;
     const virtActive =
         !isMessageLoading &&
-        !isStreaming &&
         !searchActive &&
         exchangeRows.length >= 36;
     const virtualizer = useVirtualizer({
@@ -340,10 +340,12 @@ const ChatArea: React.FC = () => {
             if (!pendingText) return;
 
             // Adaptive per-frame slice:
-            // - small queue: tiny slices for smoothness
+            // - small queue: moderate slices for smoothness
             // - large queue: bigger slices to catch up quickly
+            // Larger minimums reduce React update frequency and prevent
+            // main-thread saturation during heavy artifact streaming.
             const queueLen = pendingText.length;
-            const charsThisFrame = Math.max(12, Math.min(220, Math.ceil(queueLen * 0.2)));
+            const charsThisFrame = Math.max(100, Math.min(500, Math.ceil(queueLen * 0.35)));
             const delta = pendingText.slice(0, charsThisFrame);
             pendingText = pendingText.slice(charsThisFrame);
             appendContent(delta);
@@ -351,8 +353,24 @@ const ChatArea: React.FC = () => {
             if (pendingText) scheduleFlush();
         };
 
+        let tabHidden = document.hidden;
+        const onVisibilityChange = () => {
+            tabHidden = document.hidden;
+            if (!tabHidden && pendingText) {
+                // Tab became visible again — flush accumulated text
+                // and resume RAF drain.
+                appendContent(pendingText);
+                pendingText = '';
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
         const scheduleFlush = () => {
             if (flushRaf !== null) return;
+            // When the tab is hidden, browsers throttle RAF to ~1fps
+            // or stop it entirely. Accumulate text and flush on
+            // visibility change instead.
+            if (tabHidden) return;
             flushRaf = window.requestAnimationFrame(() => {
                 drainFrame();
             });
@@ -378,6 +396,7 @@ const ChatArea: React.FC = () => {
                 });
             },
             onDone: (truncated) => {
+                document.removeEventListener('visibilitychange', onVisibilityChange);
                 if (flushRaf !== null) {
                     cancelAnimationFrame(flushRaf);
                     flushRaf = null;
@@ -431,6 +450,7 @@ const ChatArea: React.FC = () => {
                 }
             },
             onError: (error) => {
+                document.removeEventListener('visibilitychange', onVisibilityChange);
                 if (flushRaf !== null) {
                     cancelAnimationFrame(flushRaf);
                     flushRaf = null;
@@ -449,6 +469,7 @@ const ChatArea: React.FC = () => {
             onWebSearchUsed: (urls) =>
                 updateMessage(convId, assistantMsgId, { webSearchUsed: true, webSearchUrls: urls }),
             onClarificationNeeded: (question) => {
+                document.removeEventListener('visibilitychange', onVisibilityChange);
                 if (flushRaf !== null) {
                     cancelAnimationFrame(flushRaf);
                     flushRaf = null;
@@ -593,7 +614,7 @@ const ChatArea: React.FC = () => {
 
             const hint =
                 `Your previous patch attempt FAILED to apply. Reason: ${reasonText}\n` +
-                `Failed search excerpt: ${JSON.stringify(patchResult.searchExcerpt.slice(0, 160))}\n` +
+                `Failed search excerpt: ${JSON.stringify(patchResult.searchExcerpt.slice(0, 500))}\n` +
                 `Original block context if needed: search-block #${patchResult.blockIndex + 1} of ${allBlocks.length}.\n` +
                 `Re-emit the FULL <lucen_patch> with corrected blocks. Copy <search> verbatim from the artifact above.`;
 
@@ -607,10 +628,9 @@ const ChatArea: React.FC = () => {
                     status: 'failed',
                     note: reasonText,
                 });
-                const retryBadge = `_Patch attempt ${attemptNo} failed — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
+                const retryBadge = `${visibleContent ? `${visibleContent}\n\n` : ''}_Patch attempt ${attemptNo} failed — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
                 updateMessage(convId, assistantMsgId, {
                     content: retryBadge,
-                    reasoning: '',
                     isStreaming: true,
                     isReasoningStreaming: false,
                     patchReport: {
@@ -685,10 +705,9 @@ const ChatArea: React.FC = () => {
                         status: 'failed',
                         note: `Mermaid validation failed: ${parseErr.slice(0, 180)}`,
                     });
-                    const mermaidRetryBadge = `_Patch attempt ${attemptNo} failed (invalid Mermaid) — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
+                    const mermaidRetryBadge = `${visibleContent ? `${visibleContent}\n\n` : ''}_Patch attempt ${attemptNo} failed (invalid Mermaid) — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
                     updateMessage(convId, assistantMsgId, {
                         content: mermaidRetryBadge,
-                        reasoning: '',
                         isStreaming: true,
                         isReasoningStreaming: false,
                         patchReport: {
@@ -945,9 +964,11 @@ const ChatArea: React.FC = () => {
         // silently patching the wrong artifact when multiple exist.
         if (!targetedArtifact && (UPDATE_INTENT_RE.test(content) || AMBIGUOUS_FOLLOWUP_RE.test(content))) {
             const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-            const parsedArtifacts = (conv?.messages || []).flatMap((msg) =>
-                parseArtifacts(msg.content || '', msg.id, true).artifacts,
-            );
+            const parsedArtifacts = (conv?.messages || [])
+                .filter((msg) => msg.role === 'assistant')
+                .flatMap((msg) =>
+                    parseArtifacts(msg.content || '', msg.id, true).artifacts,
+                );
             // Dedup by lineageId — only show the latest version of each
             // lineage so stale patched versions don't clutter the list.
             const seenLineages = new Set<string>();
@@ -1870,6 +1891,7 @@ const ChatArea: React.FC = () => {
                     setPrefillCounter((c) => c + 1);
                 }}
             />
+            <ArtifactUpdateBinding />
             <MessageInput
                 onSend={handleSend} onStop={handleStop} onHaltAndEdit={handleHaltAndEdit}
                 isStreaming={isStreaming} disabled={!hasEnoughCredits()}

@@ -152,7 +152,7 @@ const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
                             </div>
                         ) : null}
                     </div>
-                    <MessageBubble message={msg} showDelete={false} actionsOnly />
+                    <MessageBubble message={msg} showDelete={false} actionsOnly disableArtifacts />
                 </div>
                 {nextMsg ? (
                     <div className="msg-ai-row" data-msg-id={nextMsg.id}>

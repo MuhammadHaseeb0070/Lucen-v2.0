@@ -22,7 +22,10 @@ import { AlertTriangle, Wand2, X, Lock } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
 import { useComposerStore } from '../store/composerStore';
+import { INJECT_SCRIPT_LINE_COUNT } from '../lib/iframeErrorBridge';
 import type { Artifact } from '../types';
+
+const ERROR_KEYWORDS_RE = /\b(Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|Uncaught|unhandled|FATAL|failed to|cannot read|is not a function|is not defined|unexpected token)\b/i;
 
 interface ArtifactErrorBannerProps {
   artifact: Artifact;
@@ -40,6 +43,15 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
   const setPendingAutoSend = useComposerStore((s) => s.setPendingAutoSend);
 
   if (!runtimeError) return null;
+
+  // Filter out console.error calls that are just informational logging,
+  // not actual errors. Only show the banner for real error patterns.
+  if (runtimeError.origin === 'iframe') {
+    const src = (runtimeError as { sourceOrigin?: string }).sourceOrigin;
+    if (src === 'console.error' && !ERROR_KEYWORDS_RE.test(runtimeError.message)) {
+      return null;
+    }
+  }
 
   const attempts = getHealAttempts(artifact.id);
   const capped = attempts >= MAX_HEAL_ATTEMPTS;
@@ -61,17 +73,33 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     const origin = runtimeError.origin;
 
     if (origin === 'iframe') {
-      // HTML artifact running in a sandboxed iframe.
       lines.push('Fix the following runtime error in this HTML artifact.');
       lines.push('');
       lines.push('Environment: sandboxed iframe (allow-scripts allow-same-origin allow-forms allow-popups allow-modals)');
       lines.push('Constraints: No Node.js, no filesystem, no require(), no npm imports, no cross-origin localStorage. CDN script tags are fine.');
       lines.push(`Error message: ${runtimeError.message}`);
-      if (runtimeError.line) lines.push(`Line: ${runtimeError.line}${runtimeError.column ? `:${runtimeError.column}` : ''}`);
+      // Map iframe line number back to artifact source line by subtracting
+      // the injected error-bridge script lines.
+      const rawLine = runtimeError.line;
+      const sourceLine = rawLine ? Math.max(1, rawLine - INJECT_SCRIPT_LINE_COUNT) : undefined;
+      if (sourceLine) lines.push(`Approximate source line: ${sourceLine}${runtimeError.column ? `:${runtimeError.column}` : ''}`);
       if (runtimeError.source && runtimeError.source !== 'about:srcdoc') lines.push(`Source: ${runtimeError.source}`);
       if (runtimeError.stack) {
         lines.push('Stack trace (first 8 lines):');
         lines.push(runtimeError.stack.split('\n').slice(0, 8).join('\n'));
+      }
+      // Include the actual artifact source code around the error line so
+      // the model can see what it needs to fix (not just an error message).
+      if (sourceLine && artifact.content) {
+        const sourceLines = artifact.content.split('\n');
+        const start = Math.max(0, sourceLine - 6);
+        const end = Math.min(sourceLines.length, sourceLine + 5);
+        const excerpt = sourceLines.slice(start, end)
+          .map((l, i) => `${start + i + 1}${start + i + 1 === sourceLine ? ' >>>' : '    '} | ${l}`)
+          .join('\n');
+        lines.push('');
+        lines.push(`Source context (lines ${start + 1}-${end}):`);
+        lines.push(excerpt);
       }
     } else if (origin === 'mermaid') {
       // Mermaid diagram syntax error.

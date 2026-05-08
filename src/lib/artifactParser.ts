@@ -93,6 +93,22 @@ export interface ParseResult {
  * card instead of staying in a half-parsed streaming state. Pass `true` when
  * the owning message.isStreaming has flipped to false.
  */
+/**
+ * Strip markdown fenced code blocks that contain artifact-like tags.
+ * This prevents user-pasted examples (e.g. ````<lucen_artifact ...>````)
+ * from being treated as real artifacts. The fenced content is replaced
+ * with itself intact so it still renders in markdown, but the artifact
+ * regex won't match inside fences.
+ */
+function neutralizeFencedArtifactTags(text: string): string {
+  return text.replace(/```[\s\S]*?```/g, (match) => {
+    return match.replace(/<lucen_artifact/g, '<lucen\u200Bartifact')
+                .replace(/<\/lucen_artifact>/g, '</lucen\u200Bartifact>')
+                .replace(/<lucen_patch/g, '<lucen\u200Bpatch')
+                .replace(/<\/lucen_patch>/g, '</lucen\u200Bpatch>');
+  });
+}
+
 export function parseArtifacts(
   content: string,
   messageId: string,
@@ -103,7 +119,7 @@ export function parseArtifacts(
   }
 
   const artifacts: Artifact[] = [];
-  let cleanContent = content;
+  let cleanContent = neutralizeFencedArtifactTags(content);
   let index = 0;
 
   // Strip <lucen_patch> blocks BEFORE the artifact regex fires. Patches

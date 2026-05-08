@@ -70,6 +70,8 @@ interface ArtifactStore {
   incHealAttempts: (artifactId: string) => number;
   resetHealAttempts: (artifactId: string) => void;
   getHealAttempts: (artifactId: string | undefined) => number;
+  /** Prune lineage entries that aren't referenced by the active artifact. */
+  pruneLineages: (keepLineageIds: Set<string>) => void;
 }
 
 export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
@@ -257,5 +259,19 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
   getHealAttempts: (artifactId) => {
     if (!artifactId) return 0;
     return get().healAttempts[artifactId] ?? 0;
+  },
+
+  pruneLineages: (keepLineageIds) => {
+    set((state) => {
+      const nextLineages: Record<string, ArtifactVersion[]> = {};
+      const nextVersions: Record<string, number> = {};
+      for (const id of keepLineageIds) {
+        if (state.lineages[id]) nextLineages[id] = state.lineages[id];
+        if (state.currentVersionByLineage[id] !== undefined) {
+          nextVersions[id] = state.currentVersionByLineage[id];
+        }
+      }
+      return { lineages: nextLineages, currentVersionByLineage: nextVersions };
+    });
   },
 }));

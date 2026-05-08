@@ -25,7 +25,8 @@ type UsageStatus =
     | 'timeout'
     | 'auth_error'
     | 'insufficient_credits'
-    | 'client_error';
+    | 'client_error'
+    | 'internal_error';
 
 type UsageCallKind =
     | 'chat'

@@ -4,6 +4,7 @@ import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactErrorBanner from './ArtifactErrorBanner';
+import ArtifactStatusPipeline from './ArtifactStatusPipeline';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
@@ -124,6 +125,7 @@ const ArtifactWorkspace: React.FC = () => {
     activeArtifact, viewMode, setViewMode, clearArtifact,
     panelWidthPercent, setPanelWidthPercent,
     previewViewport, setPreviewViewport,
+    patchStatus,
   } = useArtifactStore();
   // Patching engine: bind/unbind the next prompt to this artifact.
   const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
@@ -299,7 +301,8 @@ const ArtifactWorkspace: React.FC = () => {
             <button
               className={`artifact-toggle-btn ${viewMode === 'preview' ? 'artifact-toggle-btn--active' : ''}`}
               onClick={() => setViewMode('preview')}
-              title="Preview"
+              disabled={!!activeArtifact.isStreaming}
+              title={activeArtifact.isStreaming ? 'Preview available after generation completes' : 'Preview'}
             >
               <Eye size={14} />
               <span>Preview</span>
@@ -373,6 +376,12 @@ const ArtifactWorkspace: React.FC = () => {
       </div>
 
       <div className="artifact-workspace-body">
+        {activeArtifact.id && patchStatus[activeArtifact.id] && patchStatus[activeArtifact.id] !== 'idle' && (
+          <ArtifactStatusPipeline
+            status={patchStatus[activeArtifact.id]}
+            title={activeArtifact.title}
+          />
+        )}
         <ArtifactErrorBanner artifact={activeArtifact} />
         <ArtifactRenderer
           content={activeArtifact.content}

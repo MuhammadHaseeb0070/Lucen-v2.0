@@ -87,14 +87,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             return;
         }
 
-        // Streaming stays on the main thread so chunk updates do not flood the worker.
-        if (message.isStreaming || content.length < ARTIFACT_PARSE_WORKER_MIN_CHARS) {
+        // Small content: parse on main thread (fast enough, avoids worker overhead).
+        if (content.length < ARTIFACT_PARSE_WORKER_MIN_CHARS) {
             setWorkerParsing(false);
             const next = parseArtifacts(content, message.id, forceClose);
             setParsed(disableArtifacts ? { cleanContent: next.cleanContent, artifacts: [] } : next);
             return;
         }
 
+        // Large content (including during streaming): use web worker to
+        // avoid blocking the main thread with regex extraction.
         const mySerial = ++parseSerialRef.current;
         const requestId = `${message.id}:${mySerial}:${content.length}`;
         setWorkerParsing(true);
@@ -200,13 +202,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         if (first.isStreaming) {
             const now = Date.now();
             if (!openedRef.current) {
-                // First time seeing this artifact — open workspace
                 openedRef.current = true;
                 setActiveArtifact(first);
                 lastUpdateRef.current = now;
-            } else if (now - lastUpdateRef.current > 300) {
-                // Throttle store update at ~300ms. Actual heavy preview
-                // re-render is further throttled inside ArtifactRenderer.
+            } else if (now - lastUpdateRef.current > 1000) {
+                // Throttle store updates at ~1s during streaming to reduce
+                // cascading re-renders in ArtifactWorkspace + ArtifactRenderer.
+                // The code view inside the message bubble still updates in
+                // real-time; only the workspace preview is delayed.
                 updateArtifactContent(first);
                 lastUpdateRef.current = now;
             }

@@ -24,12 +24,29 @@ const STREAMING_PREVIEW_THROTTLE_MS = 5000;
 // Custom hook: exposes a "previewContent" that only updates every N ms while
 // `isStreaming` is true. When streaming ends, the final content is flushed
 // immediately so the preview matches the complete artifact.
+// Simple FNV-1a hash for quick content-equality checks. Much cheaper
+// than a full string compare for large artifacts.
+function fnv1aHash(str: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
 function useThrottledContent(content: string, isStreaming: boolean, intervalMs: number): string {
   const [previewContent, setPreviewContent] = useState(content);
   const lastUpdateRef = useRef<number>(0);
+  const lastHashRef = useRef<number>(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Content-hash gating: skip updates when the content hasn't
+    // actually changed (e.g. from redundant store notifications).
+    const hash = fnv1aHash(content);
+    if (hash === lastHashRef.current && content.length === previewContent.length) return;
+
     if (!isStreaming) {
       if (pendingTimerRef.current) {
         clearTimeout(pendingTimerRef.current);
@@ -37,6 +54,7 @@ function useThrottledContent(content: string, isStreaming: boolean, intervalMs: 
       }
       setPreviewContent(content);
       lastUpdateRef.current = Date.now();
+      lastHashRef.current = hash;
       return;
     }
 
@@ -46,6 +64,7 @@ function useThrottledContent(content: string, isStreaming: boolean, intervalMs: 
     if (elapsed >= intervalMs) {
       setPreviewContent(content);
       lastUpdateRef.current = now;
+      lastHashRef.current = hash;
       return;
     }
 
@@ -53,6 +72,7 @@ function useThrottledContent(content: string, isStreaming: boolean, intervalMs: 
     pendingTimerRef.current = setTimeout(() => {
       setPreviewContent(content);
       lastUpdateRef.current = Date.now();
+      lastHashRef.current = fnv1aHash(content);
       pendingTimerRef.current = null;
     }, intervalMs - elapsed);
 
@@ -140,23 +160,33 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   // is ignored.
   useEffect(() => {
     if (!artifactId) return;
-    // Clear any prior error on iframe rebuild — the new srcDoc may have
-    // fixed it. We let the iframe's first `onerror` re-set if needed.
+    // Clear prior error on iframe rebuild. Delay slightly so we don't
+    // flash-clear and immediately re-set from the same underlying bug.
+    // Errors that re-fire within 2s of a srcDoc change are treated as
+    // persistent (the fix didn't work).
     setRuntimeError(artifactId, null);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingError: Parameters<typeof setRuntimeError>[1] = null;
     const detach = attachErrorListener((e) => {
-      // Throttle to "first error wins per render" so console.error spam
-      // doesn't repeatedly re-trigger React state updates.
-      setRuntimeError(artifactId, {
+      pendingError = {
         message: e.message,
         stack: e.stack,
         line: e.line,
         column: e.column,
         source: e.source,
         origin: 'iframe',
+        sourceOrigin: e.origin,
         capturedAt: e.capturedAt,
-      });
+      };
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (pendingError) setRuntimeError(artifactId, pendingError);
+      }, 800);
     });
-    return () => detach();
+    return () => {
+      detach();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }, [artifactId, srcDoc, setRuntimeError]);
 
   const vpWidth = VIEWPORT_WIDTHS[viewport];

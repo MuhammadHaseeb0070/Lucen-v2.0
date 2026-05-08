@@ -108,6 +108,12 @@ export const INJECT_SCRIPT = `<script>(function(){try{
  *
  * Returns a cleanup function suitable for `useEffect` cleanup.
  */
+/**
+ * Number of lines the INJECT_SCRIPT adds to the document. Used to map
+ * iframe error line numbers back to artifact source lines.
+ */
+export const INJECT_SCRIPT_LINE_COUNT = INJECT_SCRIPT.split('\n').length;
+
 export function attachErrorListener(
   onError: (e: IframeErrorEvent) => void,
   iframeWindow?: Window | null,

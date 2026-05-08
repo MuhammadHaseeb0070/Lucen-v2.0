@@ -28,7 +28,6 @@
   "exclude": [
     "src/components/ReactWorkspaceScreen.tsx",
     "src/components/react-workspace/**/*",
-    "src/components/ReactArtifactRenderer.tsx",
     "src/services/projectArchive.ts",
     "src/services/projectImport.ts",
     "src/services/workspaceAi.ts",

@@ -190,25 +190,40 @@ const SideChatPanel: React.FC = () => {
             attachments: m.attachments,
         }));
 
+        // RAF buffer to smooth SSE bursts (same technique as main ChatArea).
+        let sidePending = '';
+        let sideRaf: number | null = null;
+        let sideRendered = '';
+        const sideFlush = () => {
+            sideRaf = null;
+            if (!sidePending) return;
+            sideRendered += sidePending;
+            sidePending = '';
+            updateMessage(assistantMsgId, { content: sideRendered });
+        };
+        const sideDrain = () => {
+            if (sideRaf !== null) return;
+            sideRaf = requestAnimationFrame(sideFlush);
+        };
+
         await streamChat(
             messagesToSend,
             {
                 onChunk: (chunk) => {
-                    const msg = useSideChatStore.getState().messages.find((m) => m.id === assistantMsgId);
-                    updateMessage(assistantMsgId, {
-                        content: (msg?.content || '') + chunk,
-                    });
+                    sidePending += chunk;
+                    sideDrain();
                 },
                 onReasoning: (reasoning) => {
-                    // Side chat intentionally does not display/store reasoning.
-                    // Ignore streamed reasoning to keep UI consistent.
                     void reasoning;
                 },
                 onDone: () => {
-                    updateMessage(assistantMsgId, { isStreaming: false });
+                    if (sideRaf !== null) { cancelAnimationFrame(sideRaf); sideRaf = null; }
+                    if (sidePending) { sideRendered += sidePending; sidePending = ''; }
+                    updateMessage(assistantMsgId, { content: sideRendered, isStreaming: false });
                     abortRef.current = null;
                 },
                 onError: (error) => {
+                    if (sideRaf !== null) { cancelAnimationFrame(sideRaf); sideRaf = null; }
                     updateMessage(assistantMsgId, {
                         content: `⚠️ Error: ${error}`,
                         isStreaming: false,
