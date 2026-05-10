@@ -24,10 +24,6 @@ import { parseArtifacts } from '../lib/artifactParser';
 import { applyPatch } from '../lib/artifactPatcher';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
 
-// Max attempts to recover from a patch that failed to match (NFR1.3).
-// Counted starting at 0 (first failure), so MAX_PATCH_RETRIES = 3 means
-// the model gets the original turn + 3 retry passes before we give up.
-const MAX_PATCH_RETRIES = 3;
 const UPDATE_INTENT_RE = /\b(update|patch|modify|change|revise|fix)\b/i;
 const AMBIGUOUS_FOLLOWUP_RE = /\b(make it|change it|turn it|set it|make this|change this)\b/i;
 
@@ -304,7 +300,6 @@ const ChatArea: React.FC = () => {
             // patch engine instead of saving a fresh artifact row.
             targetedArtifact?: import('../types').Artifact;
             patchHint?: string;
-            // NFR1.3 retry counter — bounded by MAX_PATCH_RETRIES upstream.
             patchRetryCount?: number;
             patchAttemptLogs?: PatchAttemptLog[];
         },
@@ -470,10 +465,7 @@ const ChatArea: React.FC = () => {
     // existing artifact. Parses <lucen_patch> blocks out of the assistant
     // message, runs the deterministic patcher, creates a new version row
     // in DB, and (if the artifact is mermaid) validates with mermaid.parse.
-    //
-    // On failure we kick a retry loop (up to MAX_PATCH_RETRIES) that
-    // re-invokes streamChat with a precise patchHint describing what
-    // went wrong (NFR1.3).
+    // On failure we surface the error to the user (no automatic retry).
     const finalizePatchTurn = async (
         convId: string,
         assistantMsgId: string,
