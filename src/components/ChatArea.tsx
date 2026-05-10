@@ -275,7 +275,9 @@ const ChatArea: React.FC = () => {
     // can change ref callback identity every render → ref detach/attach loop → error #185.
     // Keep a stable callback; forward to the latest virtualizer via ref.
     const setVirtualizedRowRef = useCallback((el: HTMLDivElement | null) => {
-        virtualizerRef.current?.measureElement(el);
+        if (el) {
+            virtualizerRef.current?.measureElement(el);
+        }
     }, []);
     const lastAssistantMsgId = useMemo(() => {
         const msgs = listConv?.messages;
@@ -1389,14 +1391,29 @@ const ChatArea: React.FC = () => {
 
     useEffect(() => {
         if (!activeConversationId) return;
+        let changed = false;
         setPinLabelsByConversation((prev) => {
             const current = prev[activeConversationId] || {};
             const nextForConversation: Record<string, string> = {};
+            let hasDiff = false;
+            
             Object.entries(current).forEach(([id, value]) => {
-                if (pinnedExchangeIds.has(id)) nextForConversation[id] = value;
+                if (pinnedExchangeIds.has(id)) {
+                    nextForConversation[id] = value;
+                } else {
+                    hasDiff = true; // Something was removed
+                }
             });
+            
+            if (Object.keys(current).length !== Object.keys(nextForConversation).length) {
+                hasDiff = true;
+            }
+            
+            if (!hasDiff) return prev; // Bail out if no changes
+            changed = true;
             return { ...prev, [activeConversationId]: nextForConversation };
         });
+        
         if (editingPinId && !pinnedExchangeIds.has(editingPinId)) {
             setEditingPinId(null);
             setPinLabelDraft('');

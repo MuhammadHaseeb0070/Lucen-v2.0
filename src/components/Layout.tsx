@@ -54,8 +54,11 @@ const Layout: React.FC = () => {
     }, [user, isAdminView, setIsAdminView]);
 
     useEffect(() => {
+        console.log('[Layout] Applying theme from store on mount');
         applyThemeFromStore();
-        return useThemeStore.subscribe(applyThemeFromStore);
+        
+        // TEMPORARILY DISABLED to isolate React #185 loop:
+        // return useThemeStore.subscribe(applyThemeFromStore);
     }, []);
 
     // Global Ctrl+K / Cmd+K listener

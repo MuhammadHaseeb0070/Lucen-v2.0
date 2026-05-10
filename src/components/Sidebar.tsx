@@ -28,8 +28,8 @@ const Sidebar: React.FC = () => {
     // Only subscribe to list metadata -- NOT message content.
     // This prevents Sidebar from re-rendering on every streaming token.
     const conversations = useChatStore(useShallow(
-        (s) => s.conversations.map((c): ConvMeta => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))
-    ));
+        (s) => s.conversations
+    )).map((c): ConvMeta => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }));
     const activeConversationId = useChatStore((s) => s.activeConversationId);
     const createConversation = useChatStore((s) => s.createConversation);
     const deleteConversation = useChatStore((s) => s.deleteConversation);
