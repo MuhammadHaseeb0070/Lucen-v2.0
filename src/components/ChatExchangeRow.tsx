@@ -218,4 +218,4 @@ const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
     );
 };
 
-export default ChatExchangeRow;
+export default React.memo(ChatExchangeRow);

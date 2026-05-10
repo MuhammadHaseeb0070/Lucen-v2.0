@@ -25,7 +25,8 @@ export type UsageStatus =
     | 'timeout'
     | 'auth_error'
     | 'insufficient_credits'
-    | 'client_error';
+    | 'client_error'
+    | 'internal_error';
 
 export type UsageCallKind =
     | 'chat'
@@ -35,7 +36,10 @@ export type UsageCallKind =
     | 'retrieve'
     | 'describe_image'
     | 'web_search'
-    | 'title_gen';
+    | 'title_gen'
+    | 'patch'
+    | 'patch_retry'
+    | 'patch_continuation';
 
 export interface RecordUsageInput {
     userId: string;

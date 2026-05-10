@@ -775,9 +775,10 @@ export async function streamChat(
     // press Continue, the response was clearly long-form — give it the bigger
     // cap so the resume pass actually completes the work.
     const isContinuation = !!options.continuation;
+    const isPatchTurn = !!options.targetedArtifact;
     const mode: ResponseMode = options.isSideChat
         ? 'chat'
-        : isContinuation
+        : (isContinuation || isPatchTurn)
             ? 'artifact'
             : detectResponseMode(messages);
     // Dynamic per-call cap — depends on the model's throughput, reasoning

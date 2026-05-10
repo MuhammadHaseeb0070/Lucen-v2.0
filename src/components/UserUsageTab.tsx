@@ -36,7 +36,10 @@ type UsageCallKind =
     | 'retrieve'
     | 'describe_image'
     | 'web_search'
-    | 'title_gen';
+    | 'title_gen'
+    | 'patch'
+    | 'patch_retry'
+    | 'patch_continuation';
 
 interface UsageLog {
     id: string;
@@ -68,7 +71,7 @@ interface UsageLog {
     created_at: string;
 }
 
-type FilterChip = 'all' | 'chat' | 'background' | 'web_search' | 'errors';
+type FilterChip = 'all' | 'chat' | 'background' | 'web_search' | 'errors' | 'patch';
 
 const CALL_KIND_LABELS: Record<UsageCallKind, string> = {
     chat: 'Chat',
@@ -79,6 +82,9 @@ const CALL_KIND_LABELS: Record<UsageCallKind, string> = {
     describe_image: 'Vision',
     web_search: 'Web',
     title_gen: 'Title',
+    patch: 'Patch',
+    patch_retry: 'Patch (retry)',
+    patch_continuation: 'Patch (cont.)',
 };
 
 function statusBadge(status: UsageStatus | null | undefined): {
@@ -193,10 +199,12 @@ const UserUsageTab: React.FC = () => {
                 return logs.filter(l => l.call_kind === 'classify_intent' || l.call_kind === 'embed' || l.call_kind === 'retrieve' || l.call_kind === 'title_gen' || l.call_kind === 'describe_image');
             case 'web_search':
                 return logs.filter(l => l.call_kind === 'web_search');
+            case 'patch':
+                return logs.filter(l => l.call_kind === 'patch' || l.call_kind === 'patch_retry' || l.call_kind === 'patch_continuation');
             case 'errors':
                 return logs.filter(l => {
                     const s = l.status;
-                    return s === 'upstream_error' || s === 'timeout' || s === 'auth_error' || s === 'insufficient_credits' || s === 'client_error' || s === 'aborted' || s === 'truncated';
+                    return s === 'upstream_error' || s === 'timeout' || s === 'auth_error' || s === 'insufficient_credits' || s === 'client_error' || s === 'aborted' || s === 'truncated' || s === 'internal_error';
                 });
             case 'all':
             default:
@@ -423,6 +431,7 @@ const UserUsageTab: React.FC = () => {
                     {([
                         { id: 'all', label: 'All' },
                         { id: 'chat', label: 'Chat' },
+                        { id: 'patch', label: 'Patches' },
                         { id: 'background', label: 'Background' },
                         { id: 'web_search', label: 'Web Search' },
                         { id: 'errors', label: 'Errors' },

@@ -15,27 +15,33 @@ import {
     Loader2
 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { isAdminUser } from '../config/admin';
 import { useArtifactStore } from '../store/artifactStore';
 
+// Sidebar-specific conversation metadata (no message bodies).
+interface ConvMeta { id: string; title: string; updatedAt: number; }
+
 const Sidebar: React.FC = () => {
-    const {
-        conversations,
-        activeConversationId,
-        createConversation,
-        deleteConversation,
-        renameConversation,
-        setActiveConversation,
-        isLoading: chatsLoading,
-        searchQuery,
-        setSearchQuery,
-        searchResults,
-        isSearching,
-        searchError,
-        performSearch,
-    } = useChatStore();
+    // Only subscribe to list metadata -- NOT message content.
+    // This prevents Sidebar from re-rendering on every streaming token.
+    const conversations = useChatStore(useShallow(
+        (s) => s.conversations.map((c): ConvMeta => ({ id: c.id, title: c.title, updatedAt: c.updatedAt }))
+    ));
+    const activeConversationId = useChatStore((s) => s.activeConversationId);
+    const createConversation = useChatStore((s) => s.createConversation);
+    const deleteConversation = useChatStore((s) => s.deleteConversation);
+    const renameConversation = useChatStore((s) => s.renameConversation);
+    const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+    const chatsLoading = useChatStore((s) => s.isLoading);
+    const searchQuery = useChatStore((s) => s.searchQuery);
+    const setSearchQuery = useChatStore((s) => s.setSearchQuery);
+    const searchResults = useChatStore((s) => s.searchResults);
+    const isSearching = useChatStore((s) => s.isSearching);
+    const searchError = useChatStore((s) => s.searchError);
+    const performSearch = useChatStore((s) => s.performSearch);
 
     const {
         sidebarCollapsed,
@@ -49,7 +55,8 @@ const Sidebar: React.FC = () => {
     } = useUIStore();
     const { user } = useAuthStore();
     const isAdmin = isAdminUser(user?.email);
-    const { artifactHubOpen, setArtifactHubOpen } = useArtifactStore();
+    const artifactHubOpen = useArtifactStore((s) => s.artifactHubOpen);
+    const setArtifactHubOpen = useArtifactStore((s) => s.setArtifactHubOpen);
 
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editTitle, setEditTitle] = useState('');

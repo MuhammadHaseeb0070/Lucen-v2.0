@@ -197,7 +197,7 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
         className="artifact-iframe"
         style={isFramed ? { width: vpWidth!, maxWidth: '100%', height: '100%' } : { width: '100%', height: '100%', border: 'none' }}
         title="HTML Preview"

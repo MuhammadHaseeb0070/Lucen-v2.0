@@ -61,7 +61,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [copied, setCopied] = useState(false);
 
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
-    const updateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
     const isDismissed = useArtifactStore((s) => s.isDismissed);
 
     const parseSerialRef = useRef(0);
@@ -78,6 +77,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [workerParsing, setWorkerParsing] = useState(false);
 
     useLayoutEffect(() => {
+        if (disableArtifacts) {
+            setWorkerParsing(false);
+            setParsed({ cleanContent: message.content, artifacts: [] });
+            return;
+        }
+
         const content = message.content;
         const forceClose = !message.isStreaming;
 
@@ -87,16 +92,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             return;
         }
 
-        // Small content: parse on main thread (fast enough, avoids worker overhead).
-        if (content.length < ARTIFACT_PARSE_WORKER_MIN_CHARS) {
+        // During streaming: show raw content, skip expensive artifact parsing.
+        // Artifacts are only extracted once the stream completes.
+        if (message.isStreaming) {
             setWorkerParsing(false);
-            const next = parseArtifacts(content, message.id, forceClose);
-            setParsed(disableArtifacts ? { cleanContent: next.cleanContent, artifacts: [] } : next);
+            setParsed({ cleanContent: content, artifacts: [] });
             return;
         }
 
-        // Large content (including during streaming): use web worker to
-        // avoid blocking the main thread with regex extraction.
+        // Stream completed — parse artifacts once.
+        if (content.length < ARTIFACT_PARSE_WORKER_MIN_CHARS) {
+            setWorkerParsing(false);
+            const next = parseArtifacts(content, message.id, forceClose);
+            setParsed(next);
+            return;
+        }
+
         const mySerial = ++parseSerialRef.current;
         const requestId = `${message.id}:${mySerial}:${content.length}`;
         setWorkerParsing(true);
@@ -105,13 +116,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             .then((result) => {
                 if (mySerial !== parseSerialRef.current) return;
                 setWorkerParsing(false);
-                setParsed(disableArtifacts ? { cleanContent: result.cleanContent, artifacts: [] } : result);
+                setParsed(result);
             })
             .catch(() => {
                 if (mySerial !== parseSerialRef.current) return;
                 setWorkerParsing(false);
-                const fallback = parseArtifacts(content, message.id, forceClose);
-                setParsed(disableArtifacts ? { cleanContent: fallback.cleanContent, artifacts: [] } : fallback);
+                setParsed(parseArtifacts(content, message.id, forceClose));
             });
     }, [disableArtifacts, message.content, message.id, message.isStreaming]);
 
@@ -176,8 +186,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         setTimeout(() => setCopied(false), 2000);
     }, [message.content]);
 
-    // Throttled artifact update during streaming to reduce store churn
-    const lastUpdateRef = useRef(0);
+    // Open the artifact workspace when parsing completes (after stream ends).
+    // Since artifact parsing is now deferred until stream completion, this
+    // effect only fires once per artifact — no mid-stream store churn.
     const openedRef = useRef(false);
 
     useEffect(() => {
@@ -191,37 +202,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         }
         const first = artifacts[0];
 
-        // If the user closed this artifact's workspace, never reopen it or
-        // push further updates into the store for it. The code view can still
-        // render inside the message bubble card itself.
         if (isDismissed(first.id)) {
             openedRef.current = false;
             return;
         }
 
-        if (first.isStreaming) {
-            const now = Date.now();
-            if (!openedRef.current) {
-                openedRef.current = true;
-                setActiveArtifact(first);
-                lastUpdateRef.current = now;
-            } else if (now - lastUpdateRef.current > 1000) {
-                // Throttle store updates at ~1s during streaming to reduce
-                // cascading re-renders in ArtifactWorkspace + ArtifactRenderer.
-                // The code view inside the message bubble still updates in
-                // real-time; only the workspace preview is delayed.
-                updateArtifactContent(first);
-                lastUpdateRef.current = now;
-            }
-        } else if (openedRef.current) {
-            // Streaming just finished — send final update and reset.
-            // Force isStreaming:false regardless of what the parser reports.
-            // This handles the truncation case where the closing </lucen_artifact>
-            // tag was never received, leaving the artifact in a partial state.
-            updateArtifactContent({ ...first, isStreaming: false });
-            openedRef.current = false;
+        if (!openedRef.current) {
+            openedRef.current = true;
+            setActiveArtifact({ ...first, isStreaming: false });
         }
-    }, [disableArtifacts, artifacts, setActiveArtifact, updateArtifactContent, isDismissed]);
+    }, [disableArtifacts, artifacts, setActiveArtifact, isDismissed]);
 
     if (actionsOnly) {
         if (!message.content) return null;

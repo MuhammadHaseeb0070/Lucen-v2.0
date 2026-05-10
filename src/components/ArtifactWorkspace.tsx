@@ -121,12 +121,15 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 const ArtifactWorkspace: React.FC = () => {
-  const {
-    activeArtifact, viewMode, setViewMode, clearArtifact,
-    panelWidthPercent, setPanelWidthPercent,
-    previewViewport, setPreviewViewport,
-    patchStatus,
-  } = useArtifactStore();
+  const activeArtifact = useArtifactStore((s) => s.activeArtifact);
+  const viewMode = useArtifactStore((s) => s.viewMode);
+  const setViewMode = useArtifactStore((s) => s.setViewMode);
+  const clearArtifact = useArtifactStore((s) => s.clearArtifact);
+  const panelWidthPercent = useArtifactStore((s) => s.panelWidthPercent);
+  const setPanelWidthPercent = useArtifactStore((s) => s.setPanelWidthPercent);
+  const previewViewport = useArtifactStore((s) => s.previewViewport);
+  const setPreviewViewport = useArtifactStore((s) => s.setPreviewViewport);
+  const patchStatus = useArtifactStore((s) => s.patchStatus);
   // Patching engine: bind/unbind the next prompt to this artifact.
   const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
   const targetArtifactByConv = useChatStore((s) => s.targetArtifactByConv);

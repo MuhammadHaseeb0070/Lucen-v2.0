@@ -23,8 +23,9 @@ interface ArtifactCardProps {
 }
 
 const ArtifactCard: React.FC<ArtifactCardProps> = ({ artifact }) => {
-  const { setActiveArtifact, activeArtifact } = useArtifactStore();
-  const isActive = activeArtifact?.id === artifact.id;
+  const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
+  const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
+  const isActive = activeArtifactId === artifact.id;
   const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
   const targetArtifactByConv = useChatStore((s) => s.targetArtifactByConv);
   const activeConversationId = useChatStore((s) => s.activeConversationId);

@@ -15,9 +15,11 @@
 //     a cleanup function for React effects.
 //
 // Security:
-//   - We DO NOT post raw stack traces from cross-origin frames; the
-//     iframe's content runs same-origin (`allow-same-origin` is on) so
-//     stacks are okay to forward.
+//   - The iframe sandbox does NOT include `allow-same-origin`, so the
+//     iframe is fully cross-origin isolated from the parent. postMessage
+//     still works cross-origin for error forwarding.
+//   - The injected script also adds a <base target="_blank"> tag and
+//     intercepts link clicks to prevent in-iframe navigation.
 //   - The envelope is tagged with __lucen_iframe_error so other
 //     postMessage chatter (Vite HMR, third-party widgets) is ignored.
 //   - The injected script doesn't trust user code: it copies primitives
@@ -51,11 +53,35 @@ const ENVELOPE_KEY = '__lucen_iframe_error';
  * gets parsed every render. Avoid template-literal `${...}` here so
  * users embedding their own template literals don't collide.
  */
-export const INJECT_SCRIPT = `<script>(function(){try{
+export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
   var KEY=${JSON.stringify(ENVELOPE_KEY)};
   function send(payload){try{window.parent && window.parent.postMessage({__type:KEY,payload:payload},"*");}catch(_){/*noop*/}}
   function asString(v){try{if(v==null)return String(v);if(typeof v==="string")return v;if(v instanceof Error){return (v.message||String(v))+(v.stack?"\\n"+v.stack:"");}return JSON.stringify(v);}catch(_){return String(v);}}
   function pickStack(err){try{return err && err.stack ? String(err.stack).slice(0,3000) : undefined;}catch(_){return undefined;}}
+  /* ── Link interception: prevent in-iframe navigation ── */
+  document.addEventListener("click",function(e){
+    try{
+      var el=e.target;
+      while(el&&el.tagName!=="A"){el=el.parentElement;}
+      if(!el||!el.href)return;
+      var href=el.href;
+      if(href==="javascript:void(0)"||href.startsWith("javascript:"))return;
+      if(href.startsWith("#"))return;
+      e.preventDefault();
+      e.stopPropagation();
+      try{window.open(href,"_blank","noopener,noreferrer");}catch(_){/*noop*/}
+    }catch(_){/*noop*/}
+  },true);
+  /* ── Prevent form-based navigation ── */
+  document.addEventListener("submit",function(e){
+    try{
+      var form=e.target;
+      if(form&&form.tagName==="FORM"&&form.action&&!form.action.startsWith("javascript:")){
+        e.preventDefault();
+      }
+    }catch(_){/*noop*/}
+  },true);
+  /* ── Error capture ── */
   window.addEventListener("error",function(e){
     try{
       send({
@@ -80,7 +106,6 @@ export const INJECT_SCRIPT = `<script>(function(){try{
       });
     }catch(_){/*noop*/}
   });
-  // Wrap console.error so we surface explicit user logs without breaking it.
   try{
     var origErr = console.error.bind(console);
     console.error = function(){

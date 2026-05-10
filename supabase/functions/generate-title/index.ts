@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { recordUsage } from '../_shared/usage.ts';
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -73,7 +74,22 @@ serve(async (req) => {
     }
 
     const data = await res.json();
+    const usage = data?.usage;
     let title = data?.choices?.[0]?.message?.content?.trim() ?? null;
+
+    await recordUsage(supabase, {
+      userId: user.id,
+      conversationId: conversation_id || null,
+      requestId: body.request_id || null,
+      callKind: 'title_gen',
+      modelId: 'openai/gpt-4o-mini',
+      promptTokens: usage?.prompt_tokens ?? 0,
+      completionTokens: usage?.completion_tokens ?? 0,
+      status: title ? 'completed' : 'upstream_error',
+      provider: 'openai',
+      durationMs: 0,
+      usdCost: 0,
+    });
 
     if (title) {
       title = title.replace(/^["']|["']$/g, '').trim();

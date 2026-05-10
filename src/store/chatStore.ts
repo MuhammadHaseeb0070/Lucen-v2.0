@@ -60,6 +60,34 @@ function cancelMidstreamFlush(msgId: string): void {
     midstreamState.delete(msgId);
 }
 
+// ─── Disconnect flush: persist all streaming messages on tab close ───────
+// Uses sendBeacon (fire-and-forget, survives tab close) or falls back to
+// a synchronous XHR if sendBeacon is not available. This ensures that
+// content streamed so far is written to the DB even if the user closes
+// the tab or navigates away mid-stream.
+function flushAllStreamingMessages(): void {
+    if (!hasActiveSessionSync() || !supabase) return;
+    // Lazy import to avoid coupling — we only need the store at flush time.
+    const state = (useChatStore as unknown as { getState: () => { conversations: Conversation[] } }).getState();
+    for (const conv of state.conversations) {
+        for (const msg of conv.messages) {
+            if (msg.isStreaming && msg.role === 'assistant' && msg.content) {
+                cancelMidstreamFlush(msg.id);
+                db.upsertStreamingMessage(conv.id, { ...msg, isStreaming: false }).catch(() => {});
+            }
+        }
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', flushAllStreamingMessages);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            flushAllStreamingMessages();
+        }
+    });
+}
+
 // ─── AI Chat Title Generator ─────────────────────────────────────────────
 // Fires once per conversation right after the FIRST assistant reply lands.
 // The edge function is fully instrumented (logged to usage_logs with

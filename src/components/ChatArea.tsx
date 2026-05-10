@@ -313,94 +313,71 @@ const ChatArea: React.FC = () => {
         abortRef.current = controller;
         const contextMessages = getContextMessages(convId);
 
-        // Upstream SSE can arrive in bursty packets (network/proxy coalescing),
-        // which feels "chunky" even when streaming is technically enabled.
-        // We smooth bursts on the client by draining queued text once per frame.
-        // This keeps rendering continuous without spamming React updates.
+        // Batch streaming updates at a fixed 200ms interval. This replaces
+        // the previous per-frame RAF drain which caused too many React updates
+        // (one per animation frame). A 200ms interval means ~5 store updates/sec
+        // max, which is enough for smooth UX without saturating the main thread.
         let pendingText = '';
-        let flushRaf: number | null = null;
+        let pendingReasoning = '';
+        let flushTimer: ReturnType<typeof setInterval> | null = null;
         let renderedContent =
             useChatStore
                 .getState()
                 .conversations.find((c) => c.id === convId)
                 ?.messages.find((m) => m.id === assistantMsgId)
                 ?.content || '';
+        let renderedReasoning =
+            useChatStore
+                .getState()
+                .conversations.find((c) => c.id === convId)
+                ?.messages.find((m) => m.id === assistantMsgId)
+                ?.reasoning || '';
 
-        const appendContent = (delta: string) => {
-            if (!delta) return;
-            renderedContent += delta;
-            updateMessage(convId, assistantMsgId, {
-                content: renderedContent,
-                isReasoningStreaming: false,
-            });
-        };
-
-        const drainFrame = () => {
-            flushRaf = null;
-            if (!pendingText) return;
-
-            // Adaptive per-frame slice:
-            // - small queue: moderate slices for smoothness
-            // - large queue: bigger slices to catch up quickly
-            // Larger minimums reduce React update frequency and prevent
-            // main-thread saturation during heavy artifact streaming.
-            const queueLen = pendingText.length;
-            const charsThisFrame = Math.max(100, Math.min(500, Math.ceil(queueLen * 0.35)));
-            const delta = pendingText.slice(0, charsThisFrame);
-            pendingText = pendingText.slice(charsThisFrame);
-            appendContent(delta);
-
-            if (pendingText) scheduleFlush();
-        };
-
-        let tabHidden = document.hidden;
-        const onVisibilityChange = () => {
-            tabHidden = document.hidden;
-            if (!tabHidden && pendingText) {
-                // Tab became visible again — flush accumulated text
-                // and resume RAF drain.
-                appendContent(pendingText);
+        const flushBatch = () => {
+            if (!pendingText && !pendingReasoning) return;
+            const updates: Record<string, unknown> = {};
+            if (pendingText) {
+                renderedContent += pendingText;
                 pendingText = '';
+                updates.content = renderedContent;
+                updates.isReasoningStreaming = false;
             }
+            if (pendingReasoning) {
+                renderedReasoning += pendingReasoning;
+                pendingReasoning = '';
+                updates.reasoning = renderedReasoning;
+            }
+            updateMessage(convId, assistantMsgId, updates);
         };
-        document.addEventListener('visibilitychange', onVisibilityChange);
 
-        const scheduleFlush = () => {
-            if (flushRaf !== null) return;
-            // When the tab is hidden, browsers throttle RAF to ~1fps
-            // or stop it entirely. Accumulate text and flush on
-            // visibility change instead.
-            if (tabHidden) return;
-            flushRaf = window.requestAnimationFrame(() => {
-                drainFrame();
-            });
+        const startFlushTimer = () => {
+            if (flushTimer !== null) return;
+            flushTimer = setInterval(flushBatch, 200);
+        };
+
+        const stopFlushTimer = () => {
+            if (flushTimer !== null) {
+                clearInterval(flushTimer);
+                flushTimer = null;
+            }
         };
 
         const flushAllPending = () => {
-            if (!pendingText) return;
-            appendContent(pendingText);
-            pendingText = '';
+            stopFlushTimer();
+            flushBatch();
         };
 
         await streamChat(contextMessages, {
             onChunk: (chunk) => {
                 pendingText += chunk;
-                scheduleFlush();
+                startFlushTimer();
             },
             onReasoning: (reasoning) => {
                 if (!options.trackReasoning) return;
-                const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-                const msg = conv?.messages.find((m) => m.id === assistantMsgId);
-                updateMessage(convId, assistantMsgId, {
-                    reasoning: (msg?.reasoning || '') + reasoning,
-                });
+                pendingReasoning += reasoning;
+                startFlushTimer();
             },
             onDone: (truncated) => {
-                document.removeEventListener('visibilitychange', onVisibilityChange);
-                if (flushRaf !== null) {
-                    cancelAnimationFrame(flushRaf);
-                    flushRaf = null;
-                }
                 flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     isStreaming: false,
@@ -450,11 +427,6 @@ const ChatArea: React.FC = () => {
                 }
             },
             onError: (error) => {
-                document.removeEventListener('visibilitychange', onVisibilityChange);
-                if (flushRaf !== null) {
-                    cancelAnimationFrame(flushRaf);
-                    flushRaf = null;
-                }
                 flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation
@@ -469,11 +441,6 @@ const ChatArea: React.FC = () => {
             onWebSearchUsed: (urls) =>
                 updateMessage(convId, assistantMsgId, { webSearchUsed: true, webSearchUrls: urls }),
             onClarificationNeeded: (question) => {
-                document.removeEventListener('visibilitychange', onVisibilityChange);
-                if (flushRaf !== null) {
-                    cancelAnimationFrame(flushRaf);
-                    flushRaf = null;
-                }
                 flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation
@@ -603,78 +570,32 @@ const ChatArea: React.FC = () => {
         const patchResult = applyPatch(baseArtifact.content, allBlocks);
 
         if (!patchResult.ok) {
-            // ── NFR1.3 retry loop ──
-            const failedBlock = allBlocks[patchResult.blockIndex];
+            // Report the failure directly to the user -- no automatic retry.
+            // Auto-retrying rarely fixes the issue and burns 10k+ tokens per attempt.
             const reasonText =
                 patchResult.reason === 'no_match'
-                    ? `Block ${patchResult.blockIndex + 1} did not match anything in the artifact. The <search> text was not found. Add MORE surrounding context (5-10 lines above and below the change point) so the search becomes unique.`
+                    ? `Block ${patchResult.blockIndex + 1} did not match anything in the artifact (search text not found).`
                     : patchResult.reason === 'multi_match'
-                        ? `Block ${patchResult.blockIndex + 1} matched ${patchResult.matchCount} places — the search is ambiguous. Add MORE surrounding context (a unique line or two of nearby code) so it matches exactly once.`
-                        : `Block ${patchResult.blockIndex + 1} had an empty <search>. Provide the actual existing text you want to replace.`;
+                        ? `Block ${patchResult.blockIndex + 1} matched ${patchResult.matchCount} places (ambiguous search).`
+                        : `Block ${patchResult.blockIndex + 1} had an empty <search>.`;
 
-            const hint =
-                `Your previous patch attempt FAILED to apply. Reason: ${reasonText}\n` +
-                `Failed search excerpt: ${JSON.stringify(patchResult.searchExcerpt.slice(0, 500))}\n` +
-                `Original block context if needed: search-block #${patchResult.blockIndex + 1} of ${allBlocks.length}.\n` +
-                `Re-emit the FULL <lucen_patch> with corrected blocks. Copy <search> verbatim from the artifact above.`;
-
-            if (retryCount < MAX_PATCH_RETRIES) {
-                // Keep everything in the SAME assistant bubble; show a retry
-                // status badge instead of wiping content blank (avoids flash).
-                useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-                attemptLogs.push({
-                    attemptNo,
-                    blockCount: allBlocks.length,
-                    status: 'failed',
-                    note: reasonText,
-                });
-                const retryBadge = `${visibleContent ? `${visibleContent}\n\n` : ''}_Patch attempt ${attemptNo} failed — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
-                updateMessage(convId, assistantMsgId, {
-                    content: retryBadge,
-                    isStreaming: true,
-                    isReasoningStreaming: false,
-                    patchReport: {
-                        targetArtifactId: target.id,
-                        targetTitle: target.title,
-                        attempts: attemptNo,
-                        retries: retryCount,
-                        totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
-                        status: 'running',
-                        notes: attemptLogs.map((a) => a.note),
-                    },
-                });
-                useArtifactStore.getState().setPatchStatus(target.id, 'patching');
-                await runStream(convId, assistantMsgId, {
-                    trackReasoning: true,
-                    targetedArtifact: target,
-                    patchHint: hint,
-                    patchRetryCount: retryCount + 1,
-                    patchAttemptLogs: attemptLogs,
-                });
-                return;
-            }
-
-            // Give up after MAX_PATCH_RETRIES. Leave the artifact
-            // untouched, surface the failure to the user, clear the
-            // binding so they can decide what to do next.
             useArtifactStore.getState().setPatchStatus(target.id, 'failed');
             useChatStore.getState().setTargetArtifact(convId, null);
             updateMessage(convId, assistantMsgId, {
                 content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
                     'failed',
-                    [...attemptLogs.map((a) => a.note), `Final failure: ${reasonText}`],
+                    [reasonText],
                 )}`,
                 patchReport: {
                     targetArtifactId: target.id,
                     targetTitle: target.title,
                     attempts: attemptNo,
-                    retries: retryCount,
-                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                    retries: 0,
+                    totalBlocksSeen: allBlocks.length,
                     status: 'failed',
-                    notes: [...attemptLogs.map((a) => a.note), `Final failure: ${reasonText}`],
+                    notes: [reasonText],
                 },
             });
-            console.warn('[Patch] gave up after retries:', { failedBlock, reason: patchResult.reason });
             return;
         }
 
@@ -694,57 +615,21 @@ const ChatArea: React.FC = () => {
                 await mermaid.parse(newContent.trim());
             } catch (e) {
                 const parseErr = e instanceof Error ? e.message : String(e);
-                if (retryCount < MAX_PATCH_RETRIES) {
-                    const hint =
-                        `Your patch produced INVALID Mermaid syntax. Parser error: ${parseErr.slice(0, 280)}\n` +
-                        `Re-emit the <lucen_patch> with corrected blocks that produce valid Mermaid.`;
-                    useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-                    attemptLogs.push({
-                        attemptNo,
-                        blockCount: allBlocks.length,
-                        status: 'failed',
-                        note: `Mermaid validation failed: ${parseErr.slice(0, 180)}`,
-                    });
-                    const mermaidRetryBadge = `${visibleContent ? `${visibleContent}\n\n` : ''}_Patch attempt ${attemptNo} failed (invalid Mermaid) — retrying (${retryCount + 1}/${MAX_PATCH_RETRIES})..._`;
-                    updateMessage(convId, assistantMsgId, {
-                        content: mermaidRetryBadge,
-                        isStreaming: true,
-                        isReasoningStreaming: false,
-                        patchReport: {
-                            targetArtifactId: target.id,
-                            targetTitle: target.title,
-                            attempts: attemptNo,
-                            retries: retryCount,
-                            totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
-                            status: 'running',
-                            notes: attemptLogs.map((a) => a.note),
-                        },
-                    });
-                    useArtifactStore.getState().setPatchStatus(target.id, 'patching');
-                    await runStream(convId, assistantMsgId, {
-                        trackReasoning: true,
-                        targetedArtifact: target,
-                        patchHint: hint,
-                        patchRetryCount: retryCount + 1,
-                        patchAttemptLogs: attemptLogs,
-                    });
-                    return;
-                }
                 useArtifactStore.getState().setPatchStatus(target.id, 'failed');
                 useChatStore.getState().setTargetArtifact(convId, null);
                 updateMessage(convId, assistantMsgId, {
                     content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
                         'failed',
-                        [...attemptLogs.map((a) => a.note), `Final failure: invalid Mermaid syntax (${parseErr.slice(0, 120)})`],
+                        [`Patch produced invalid Mermaid syntax: ${parseErr.slice(0, 200)}`],
                     )}`,
                     patchReport: {
                         targetArtifactId: target.id,
                         targetTitle: target.title,
                         attempts: attemptNo,
-                        retries: retryCount,
-                        totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
+                        retries: 0,
+                        totalBlocksSeen: allBlocks.length,
                         status: 'failed',
-                        notes: [...attemptLogs.map((a) => a.note), `Final failure: invalid Mermaid syntax (${parseErr.slice(0, 120)})`],
+                        notes: [`Mermaid validation failed: ${parseErr.slice(0, 200)}`],
                     },
                 });
                 return;
