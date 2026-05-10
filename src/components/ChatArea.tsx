@@ -270,6 +270,13 @@ const ChatArea: React.FC = () => {
     virtActiveRef.current = virtActive;
     msgIdToRowIndexRef.current = msgIdToRowIndex;
     virtualizerRef.current = virtualizer;
+
+    // React 19 + @tanstack/react-virtual: passing `ref={virtualizer.measureElement}`
+    // can change ref callback identity every render → ref detach/attach loop → error #185.
+    // Keep a stable callback; forward to the latest virtualizer via ref.
+    const setVirtualizedRowRef = useCallback((el: HTMLDivElement | null) => {
+        virtualizerRef.current?.measureElement(el);
+    }, []);
     const lastAssistantMsgId = useMemo(() => {
         const msgs = listConv?.messages;
         if (!msgs) return null;
@@ -1703,7 +1710,7 @@ const ChatArea: React.FC = () => {
                                         <div
                                             key={vRow.key}
                                             data-index={vRow.index}
-                                            ref={virtualizer.measureElement}
+                                            ref={setVirtualizedRowRef}
                                             style={{
                                                 position: 'absolute',
                                                 top: 0,
