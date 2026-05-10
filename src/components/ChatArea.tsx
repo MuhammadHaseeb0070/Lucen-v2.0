@@ -1391,7 +1391,6 @@ const ChatArea: React.FC = () => {
 
     useEffect(() => {
         if (!activeConversationId) return;
-        let changed = false;
         setPinLabelsByConversation((prev) => {
             const current = prev[activeConversationId] || {};
             const nextForConversation: Record<string, string> = {};
@@ -1410,7 +1409,6 @@ const ChatArea: React.FC = () => {
             }
             
             if (!hasDiff) return prev; // Bail out if no changes
-            changed = true;
             return { ...prev, [activeConversationId]: nextForConversation };
         });
         
