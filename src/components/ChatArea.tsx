@@ -253,10 +253,15 @@ const ChatArea: React.FC = () => {
         !isMessageLoading &&
         !searchActive &&
         exchangeRows.length >= 36;
+    // Stable callbacks — inline `getScrollElement` changes every render and can
+    // make @tanstack/react-virtual's `measureElement` ref identity unstable,
+    // which triggers React 19 "Maximum update depth exceeded" (error #185).
+    const getMessageScrollElement = useCallback(() => messagesContainerRef.current, []);
+    const estimateRowSize = useCallback(() => 200, []);
     const virtualizer = useVirtualizer({
         count: exchangeRows.length,
-        getScrollElement: () => messagesContainerRef.current,
-        estimateSize: () => 200,
+        getScrollElement: getMessageScrollElement,
+        estimateSize: estimateRowSize,
         overscan: 8,
     });
     const virtActiveRef = useRef(false);
@@ -277,12 +282,13 @@ const ChatArea: React.FC = () => {
     // Auto-scroll only when user is near the bottom (isAutoScroll = true).
     useEffect(() => {
         if (!isAutoScroll) return;
-        if (virtActive && exchangeRows.length > 0) {
-            virtualizer.scrollToIndex(exchangeRows.length - 1, { align: 'end' });
+        const v = virtualizerRef.current;
+        if (virtActive && exchangeRows.length > 0 && v) {
+            v.scrollToIndex(exchangeRows.length - 1, { align: 'end' });
         } else {
             scrollToBottom();
         }
-    }, [activeConv?.messages, isAutoScroll, virtActive, exchangeRows.length, scrollToBottom, virtualizer]);
+    }, [activeConv?.messages, isAutoScroll, virtActive, exchangeRows.length, scrollToBottom]);
 
     // ─── Stream helpers ───
     //

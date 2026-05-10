@@ -38,6 +38,9 @@ interface MessageBubbleProps {
 /** Beyond this size, artifact tag parsing runs in a Web Worker to avoid main-thread stalls. */
 const ARTIFACT_PARSE_WORKER_MIN_CHARS = 12_000;
 
+/** Stable empty list so `artifacts` dependency / `?? []` does not allocate a new [] every render. */
+const EMPTY_ARTIFACTS: ParseResult['artifacts'] = [];
+
 const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     message,
     onDelete,
@@ -67,7 +70,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [parsed, setParsed] = useState<ParseResult | null>(() => {
         const content = message.content;
         if (!content || !content.includes('<lucen_artifact')) {
-            return { cleanContent: content, artifacts: [] };
+            return { cleanContent: content, artifacts: EMPTY_ARTIFACTS };
         }
         if (content.length >= ARTIFACT_PARSE_WORKER_MIN_CHARS && !message.isStreaming) {
             return null;
@@ -79,7 +82,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     useLayoutEffect(() => {
         if (disableArtifacts) {
             setWorkerParsing(false);
-            setParsed({ cleanContent: message.content, artifacts: [] });
+            setParsed((prev) => {
+                if (prev?.cleanContent === message.content && prev.artifacts === EMPTY_ARTIFACTS) return prev;
+                return { cleanContent: message.content, artifacts: EMPTY_ARTIFACTS };
+            });
             return;
         }
 
@@ -88,7 +94,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
         if (!content || !content.includes('<lucen_artifact')) {
             setWorkerParsing(false);
-            setParsed({ cleanContent: content, artifacts: [] });
+            setParsed((prev) => {
+                if (prev?.cleanContent === content && prev.artifacts === EMPTY_ARTIFACTS) return prev;
+                return { cleanContent: content, artifacts: EMPTY_ARTIFACTS };
+            });
             return;
         }
 
@@ -96,7 +105,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         // Artifacts are only extracted once the stream completes.
         if (message.isStreaming) {
             setWorkerParsing(false);
-            setParsed({ cleanContent: content, artifacts: [] });
+            setParsed((prev) => {
+                if (prev?.cleanContent === content && prev.artifacts === EMPTY_ARTIFACTS) return prev;
+                return { cleanContent: content, artifacts: EMPTY_ARTIFACTS };
+            });
             return;
         }
 
@@ -104,7 +116,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         if (content.length < ARTIFACT_PARSE_WORKER_MIN_CHARS) {
             setWorkerParsing(false);
             const next = parseArtifacts(content, message.id, forceClose);
-            setParsed(next);
+            setParsed((prev) => {
+                if (
+                    prev &&
+                    prev.cleanContent === next.cleanContent &&
+                    prev.artifacts.length === next.artifacts.length &&
+                    (prev.artifacts.length === 0 ||
+                        (prev.artifacts[0]?.id === next.artifacts[0]?.id &&
+                            prev.artifacts[0]?.content === next.artifacts[0]?.content))
+                ) {
+                    return prev;
+                }
+                return next;
+            });
             return;
         }
 
@@ -126,7 +150,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     }, [disableArtifacts, message.content, message.id, message.isStreaming]);
 
     const rawCleanContent = parsed?.cleanContent ?? '';
-    const artifacts = parsed?.artifacts ?? [];
+    const artifacts = parsed?.artifacts ?? EMPTY_ARTIFACTS;
 
     // Patching engine: also extract <lucen_patch> blocks for display.
     // Cheap re-parse on the same content — patch tags are rare and the
@@ -190,17 +214,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     // Since artifact parsing is now deferred until stream completion, this
     // effect only fires once per artifact — no mid-stream store churn.
     const openedRef = useRef(false);
+    const artifactsRef = useRef(artifacts);
+    artifactsRef.current = artifacts;
+    const firstArtifactId = artifacts[0]?.id ?? '';
 
     useEffect(() => {
         if (disableArtifacts) {
             openedRef.current = false;
             return;
         }
-        if (artifacts.length === 0) {
+        const list = artifactsRef.current;
+        if (list.length === 0) {
             openedRef.current = false;
             return;
         }
-        const first = artifacts[0];
+        const first = list[0];
 
         if (isDismissed(first.id)) {
             openedRef.current = false;
@@ -211,7 +239,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             openedRef.current = true;
             setActiveArtifact({ ...first, isStreaming: false });
         }
-    }, [disableArtifacts, artifacts, setActiveArtifact, isDismissed]);
+    }, [disableArtifacts, firstArtifactId, setActiveArtifact, isDismissed]);
 
     if (actionsOnly) {
         if (!message.content) return null;
