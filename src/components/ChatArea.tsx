@@ -12,6 +12,7 @@ import Logo from './Logo';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
+import { runArtifactGenerationJob, shouldUseArtifactJob } from '../services/artifactGenerator';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
 import type { FileAttachment, Message } from '../types';
@@ -358,6 +359,8 @@ const ChatArea: React.FC = () => {
                     isStreaming: false,
                     isReasoningStreaming: false,
                     isTruncated: truncated || false,
+                    generationStatus: truncated ? 'partial_saved' : 'complete',
+                    generationStatusDetail: truncated ? 'Response needs continuation' : 'Response complete',
                 });
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
@@ -398,6 +401,8 @@ const ChatArea: React.FC = () => {
                         : `⚠️ Error: ${error}`,
                     isStreaming: false,
                     isReasoningStreaming: false,
+                    generationStatus: 'failed_recoverable',
+                    generationStatusDetail: error,
                 });
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
@@ -412,6 +417,8 @@ const ChatArea: React.FC = () => {
                         : `_Search paused. I need a bit more info to get you the right results:_\n\n**${question}**`,
                     isStreaming: false,
                     isReasoningStreaming: false,
+                    generationStatus: 'failed_recoverable',
+                    generationStatusDetail: 'Clarification needed',
                 });
                 abortRef.current = null;
             },
@@ -445,7 +452,12 @@ const ChatArea: React.FC = () => {
             ?.messages.find((m) => m.id === assistantMsgId);
         const priorAssistantText = partialMsg?.content || '';
 
-        updateMessage(convId, assistantMsgId, { isStreaming: true, isTruncated: false });
+        updateMessage(convId, assistantMsgId, {
+            isStreaming: true,
+            isTruncated: false,
+            generationStatus: 'continuing',
+            generationStatusDetail: 'Continuing response',
+        });
         await runStream(convId, assistantMsgId, {
             trackReasoning: false,
             continuation: { priorAssistantText },
@@ -474,7 +486,60 @@ const ChatArea: React.FC = () => {
             id: assistantMsgId, role: 'assistant', content: '', reasoning: '',
             // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
+            generationStatus: 'streaming',
         });
+
+        const contextMessages = getContextMessages(convId);
+        if (shouldUseArtifactJob(contextMessages)) {
+            const controller = new AbortController();
+            abortRef.current = controller;
+            try {
+                const result = await runArtifactGenerationJob({
+                    messages: contextMessages,
+                    conversationId: convId,
+                    messageId: assistantMsgId,
+                    signal: controller.signal,
+                    callbacks: {
+                        onStatus: (generationStatus, generationStatusDetail) => {
+                            updateMessage(convId, assistantMsgId, {
+                                generationStatus,
+                                generationStatusDetail,
+                            });
+                        },
+                        onPartial: (partialContent) => {
+                            updateMessage(convId, assistantMsgId, { content: partialContent });
+                        },
+                    },
+                });
+                updateMessage(convId, assistantMsgId, {
+                    content: result.content,
+                    isStreaming: false,
+                    isReasoningStreaming: false,
+                    isTruncated: !result.complete,
+                    generationStatus: result.complete ? 'complete' : 'partial_saved',
+                    generationStatusDetail: result.complete
+                        ? 'Validated artifact complete'
+                        : 'Saved partial artifact; validation did not pass',
+                    artifactJobId: result.jobId,
+                    artifactValidation: result.validation,
+                });
+                if (result.finalArtifactId) {
+                    useArtifactStore.getState().setDbId(`${assistantMsgId}-artifact-0`, result.finalArtifactId);
+                }
+            } catch (err) {
+                updateMessage(convId, assistantMsgId, {
+                    content: err instanceof Error ? `⚠️ Artifact generation failed: ${err.message}` : '⚠️ Artifact generation failed.',
+                    isStreaming: false,
+                    isReasoningStreaming: false,
+                    generationStatus: 'failed_recoverable',
+                    generationStatusDetail: err instanceof Error ? err.message : 'Artifact generation failed',
+                });
+            } finally {
+                abortRef.current = null;
+                useCreditsStore.getState().syncFromServer();
+            }
+            return;
+        }
 
         await doStreamResponse(convId, assistantMsgId);
     };
@@ -533,6 +598,8 @@ const ChatArea: React.FC = () => {
                     updateMessage(activeConversationId, msg.id, {
                         isStreaming: false, isReasoningStreaming: false,
                         content: msg.content || '⏹ Response stopped.',
+                        generationStatus: msg.content ? 'partial_saved' : 'failed_recoverable',
+                        generationStatusDetail: 'Stopped by user',
                     });
                 }
             });
@@ -645,6 +712,9 @@ const ChatArea: React.FC = () => {
         if (!activeConversationId || !activeConv) return;
         updateMessage(activeConversationId, assistantMsgId, {
             content: '', reasoning: '', isStreaming: true, isReasoningStreaming: model.supportsReasoning,
+            generationStatus: 'streaming',
+            generationStatusDetail: undefined,
+            artifactValidation: undefined,
         });
         doStreamResponse(activeConversationId, assistantMsgId);
     };

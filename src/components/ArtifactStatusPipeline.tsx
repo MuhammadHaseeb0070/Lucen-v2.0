@@ -29,8 +29,11 @@ interface ArtifactStatusPipelineProps {
 
 const STEPS: { id: ArtifactPatchStatus; label: string; icon: React.ReactNode }[] = [
   { id: 'reading', label: 'Reading', icon: <BookOpen size={14} /> },
+  { id: 'planning', label: 'Planning', icon: <BookOpen size={14} /> },
+  { id: 'generating', label: 'Generating', icon: <Wrench size={14} /> },
   { id: 'patching', label: 'Applying patches', icon: <Wrench size={14} /> },
   { id: 'verifying', label: 'Verifying', icon: <ShieldCheck size={14} /> },
+  { id: 'repairing', label: 'Repairing', icon: <Wrench size={14} /> },
 ];
 
 const ArtifactStatusPipeline: React.FC<ArtifactStatusPipelineProps> = ({ status, title }) => {
@@ -39,19 +42,27 @@ const ArtifactStatusPipeline: React.FC<ArtifactStatusPipelineProps> = ({ status,
   // Step ordering for the progress bar.
   const stepIndex = STEPS.findIndex((s) => s.id === status);
   const isFailed = status === 'failed';
+  const isDoneStatus = status === 'complete' || status === 'partial_saved';
 
   return (
     <div className={`patch-pipeline ${isFailed ? 'patch-pipeline--failed' : ''}`}>
       <div className="patch-pipeline-header">
-        {isFailed ? (
+        {isFailed || status === 'partial_saved' ? (
           <AlertTriangle size={15} />
+        ) : isDoneStatus ? (
+          <ShieldCheck size={15} />
         ) : (
           <Loader2 size={15} className="patch-pipeline-spinner" />
         )}
         <span className="patch-pipeline-headline">
           {status === 'reading' && (title ? `Reading ${title}…` : 'Reading artifact…')}
           {status === 'patching' && 'Applying patches…'}
+          {status === 'planning' && 'Planning artifact…'}
+          {status === 'generating' && 'Generating sections…'}
           {status === 'verifying' && 'Verifying…'}
+          {status === 'repairing' && 'Repairing…'}
+          {status === 'complete' && 'Artifact verified'}
+          {status === 'partial_saved' && 'Partial artifact saved'}
           {status === 'failed' && 'Patch failed — retrying…'}
         </span>
       </div>

@@ -516,6 +516,10 @@ export const useChatStore = create<ChatStore>()(
                             content: updates.content ?? msg.content,
                             reasoning: updates.reasoning ?? msg.reasoning,
                             isTruncated: updates.isTruncated ?? msg.isTruncated,
+                            generationStatus: updates.generationStatus ?? msg.generationStatus,
+                            generationStatusDetail: updates.generationStatusDetail ?? msg.generationStatusDetail,
+                            artifactJobId: updates.artifactJobId ?? msg.artifactJobId,
+                            artifactValidation: updates.artifactValidation ?? msg.artifactValidation,
                             isStreaming: false,
                         }).catch(() => {
                             // Row didn't exist yet — insert it.

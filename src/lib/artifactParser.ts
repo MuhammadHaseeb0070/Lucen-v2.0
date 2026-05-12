@@ -187,6 +187,7 @@ export function parseArtifacts(
       // never emitted a </lucen_artifact>), mark the synthesized artifact
       // as NOT streaming so it renders as a complete — if truncated — card.
       isStreaming: !forceClose,
+      generationStatus: forceClose ? 'partial_saved' : 'streaming',
     });
     cleanContent = cleanContent.slice(0, cleanContent.indexOf(fullMatch));
   } else {

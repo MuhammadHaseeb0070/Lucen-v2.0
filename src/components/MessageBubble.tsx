@@ -202,6 +202,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const artifactsRef = useRef(artifacts);
     artifactsRef.current = artifacts;
     const firstArtifactId = artifacts[0]?.id ?? '';
+    const showGenerationStatus =
+        message.generationStatus &&
+        !['idle', 'streaming', 'complete'].includes(message.generationStatus);
 
     useEffect(() => {
         if (disableArtifacts) {
@@ -322,6 +325,24 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             })}
                         </div>
                     )}
+                </div>
+            )}
+
+            {showGenerationStatus && (
+                <div className="artifact-parse-loading" aria-live="polite">
+                    {(message.isStreaming || message.generationStatus === 'planning' || message.generationStatus === 'generating' || message.generationStatus === 'validating' || message.generationStatus === 'repairing') && (
+                        <Loader2 size={14} className="artifact-parse-loading__spin" />
+                    )}
+                    <span>
+                        {message.generationStatus === 'continuing' && 'Continuing response…'}
+                        {message.generationStatus === 'planning' && 'Planning artifact…'}
+                        {message.generationStatus === 'generating' && 'Generating artifact sections…'}
+                        {message.generationStatus === 'validating' && 'Validating artifact…'}
+                        {message.generationStatus === 'repairing' && 'Repairing artifact…'}
+                        {message.generationStatus === 'partial_saved' && 'Partial saved. You can continue or retry.'}
+                        {message.generationStatus === 'failed_recoverable' && 'Generation failed recoverably. You can retry.'}
+                        {message.generationStatusDetail ? ` ${message.generationStatusDetail}` : ''}
+                    </span>
                 </div>
             )}
 

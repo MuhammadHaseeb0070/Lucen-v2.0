@@ -61,6 +61,16 @@ interface StreamOptions {
     continuation?: { priorAssistantText: string };
 }
 
+interface CompletionOptions {
+    systemPromptOverride?: string;
+    signal?: AbortSignal;
+    conversationId?: string;
+    messageId?: string;
+    callKind?: 'chat' | 'chat_continuation' | 'artifact_plan' | 'artifact_section' | 'artifact_repair';
+    maxTokens?: number;
+    responseFormat?: Record<string, unknown>;
+}
+
 /**
  * Accounting metadata threaded through every chat-proxy call. Populated
  * once per user turn by `streamChat` and then recursed through the
@@ -72,7 +82,7 @@ interface CallAccounting {
     parentRequestId: string;
     messageId?: string;
     conversationId?: string;
-    callKind: 'chat' | 'chat_continuation';
+    callKind: 'chat' | 'chat_continuation' | 'artifact_plan' | 'artifact_section' | 'artifact_repair';
     inputCostPer1M: number;
     outputCostPer1M: number;
 }
@@ -786,6 +796,89 @@ export async function streamChat(
         isContinuation ? options.continuation!.priorAssistantText : '',
         accounting,
     );
+}
+
+export async function completeChat(
+    messages: Message[],
+    options: CompletionOptions = {},
+): Promise<{ content: string; finishReason: string | null; raw: unknown }> {
+    const model = getActiveModel(false);
+
+    if (!isSupabaseEnabled() || !supabase) {
+        throw new Error('Please sign in to use chat.');
+    }
+
+    const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !session?.access_token) {
+        throw new Error('Session expired. Please sign in again.');
+    }
+
+    const ragContext = await retrieveRelevantChunks(messages, options.conversationId || null);
+    if (!model.supportsVision) {
+        await ensureImageContext(messages);
+    }
+
+    const perCallCap = Math.min(
+        options.maxTokens || getPerCallOutput('artifact', model),
+        getPerCallOutput('artifact', model),
+    );
+    const SYSTEM_PROMPT_RESERVE = 5000;
+    const conversationBudget = Math.max(
+        4096,
+        model.contextWindow - perCallCap - SAFETY_HEADROOM - SYSTEM_PROMPT_RESERVE,
+    );
+    const { pruned: prunedMessages, droppedCount } = pruneMessagesForContext(messages, conversationBudget);
+    const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
+        supportsVision: model.supportsVision,
+        omittedTurnsCount: droppedCount,
+    });
+    const outputBudget = await computeOutputBudget(apiMessages, model.contextWindow, perCallCap);
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const requestId = generateRequestId();
+    const body: Record<string, unknown> = {
+        messages: apiMessages,
+        model: model.id,
+        max_tokens: outputBudget,
+        max_completion_tokens: outputBudget,
+        mode: 'artifact',
+        stream: false,
+        is_reasoning: false,
+        request_id: requestId,
+        parent_request_id: requestId,
+        conversation_id: options.conversationId,
+        message_id: options.messageId,
+        call_kind: options.callKind || 'chat',
+        input_cost_per_1m: model.inputCostPer1m,
+        output_cost_per_1m: model.outputCostPer1m,
+        ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
+    };
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/chat-proxy`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': anonKey || '',
+        },
+        body: JSON.stringify(body),
+        signal: options.signal,
+    });
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(text || `API Error ${response.status}`);
+    }
+
+    const raw = await response.json();
+    const choice = raw?.choices?.[0];
+    const content = String(choice?.message?.content || '');
+    return {
+        content,
+        finishReason: choice?.finish_reason ? String(choice.finish_reason) : null,
+        raw,
+    };
 }
 
 function generateRequestId(): string {

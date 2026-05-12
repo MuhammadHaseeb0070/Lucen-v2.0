@@ -184,6 +184,7 @@ Deno.serve(async (req: Request) => {
             requestId: accounting.requestId,
             parentRequestId: accounting.parentRequestId,
             modelId: accounting.modelId,
+            artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
             durationMs: Date.now() - startedAt,
             inputCostPer1M: accounting.inputCostPer1M,
             outputCostPer1M: accounting.outputCostPer1M,
@@ -243,10 +244,13 @@ Deno.serve(async (req: Request) => {
             messages,
             model,
             max_tokens,
+            max_completion_tokens,
             mode,
             is_reasoning,
             stream,
             plugins,
+            response_format,
+            provider,
             __bg_description,
             // Web search signals from client (authoritative):
             //   web_search_enabled            — user toggled web search on
@@ -264,6 +268,7 @@ Deno.serve(async (req: Request) => {
             parent_request_id,
             conversation_id,
             message_id,
+            artifact_job_id,
             call_kind,
             input_cost_per_1m,
             output_cost_per_1m,
@@ -273,6 +278,9 @@ Deno.serve(async (req: Request) => {
         if (typeof parent_request_id === 'string') accounting.parentRequestId = parent_request_id;
         if (typeof conversation_id === 'string') accounting.conversationId = conversation_id;
         if (typeof message_id === 'string') accounting.messageId = message_id;
+        if (typeof artifact_job_id === 'string') {
+            (accounting as Record<string, unknown>).artifactJobId = artifact_job_id;
+        }
         if (typeof call_kind === 'string') {
             accounting.callKind = call_kind as UsageCallKind;
         }
@@ -404,7 +412,7 @@ Deno.serve(async (req: Request) => {
         const resolvedMaxTokens = __bg_description
             ? 200
             : Math.min(
-                Math.max(MIN_OUTPUT, Number(max_tokens) || 4096),
+                Math.max(MIN_OUTPUT, Number(max_completion_tokens ?? max_tokens) || 4096),
                 ABSOLUTE_OUTPUT_CEILING,
             );
 
@@ -424,7 +432,10 @@ Deno.serve(async (req: Request) => {
                 messages,
                 stream: shouldStream,
                 max_tokens: resolvedMaxTokens,
+                max_completion_tokens: resolvedMaxTokens,
                 include_usage: true,
+                ...(response_format ? { response_format } : {}),
+                ...(provider ? { provider } : {}),
                 // Only forward plugins when we're in the explicit fallback
                 // path. In the normal path the main model reads the injected
                 // search results as plain system context.
@@ -447,6 +458,9 @@ Deno.serve(async (req: Request) => {
         // ─── Non-stream mode ─────────────────────────────────────────────
         if (!shouldStream) {
             const json = await openrouterResponse.json();
+            const finishReason = json?.choices?.[0]?.finish_reason
+                ? String(json.choices[0].finish_reason)
+                : null;
             const usage = json?.usage || {};
             const promptTokens = usage?.prompt_tokens || 0;
             const completionTokens = usage?.completion_tokens || 0;
@@ -479,7 +493,8 @@ Deno.serve(async (req: Request) => {
             }
 
             accounting.finalized = true;
-            accounting.status = 'completed';
+            accounting.status = finishReason === 'length' ? 'truncated' : 'completed';
+            accounting.statusReason = finishReason ? `finish_reason=${finishReason}` : null;
             accounting.promptTokens = promptTokens;
             accounting.completionTokens = completionTokens;
             accounting.reasoningTokens = reasoningTokens;
@@ -494,10 +509,13 @@ Deno.serve(async (req: Request) => {
                 conversationId: accounting.conversationId,
                 messageId: accounting.messageId,
                 callKind: accounting.callKind,
-                status: 'completed',
+                status: accounting.status,
+                statusReason: accounting.statusReason,
                 requestId: accounting.requestId,
                 parentRequestId: accounting.parentRequestId,
                 modelId: accounting.modelId,
+                finishReason,
+                artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
                 durationMs: Date.now() - startedAt,
                 promptTokens,
                 completionTokens,
@@ -667,6 +685,8 @@ Deno.serve(async (req: Request) => {
                     requestId: accounting.requestId,
                     parentRequestId: accounting.parentRequestId,
                     modelId: accounting.modelId,
+                    finishReason,
+                    artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
                     durationMs: Date.now() - startedAt,
                     promptTokens,
                     completionTokens,
@@ -711,6 +731,7 @@ Deno.serve(async (req: Request) => {
                 requestId: accounting.requestId,
                 parentRequestId: accounting.parentRequestId,
                 modelId: accounting.modelId,
+                artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
                 durationMs: Date.now() - startedAt,
                 inputCostPer1M: accounting.inputCostPer1M,
                 outputCostPer1M: accounting.outputCostPer1M,

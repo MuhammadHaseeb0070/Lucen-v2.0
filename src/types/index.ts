@@ -22,6 +22,10 @@ export interface Message {
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
   isTruncated?: boolean;
+  generationStatus?: GenerationStatus;
+  generationStatusDetail?: string;
+  artifactJobId?: string;
+  artifactValidation?: ArtifactValidationReport;
   webSearchUsed?: boolean;
   webSearchUrls?: string[];
   isPinned?: boolean;
@@ -91,6 +95,70 @@ export interface SideChatState {
 
 export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file';
 
+export type GenerationStatus =
+  | 'idle'
+  | 'streaming'
+  | 'continuing'
+  | 'planning'
+  | 'generating'
+  | 'validating'
+  | 'repairing'
+  | 'complete'
+  | 'partial_saved'
+  | 'failed_recoverable';
+
+export type ArtifactJobStatus =
+  | 'planning'
+  | 'generating'
+  | 'validating'
+  | 'repairing'
+  | 'complete'
+  | 'partial_saved'
+  | 'failed_recoverable';
+
+export interface ArtifactValidationReport {
+  ok: boolean;
+  status: 'valid' | 'invalid' | 'runtime_error';
+  errors: string[];
+  warnings: string[];
+  checkedAt: number;
+}
+
+export interface ArtifactGenerationSection {
+  id: string;
+  title: string;
+  purpose?: string;
+  tokenBudget: number;
+  status: 'pending' | 'generating' | 'valid' | 'invalid' | 'repaired' | 'failed';
+  content?: string;
+  validation?: ArtifactValidationReport;
+}
+
+export interface ArtifactGenerationPlan {
+  type: ArtifactType;
+  title: string;
+  filename?: string;
+  estimatedTokens: number;
+  maxTotalChars: number;
+  sections: ArtifactGenerationSection[];
+}
+
+export interface ArtifactGenerationJob {
+  id: string;
+  conversationId: string | null;
+  messageId: string | null;
+  status: ArtifactJobStatus;
+  plan: ArtifactGenerationPlan | null;
+  sections: ArtifactGenerationSection[];
+  currentSection: number;
+  assembledContent: string;
+  validationErrors: string[];
+  retryCount: number;
+  finalArtifactId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 /**
  * Frontend status of an artifact during the agentic patching pipeline.
  *   idle      → not actively being patched
@@ -104,6 +172,11 @@ export type ArtifactPatchStatus =
   | 'reading'
   | 'patching'
   | 'verifying'
+  | 'planning'
+  | 'generating'
+  | 'repairing'
+  | 'complete'
+  | 'partial_saved'
   | 'failed';
 
 /**
@@ -170,6 +243,8 @@ export interface Artifact {
   content: string;
   messageId: string;
   isStreaming?: boolean;
+  generationStatus?: GenerationStatus;
+  validation?: ArtifactValidationReport;
   /** Supabase artifacts.id — populated after the artifact is saved to DB */
   dbId?: string;
   /** Whether this artifact has been published to the Hub */
