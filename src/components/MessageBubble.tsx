@@ -2,11 +2,8 @@ import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffe
 import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
-import PatchSummaryCard from './PatchSummaryCard';
-import PatchTurnReportCard from './PatchTurnReportCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
 import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
-import { parsePatches, type ParsedPatch } from '../lib/artifactPatchParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
@@ -151,19 +148,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     const rawCleanContent = parsed?.cleanContent ?? '';
     const artifacts = parsed?.artifacts ?? EMPTY_ARTIFACTS;
-
-    // Patching engine: also extract <lucen_patch> blocks for display.
-    // Cheap re-parse on the same content — patch tags are rare and the
-    // regex returns immediately when no <lucen_patch substring exists.
-    const patchParse = useMemo(() => {
-        const content = message.content;
-        if (!content || !content.includes('<lucen_patch')) {
-            return { cleanContent: rawCleanContent, patches: [] as ParsedPatch[] };
-        }
-        return parsePatches(content, !message.isStreaming);
-    }, [message.content, message.isStreaming, rawCleanContent]);
-    const patches: ParsedPatch[] = patchParse.patches;
-    const cleanContent = patchParse.cleanContent;
+    const cleanContent = rawCleanContent;
 
     const normalizedReasoning = useMemo(() => {
         const raw = (message.reasoning || '').trim();
@@ -356,14 +341,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}
-                    {!disableArtifacts && !message.patchReport && artifacts.length === 0 && patches.length > 0 && patches.map((patch, idx) => (
-                        <PatchSummaryCard
-                            key={`patch-${message.id}-${idx}`}
-                            patch={patch}
-                            isStreaming={patch.isStreaming || message.isStreaming}
-                        />
-                    ))}
-                    {message.patchReport && <PatchTurnReportCard report={message.patchReport} />}
                     {!disableArtifacts && message.artifactSuggestions && message.artifactSuggestions.length > 0 && (
                         <ArtifactSuggestionPicker
                             message={message}

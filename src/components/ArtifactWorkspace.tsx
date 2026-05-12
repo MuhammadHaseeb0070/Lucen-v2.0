@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, Edit3 } from 'lucide-react';
+import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2 } from 'lucide-react';
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
@@ -7,7 +7,6 @@ import ArtifactErrorBanner from './ArtifactErrorBanner';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
-import { useChatStore } from '../store/chatStore';
 import type { ArtifactType } from '../types';
 
 const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> = {
@@ -130,26 +129,12 @@ const ArtifactWorkspace: React.FC = () => {
   const previewViewport = useArtifactStore((s) => s.previewViewport);
   const setPreviewViewport = useArtifactStore((s) => s.setPreviewViewport);
   const patchStatus = useArtifactStore((s) => s.patchStatus);
-  // Patching engine: bind/unbind the next prompt to this artifact.
-  const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
-  const targetArtifactByConv = useChatStore((s) => s.targetArtifactByConv);
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const isTargeted =
-    !!activeArtifact &&
-    !!activeConversationId &&
-    targetArtifactByConv[activeConversationId] === activeArtifact.id;
   const [copied, setCopied] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isPublishLoading, setIsPublishLoading] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const handleToggleUpdate = useCallback(() => {
-    if (!activeArtifact || !activeConversationId) return;
-    if (activeArtifact.isStreaming) return;
-    setTargetArtifact(activeConversationId, isTargeted ? null : activeArtifact);
-  }, [activeArtifact, activeConversationId, isTargeted, setTargetArtifact]);
 
 
   const prevStreamingRef = useRef(false);
@@ -319,16 +304,6 @@ const ArtifactWorkspace: React.FC = () => {
               <span>Code</span>
             </button>
           </div>
-          {!activeArtifact.isStreaming && (
-            <button
-              className={`artifact-action-btn ${isTargeted ? 'artifact-action-btn--active' : ''}`}
-              onClick={handleToggleUpdate}
-              title={isTargeted ? 'Cancel update binding' : 'Update this artifact (next message will patch it)'}
-              data-active={isTargeted ? 'true' : 'false'}
-            >
-              <Edit3 size={15} />
-            </button>
-          )}
           <button className="artifact-action-btn" onClick={handleCopy} title="Copy code">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>

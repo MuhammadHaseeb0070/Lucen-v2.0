@@ -1,4 +1,4 @@
-import type { Artifact, Message } from '../types';
+import type { Message } from '../types';
 import {
     getActiveModel,
     STREAM_IDLE_TIMEOUT_MS,
@@ -21,7 +21,6 @@ import {
     type ResponseMode,
 } from './outputBudget';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
-import { isInsidePatch } from '../lib/artifactPatchParser';
 import { captureCall } from '../store/debugStore';
 
 function newRequestId(): string {
@@ -60,30 +59,6 @@ interface StreamOptions {
     // structured protocol the auto-continue loop uses. `priorAssistantText`
     // should be the partial content already shown to the user.
     continuation?: { priorAssistantText: string };
-    /**
-     * Patching engine: when set, the user clicked "Update" on an existing
-     * artifact and wants their next prompt to MODIFY that artifact rather
-     * than producing a new one. We inject the current artifact state as a
-     * <targeted_artifact> system message and tell the model to emit a
-     * <lucen_patch> block instead of a <lucen_artifact>.
-     *
-     * This is a per-turn flag — it is NOT persisted into the conversation
-     * history. Subsequent turns without the flag fall back to normal
-     * artifact-creation mode automatically.
-     */
-    targetedArtifact?: Artifact;
-    /**
-     * Patching engine: extra system note appended to the targeted-artifact
-     * injection. Used by the self-heal flow to pass an iframe runtime
-     * error and the NFR1.3 retry loop to pass "match failed" feedback
-     * back to the model.
-     */
-    patchHint?: string;
-    /**
-     * Patching engine: how many times the system has automatically
-     * retried this patch request. If >0, callKind is set to 'patch_retry'.
-     */
-    patchRetryCount?: number;
 }
 
 /**
@@ -97,7 +72,7 @@ interface CallAccounting {
     parentRequestId: string;
     messageId?: string;
     conversationId?: string;
-    callKind: 'chat' | 'chat_continuation' | 'patch' | 'patch_retry' | 'patch_continuation';
+    callKind: 'chat' | 'chat_continuation';
     inputCostPer1M: number;
     outputCostPer1M: number;
 }
@@ -411,41 +386,6 @@ function pruneMessagesForContext(
  * `omittedTurnsCount` > 0 adds a one-line summary note so the model knows
  * earlier history existed but was trimmed to fit the window.
  */
-// For large artifacts (>10k chars), the model's attention on the exact
-// search text degrades badly. We add a line-count summary and instruct
-// the model to include more surrounding context in <search> blocks.
-const LARGE_ARTIFACT_THRESHOLD = 10_000;
-
-function buildTargetedArtifactSystemMessage(artifact: Artifact, hint?: string): string {
-    const versionLabel = typeof artifact.version === 'number' ? `V${artifact.version}` : 'V1';
-    const idForPatch = artifact.dbId || artifact.id;
-    const filenameAttr = artifact.filename ? ` filename="${artifact.filename}"` : '';
-    const titleAttr = artifact.title ? ` title="${artifact.title.replace(/"/g, '&quot;')}"` : '';
-    const hintBlock = hint ? `\n[PATCH GUIDANCE]\n${hint}\n` : '';
-
-    const isLarge = artifact.content.length > LARGE_ARTIFACT_THRESHOLD;
-    const lineCount = artifact.content.split('\n').length;
-    const sizeNote = isLarge
-        ? `\n[NOTE: This artifact is ${artifact.content.length} chars / ${lineCount} lines. ` +
-          `For <search> blocks, include at least 5-8 lines of surrounding context ` +
-          `to ensure unique matching. Copy text EXACTLY as it appears — do not ` +
-          `paraphrase or adjust whitespace.]\n`
-        : '';
-
-    return [
-        '<targeted_artifact',
-        ` id="${idForPatch}" version="${versionLabel}" type="${artifact.type}"${titleAttr}${filenameAttr}>`,
-        '\n',
-        artifact.content,
-        '\n</targeted_artifact>',
-        sizeNote,
-        hintBlock,
-        '\n[INSTRUCTION] The user has clicked "Update" on the artifact above. Output a <lucen_patch artifact_id="',
-        idForPatch,
-        '"> block per the <artifact_patching> rules in the system prompt. Do NOT regenerate the artifact. Do NOT output a <lucen_artifact> tag. Copy <search> text verbatim from the artifact above.',
-    ].join('');
-}
-
 function buildApiMessages(
     messages: Message[],
     systemPromptOverride?: string,
@@ -453,8 +393,6 @@ function buildApiMessages(
     opts: {
         supportsVision?: boolean;
         omittedTurnsCount?: number;
-        targetedArtifact?: Artifact;
-        patchHint?: string;
     } = {},
 ): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
@@ -512,18 +450,6 @@ function buildApiMessages(
         systemMessages.push({
             role: 'system',
             content: `[Earlier conversation summary: ${omittedTurnsCount} older turn${omittedTurnsCount === 1 ? '' : 's'} were omitted to fit the context window. Pinned messages and the most recent turns are preserved below. Do NOT mention this omission to the user.]`,
-        });
-    }
-
-    // Patching engine: when the caller has bound the next prompt to an
-    // existing artifact, inject the artifact's full current state as a
-    // system message so the model can produce a precise <lucen_patch>.
-    // Placed AFTER the conversation-omission note but BEFORE conversation
-    // history so it has high salience without polluting prior turns.
-    if (opts.targetedArtifact) {
-        systemMessages.push({
-            role: 'system',
-            content: buildTargetedArtifactSystemMessage(opts.targetedArtifact, opts.patchHint),
         });
     }
 
@@ -775,10 +701,9 @@ export async function streamChat(
     // press Continue, the response was clearly long-form — give it the bigger
     // cap so the resume pass actually completes the work.
     const isContinuation = !!options.continuation;
-    const isPatchTurn = !!options.targetedArtifact;
     const mode: ResponseMode = options.isSideChat
         ? 'chat'
-        : (isContinuation || isPatchTurn)
+        : isContinuation
             ? 'artifact'
             : detectResponseMode(messages);
     // Dynamic per-call cap — depends on the model's throughput, reasoning
@@ -800,8 +725,6 @@ export async function streamChat(
     const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
         supportsVision: model.supportsVision,
         omittedTurnsCount: droppedCount,
-        targetedArtifact: options.targetedArtifact,
-        patchHint: options.patchHint,
     });
 
     const outputBudget = await computeOutputBudget(
@@ -832,17 +755,13 @@ export async function streamChat(
     // Accounting: one parent id per user turn. All continuation chunks share
     // this parent so the Usage UI can group them under the original turn.
     const rootRequestId = generateRequestId();
-    const baseKind = options.targetedArtifact
-        ? (options.patchRetryCount ? 'patch_retry' : 'patch')
-        : 'chat';
+    const baseKind = 'chat';
 
     const accounting: CallAccounting = {
         parentRequestId: rootRequestId,
         messageId: options.messageId,
         conversationId: options.conversationId,
-        callKind: isContinuation 
-            ? (baseKind === 'patch' || baseKind === 'patch_retry' ? 'patch_continuation' : 'chat_continuation')
-            : baseKind,
+        callKind: isContinuation ? 'chat_continuation' : baseKind,
         inputCostPer1M: model.inputCostPer1m || 0,
         outputCostPer1M: model.outputCostPer1m || 0,
     };
@@ -1031,7 +950,6 @@ export function buildContinuationMessages(
     priorAssistantText: string,
 ): Array<Record<string, unknown>> {
     const insideArtifact = isInsideArtifact(priorAssistantText);
-    const insidePatch = isInsidePatch(priorAssistantText);
 
     // Tail-anchor: for long outputs, only send summary + tail to save tokens.
     let assistantContent: string;
@@ -1050,13 +968,7 @@ export function buildContinuationMessages(
         { role: 'assistant', content: assistantContent },
     ];
 
-    if (insidePatch) {
-        messages.push({
-            role: 'system',
-            content:
-                'You are mid-stream inside an unclosed <lucen_patch> tag. Do NOT re-emit the opening <lucen_patch>, do NOT restart any <block>/<search>/<replace> tag. Continue exactly where you left off. Close the open tag(s) and emit </lucen_patch> once the patch is complete.',
-        });
-    } else if (insideArtifact) {
+    if (insideArtifact) {
         messages.push({
             role: 'system',
             content:
@@ -1181,17 +1093,7 @@ async function streamViaEdgeFunctionWrapper(
                 mode,
                 continuationCount + 1,
                 fullResponse,
-                accounting
-                    ? {
-                          ...accounting,
-                          callKind:
-                              accounting.callKind === 'patch' ||
-                              accounting.callKind === 'patch_retry' ||
-                              accounting.callKind === 'patch_continuation'
-                                  ? 'patch_continuation'
-                                  : 'chat_continuation',
-                      }
-                    : undefined,
+                accounting ? { ...accounting, callKind: 'chat_continuation' } : undefined,
             );
         },
     };

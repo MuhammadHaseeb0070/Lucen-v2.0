@@ -1,7 +1,6 @@
 import React from 'react';
-import { FileCode2, Image, GitBranch, ExternalLink, Loader2, FileText, Edit3 } from 'lucide-react';
+import { FileCode2, Image, GitBranch, ExternalLink, Loader2, FileText } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
-import { useChatStore } from '../store/chatStore';
 import type { Artifact, ArtifactType } from '../types';
 
 const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
@@ -26,27 +25,14 @@ const ArtifactCard: React.FC<ArtifactCardProps> = ({ artifact }) => {
   const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
   const isActive = activeArtifactId === artifact.id;
-  const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
-  const targetArtifactByConv = useChatStore((s) => s.targetArtifactByConv);
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const isTargeted =
-    !!activeConversationId &&
-    targetArtifactByConv[activeConversationId] === artifact.id;
 
   const handleOpen = () => {
     setActiveArtifact(artifact);
   };
 
-  const handleUpdate = (e: React.MouseEvent) => {
-    // Don't bubble up to the card's "open workspace" handler.
-    e.stopPropagation();
-    if (!activeConversationId || artifact.isStreaming) return;
-    setTargetArtifact(activeConversationId, isTargeted ? null : artifact);
-  };
-
   return (
     <div
-      className={`artifact-card ${isActive ? 'artifact-card--active' : ''} ${artifact.isStreaming ? 'artifact-card--streaming' : ''} ${isTargeted ? 'artifact-card--targeted' : ''}`}
+      className={`artifact-card ${isActive ? 'artifact-card--active' : ''} ${artifact.isStreaming ? 'artifact-card--streaming' : ''}`}
       role="group"
     >
       <button
@@ -75,18 +61,6 @@ const ArtifactCard: React.FC<ArtifactCardProps> = ({ artifact }) => {
           <ExternalLink size={14} />
         </div>
       </button>
-      {!artifact.isStreaming && (
-        <button
-          type="button"
-          className={`artifact-card-update-btn ${isTargeted ? 'artifact-card-update-btn--active' : ''}`}
-          onClick={handleUpdate}
-          title={isTargeted ? 'Cancel update binding' : 'Update this artifact (next message will patch it)'}
-          aria-pressed={isTargeted}
-        >
-          <Edit3 size={13} />
-          <span>{isTargeted ? 'Updating' : 'Update'}</span>
-        </button>
-      )}
     </div>
   );
 };

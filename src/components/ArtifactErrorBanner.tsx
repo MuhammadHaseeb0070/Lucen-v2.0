@@ -20,7 +20,6 @@
 import React from 'react';
 import { AlertTriangle, Wand2, X, Lock } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
-import { useChatStore } from '../store/chatStore';
 import { useComposerStore } from '../store/composerStore';
 import { INJECT_SCRIPT_LINE_COUNT } from '../lib/iframeErrorBridge';
 import type { Artifact } from '../types';
@@ -38,8 +37,6 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
   const incHealAttempts = useArtifactStore((s) => s.incHealAttempts);
   const getHealAttempts = useArtifactStore((s) => s.getHealAttempts);
-  const setTargetArtifact = useChatStore((s) => s.setTargetArtifact);
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setPendingAutoSend = useComposerStore((s) => s.setPendingAutoSend);
 
   if (!runtimeError) return null;
@@ -60,12 +57,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
 
   const handleFix = () => {
     if (capped) return;
-    if (!activeConversationId) return;
-
     const next = incHealAttempts(artifact.id);
-
-    // Bind the artifact so the next prompt routes through the patching flow.
-    setTargetArtifact(activeConversationId, artifact);
 
     // Build a renderer-specific fix prompt. Each renderer has different
     // constraints the model must understand to avoid producing broken patches.
@@ -75,7 +67,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     if (origin === 'iframe') {
       lines.push('Fix the following runtime error in this HTML artifact.');
       lines.push('');
-      lines.push('Environment: sandboxed iframe (allow-scripts allow-same-origin allow-forms allow-popups allow-modals)');
+      lines.push('Environment: sandboxed iframe (allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals)');
       lines.push('Constraints: No Node.js, no filesystem, no require(), no npm imports, no cross-origin localStorage. CDN script tags are fine.');
       lines.push(`Error message: ${runtimeError.message}`);
       // Map iframe line number back to artifact source line by subtracting
@@ -131,7 +123,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     }
 
     lines.push('');
-    lines.push('Use a <lucen_patch> with the smallest possible change that resolves this error. Do NOT regenerate the entire artifact.');
+    lines.push('Regenerate the full artifact with the smallest possible changes that resolve this error.');
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);
 
     setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: true });

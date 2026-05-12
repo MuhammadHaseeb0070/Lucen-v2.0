@@ -3,7 +3,6 @@ import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
 import { v4 as uuidv4 } from 'uuid';
 import { Search, X, ChevronUp, ChevronDown, ArrowDown, Upload, Pencil, Check, Loader2 } from 'lucide-react';
 import MessageInput from './MessageInput';
-import ArtifactUpdateBinding from './ArtifactUpdateBinding';
 import SelectionMenu from './SelectionMenu';
 import { useChatStore } from '../store/chatStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,39 +14,12 @@ import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
-import type { Artifact, FileAttachment, Message } from '../types';
+import type { FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
-import { createPatchedVersion, ensureLineageId, getHead } from '../services/artifactVersionDb';
-import { parsePatches } from '../lib/artifactPatchParser';
-import { parseArtifacts } from '../lib/artifactParser';
-import { applyPatch } from '../lib/artifactPatcher';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
 
-const UPDATE_INTENT_RE = /\b(update|patch|modify|change|revise|fix)\b/i;
-const AMBIGUOUS_FOLLOWUP_RE = /\b(make it|change it|turn it|set it|make this|change this)\b/i;
-
-function toArtifactTag(artifact: Artifact): string {
-    const esc = (v: string) => v.replace(/"/g, '&quot;');
-    const attrs: string[] = [
-        `type="${artifact.type}"`,
-        `title="${esc(artifact.title)}"`,
-    ];
-    if (artifact.filename) attrs.push(`filename="${esc(artifact.filename)}"`);
-    if (artifact.dbId) attrs.push(`db_id="${artifact.dbId}"`);
-    if (artifact.lineageId) attrs.push(`lineage_id="${artifact.lineageId}"`);
-    if (artifact.parentId) attrs.push(`parent_id="${artifact.parentId}"`);
-    if (typeof artifact.version === 'number') attrs.push(`version_no="${artifact.version}"`);
-    if (typeof artifact.isHead === 'boolean') attrs.push(`is_head="${artifact.isHead}"`);
-    return `<lucen_artifact ${attrs.join(' ')}>\n${artifact.content}\n</lucen_artifact>`;
-}
-
-type PatchAttemptLog = {
-    attemptNo: number;
-    blockCount: number;
-    status: 'running' | 'success' | 'failed';
-    note: string;
-};
+// Patch/update flow removed: artifacts are generated from scratch only.
 
 const ChatArea: React.FC = () => {
     const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -310,13 +282,6 @@ const ChatArea: React.FC = () => {
         options: {
             continuation?: { priorAssistantText: string };
             trackReasoning: boolean;
-            // Patching engine: when set, the assistant message is expected to
-            // emit <lucen_patch> blocks. After stream completion we run the
-            // patch engine instead of saving a fresh artifact row.
-            targetedArtifact?: import('../types').Artifact;
-            patchHint?: string;
-            patchRetryCount?: number;
-            patchAttemptLogs?: PatchAttemptLog[];
         },
     ) => {
         const controller = new AbortController();
@@ -397,17 +362,6 @@ const ChatArea: React.FC = () => {
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
 
-                // ── Patching engine: if this turn was bound to an existing
-                // artifact, we expect <lucen_patch> blocks in the response.
-                // Apply them via the deterministic patch engine and create
-                // a new version row. On failure, kick off the NFR1.3 retry.
-                if (options.targetedArtifact) {
-                    void finalizePatchTurn(convId, assistantMsgId, options).catch((err) => {
-                        console.warn('[Patch] finalize failed:', err);
-                    });
-                    return;
-                }
-
                 // ── Auto-save artifact to DB (fire-and-forget) ──
                 // We read the artifact store AFTER the streaming update above
                 // so we get the final content. setDbId() patches the store once
@@ -467,344 +421,13 @@ const ChatArea: React.FC = () => {
             conversationId: convId,
             continuation: options.continuation,
             messageId: assistantMsgId,
-            targetedArtifact: options.targetedArtifact,
-            patchHint: options.patchHint,
         });
     };
 
     const doStreamResponse = (convId: string, assistantMsgId: string) =>
         runStream(convId, assistantMsgId, { trackReasoning: true });
 
-    // ─── Patching engine: post-stream finalize ────────────────────────
-    // Called from runStream's onDone when this turn was bound to an
-    // existing artifact. Parses <lucen_patch> blocks out of the assistant
-    // message, runs the deterministic patcher, creates a new version row
-    // in DB, and (if the artifact is mermaid) validates with mermaid.parse.
-    // On failure we surface the error to the user (no automatic retry).
-    const finalizePatchTurn = async (
-        convId: string,
-        assistantMsgId: string,
-        runOptions: {
-            targetedArtifact?: Artifact;
-            patchRetryCount?: number;
-            patchAttemptLogs?: PatchAttemptLog[];
-        },
-    ) => {
-        const target = runOptions.targetedArtifact;
-        if (!target) return;
-        const retryCount = runOptions.patchRetryCount ?? 0;
-        const attemptLogs = [...(runOptions.patchAttemptLogs ?? [])];
-        const attemptNo = retryCount + 1;
-        const toLinearReport = (
-            status: 'running' | 'success' | 'failed' | 'skipped',
-            notes: string[],
-            appliedBlocks?: number,
-        ) => {
-            const lines: string[] = [];
-            lines.push('Patch update report');
-            lines.push(`- Status: ${status}`);
-            lines.push(`- Attempt: ${attemptNo} (${retryCount} retr${retryCount === 1 ? 'y' : 'ies'})`);
-            if (typeof appliedBlocks === 'number') {
-                lines.push(`- Blocks applied: ${appliedBlocks}`);
-            } else {
-                lines.push(`- Blocks seen: ${attemptLogs.reduce((n, a) => n + a.blockCount, 0)}`);
-            }
-            notes.slice(-4).forEach((n, idx) => lines.push(`${idx + 1}. ${n}`));
-            return lines.join('\n');
-        };
-
-        const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-        const assistantMsg = conv?.messages.find((m) => m.id === assistantMsgId);
-        const responseContent = assistantMsg?.content || '';
-
-        const parsedPatchPayload = parsePatches(responseContent, true);
-        const { patches } = parsedPatchPayload;
-        const visibleContent = parsedPatchPayload.cleanContent.trim();
-
-        if (patches.length === 0) {
-            // Model didn't emit any patch blocks. This could be:
-            //   1. Refusal / clarification request (legit response).
-            //   2. The model regenerated a <lucen_artifact> instead (wrong).
-            // Either way, we leave the message as-is and clear the binding.
-            // The user sees the assistant's text and can manually re-bind.
-            useChatStore.getState().setTargetArtifact(convId, null);
-            useArtifactStore.getState().setPatchStatus(target.id, 'idle');
-            updateMessage(convId, assistantMsgId, {
-                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                    'skipped',
-                    ['No <lucen_patch> block detected in model output.'],
-                )}`,
-                patchReport: {
-                    targetArtifactId: target.id,
-                    targetTitle: target.title,
-                    attempts: attemptNo,
-                    retries: retryCount,
-                    totalBlocksSeen: 0,
-                    status: 'skipped',
-                    notes: ['No <lucen_patch> block detected in model output.'],
-                },
-            });
-            return;
-        }
-
-        useArtifactStore.getState().setPatchStatus(target.id, 'verifying');
-
-        // Apply all blocks across all patches sequentially. If multiple
-        // patch tags arrive, treat them as one logical patch (FR6 multi-step).
-        const allBlocks = patches.flatMap((p) => p.blocks);
-        // Use the first AI-supplied version label (if any). Validated in parser.
-        const patchVersionLabel = patches.find((p) => p.versionLabel)?.versionLabel;
-        attemptLogs.push({
-            attemptNo,
-            blockCount: allBlocks.length,
-            status: 'running',
-            note: `Attempt ${attemptNo}: parsed ${allBlocks.length} patch block${allBlocks.length === 1 ? '' : 's'}.`,
-        });
-        let baseArtifact = target;
-        if (target.lineageId) {
-            const head = await getHead(target.lineageId);
-            if (head) {
-                baseArtifact = {
-                    ...target,
-                    content: head.content,
-                    dbId: head.dbId,
-                    version: head.versionNo,
-                    parentId: head.parentDbId,
-                    lineageId: head.lineageId,
-                };
-            }
-        }
-        const patchResult = applyPatch(baseArtifact.content, allBlocks);
-
-        if (!patchResult.ok) {
-            // Report the failure directly to the user -- no automatic retry.
-            // Auto-retrying rarely fixes the issue and burns 10k+ tokens per attempt.
-            const reasonText =
-                patchResult.reason === 'no_match'
-                    ? `Block ${patchResult.blockIndex + 1} did not match anything in the artifact (search text not found).`
-                    : patchResult.reason === 'multi_match'
-                        ? `Block ${patchResult.blockIndex + 1} matched ${patchResult.matchCount} places (ambiguous search).`
-                        : `Block ${patchResult.blockIndex + 1} had an empty <search>.`;
-
-            useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-            useChatStore.getState().setTargetArtifact(convId, null);
-            updateMessage(convId, assistantMsgId, {
-                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                    'failed',
-                    [reasonText],
-                )}`,
-                patchReport: {
-                    targetArtifactId: target.id,
-                    targetTitle: target.title,
-                    attempts: attemptNo,
-                    retries: 0,
-                    totalBlocksSeen: allBlocks.length,
-                    status: 'failed',
-                    notes: [reasonText],
-                },
-            });
-            return;
-        }
-
-        let newContent = patchResult.newContent;
-
-        // Mermaid post-validation (P6.mermaid-validation): if the patched
-        // content is invalid mermaid syntax, treat as a patch failure and
-        // feed back into the retry loop.
-        if (target.type === 'mermaid') {
-            try {
-                const mermaid = (await import('mermaid')).default;
-                mermaid.initialize({
-                    startOnLoad: false,
-                    theme: 'neutral',
-                    securityLevel: 'loose',
-                });
-                await mermaid.parse(newContent.trim());
-            } catch (e) {
-                const parseErr = e instanceof Error ? e.message : String(e);
-                useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-                useChatStore.getState().setTargetArtifact(convId, null);
-                updateMessage(convId, assistantMsgId, {
-                    content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                        'failed',
-                        [`Patch produced invalid Mermaid syntax: ${parseErr.slice(0, 200)}`],
-                    )}`,
-                    patchReport: {
-                        targetArtifactId: target.id,
-                        targetTitle: target.title,
-                        attempts: attemptNo,
-                        retries: 0,
-                        totalBlocksSeen: allBlocks.length,
-                        status: 'failed',
-                        notes: [`Mermaid validation failed: ${parseErr.slice(0, 200)}`],
-                    },
-                });
-                return;
-            }
-        }
-
-        // ── Patch applied successfully — persist the new version. ──
-        // Make sure the source artifact has a lineage_id (defensive
-        // backfill for artifacts created before the migration ran).
-        const parentDbId = baseArtifact.dbId
-            ?? useArtifactStore.getState().getDbId(baseArtifact.id);
-        if (!parentDbId) {
-            // Source artifact never made it to the DB — fall back to the
-            // legacy save path with the patched content. Clear binding.
-            const dbId = await saveArtifact({
-                clientId: baseArtifact.id,
-                conversationId: convId,
-                messageId: assistantMsgId,
-                type: baseArtifact.type,
-                title: baseArtifact.title,
-                content: newContent,
-            });
-            if (dbId) useArtifactStore.getState().setDbId(baseArtifact.id, dbId);
-            const fallbackArtifact: Artifact = {
-                ...baseArtifact,
-                content: newContent,
-                dbId: dbId ?? baseArtifact.dbId,
-                lineageId: dbId ?? baseArtifact.lineageId ?? baseArtifact.dbId,
-                version: 1,
-                isHead: true,
-            };
-            useArtifactStore.getState().setActiveArtifact(fallbackArtifact);
-            useArtifactStore.getState().setPatchStatus(target.id, 'idle');
-            useChatStore.getState().setTargetArtifact(convId, null);
-            updateMessage(convId, assistantMsgId, {
-                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                    'success',
-                    [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
-                    allBlocks.length,
-                )}\n\n${toArtifactTag(fallbackArtifact)}`,
-                patchReport: {
-                    targetArtifactId: target.id,
-                    targetTitle: target.title,
-                    attempts: attemptNo,
-                    retries: retryCount,
-                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
-                    appliedBlocks: allBlocks.length,
-                    versionLabel: patchVersionLabel,
-                    status: 'success',
-                    notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
-                    patchedArtifact: {
-                        title: fallbackArtifact.title,
-                        type: fallbackArtifact.type,
-                        version: fallbackArtifact.version,
-                        versionLabel: patchVersionLabel,
-                    },
-                },
-            });
-            return;
-        }
-
-        const lineageId = target.lineageId
-            ?? (await ensureLineageId(parentDbId))
-            ?? parentDbId;
-
-        let newVersion;
-        let persistErrorMsg = '';
-        try {
-            newVersion = await createPatchedVersion({
-                lineageId,
-                parentDbId,
-                conversationId: convId,
-                messageId: assistantMsgId,
-                type: baseArtifact.type,
-                title: baseArtifact.title,
-                content: newContent,
-            });
-        } catch (err: any) {
-            persistErrorMsg = err.message || 'Unknown persistence error';
-            console.error('[Patch] createPatchedVersion failed:', err);
-        }
-
-        if (!newVersion) {
-            // Never claim full success when we couldn't persist the patched
-            // version. Keep the edited preview locally, but mark the turn as
-            // failed-to-persist so users know refresh/device sync is unsafe.
-            console.warn(`[Patch] createPatchedVersion failed: ${persistErrorMsg}; patch is local-only.`);
-            useArtifactStore.getState().setActiveArtifact({ ...baseArtifact, content: newContent, isHead: false });
-            useArtifactStore.getState().setPatchStatus(target.id, 'failed');
-            updateMessage(convId, assistantMsgId, {
-                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                    'failed',
-                    [
-                        ...attemptLogs.map((a) => a.note),
-                        'Patch content was generated but could not be persisted as a new artifact version.',
-                        `Reason: ${persistErrorMsg}`,
-                        'Please retry update so the patched version is saved and available across refresh/devices.',
-                    ],
-                )}`,
-                patchReport: {
-                    targetArtifactId: target.id,
-                    targetTitle: target.title,
-                    attempts: attemptNo,
-                    retries: retryCount,
-                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
-                    status: 'failed',
-                    notes: [
-                        ...attemptLogs.map((a) => a.note),
-                        'Patch content was generated but could not be persisted as a new artifact version.',
-                        `Reason: ${persistErrorMsg}`,
-                    ],
-                },
-            });
-            useChatStore.getState().setTargetArtifact(convId, null);
-            return;
-        } else {
-            // Push the new version into the lineage cache and update the
-            // active artifact so the renderer immediately reflects V_n+1.
-            useArtifactStore.getState().appendLineageVersion(lineageId, newVersion);
-            const persistedArtifact: Artifact = {
-                ...baseArtifact,
-                content: newContent,
-                dbId: newVersion.dbId,
-                version: newVersion.versionNo,
-                parentId: newVersion.parentDbId,
-                lineageId,
-                isHead: true,
-            };
-            useArtifactStore.getState().setActiveArtifact(persistedArtifact);
-            useArtifactStore.getState().setDbId(baseArtifact.id, newVersion.dbId);
-
-            // Persist the patched result in-chat as a first-class artifact so it
-            // can be reopened/repatched after refresh and on other devices.
-            const patchedArtifactTag = toArtifactTag(persistedArtifact);
-            updateMessage(convId, assistantMsgId, {
-                content: `${visibleContent ? `${visibleContent}\n\n` : ''}${toLinearReport(
-                    'success',
-                    [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
-                    allBlocks.length,
-                )}\n\n${patchedArtifactTag}`,
-                patchReport: {
-                    targetArtifactId: target.id,
-                    targetTitle: target.title,
-                    attempts: attemptNo,
-                    retries: retryCount,
-                    totalBlocksSeen: attemptLogs.reduce((n, a) => n + a.blockCount, 0),
-                    appliedBlocks: allBlocks.length,
-                    versionLabel: patchVersionLabel,
-                    status: 'success',
-                    notes: [...attemptLogs.map((a) => a.note), `Success: applied ${allBlocks.length} block${allBlocks.length === 1 ? '' : 's'}.`],
-                    patchedArtifact: {
-                        title: persistedArtifact.title,
-                        type: persistedArtifact.type,
-                        version: persistedArtifact.version,
-                        versionLabel: patchVersionLabel,
-                    },
-                },
-            });
-        }
-
-        // Reset error/heal state on success.
-        useArtifactStore.getState().setRuntimeError(target.id, null);
-        useArtifactStore.getState().resetHealAttempts(target.id);
-        useArtifactStore.getState().setPatchStatus(target.id, 'idle');
-        useChatStore.getState().setTargetArtifact(convId, null);
-        // message content + patchReport were already written in the success
-        // persistence branch above.
-    };
+    // Patch/update flow removed: all artifact requests generate from scratch.
 
     // ─── Continue truncated response ───
     // Resumes from the message's existing partial content. The
@@ -838,97 +461,6 @@ const ChatArea: React.FC = () => {
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 
-        // Patching engine: resolve the per-conversation binding to a real
-        // Artifact snapshot. If the bound artifact is the active one, we
-        // use its in-memory state directly (preserves any unsaved changes).
-        const targetArtifactId = useChatStore.getState().getTargetArtifact(convId);
-        const targetArtifactSnapshot = useChatStore.getState().getTargetArtifactSnapshot(convId);
-        const activeArt = useArtifactStore.getState().activeArtifact;
-        const targetedArtifact: Artifact | undefined =
-            targetArtifactId && activeArt && activeArt.id === targetArtifactId
-                ? activeArt
-                : (targetArtifactSnapshot && targetArtifactSnapshot.id === targetArtifactId
-                    ? targetArtifactSnapshot
-                    : undefined);
-
-        // Intent fallback: user asked to update/patch but did not explicitly
-        // choose a target artifact. We require explicit targeting to avoid
-        // silently patching the wrong artifact when multiple exist.
-        if (!targetedArtifact && (UPDATE_INTENT_RE.test(content) || AMBIGUOUS_FOLLOWUP_RE.test(content))) {
-            const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-            const parsedArtifacts = (conv?.messages || [])
-                .filter((msg) => msg.role === 'assistant')
-                .flatMap((msg) =>
-                    parseArtifacts(msg.content || '', msg.id, true).artifacts,
-                );
-            // Dedup by lineageId — only show the latest version of each
-            // lineage so stale patched versions don't clutter the list.
-            const seenLineages = new Set<string>();
-            const uniqueArtifacts = parsedArtifacts.filter((a) => {
-                const key = a.lineageId ?? a.id;
-                if (seenLineages.has(key)) return false;
-                seenLineages.add(key);
-                return true;
-            });
-            const artifactsInConv = uniqueArtifacts.length;
-            if (artifactsInConv > 0) {
-                const previews = uniqueArtifacts
-                    .slice(0, 3)
-                    .map((a, i) => `${i + 1}. ${a.title}${typeof a.version === 'number' ? ` (V${a.version})` : ''}`)
-                    .join('\n');
-                // Build suggestion objects for the picker UI.
-                const suggestions: NonNullable<import('../types').Message['artifactSuggestions']> = uniqueArtifacts
-                    .slice(0, 5)
-                    .map((a) => ({
-                        id: a.id,
-                        title: a.title,
-                        type: a.type,
-                        version: typeof a.version === 'number' ? a.version : undefined,
-                        dbId: a.dbId,
-                        lineageId: a.lineageId,
-                        content: a.content,
-                    }));
-                if (!opts?.hideUserMessage) {
-                    await addMessage(convId, {
-                        id: uuidv4(), role: 'user', content, timestamp: Date.now(),
-                        attachments: attachments || undefined,
-                    });
-                }
-                await addMessage(convId, {
-                    id: uuidv4(),
-                    role: 'assistant',
-                    content:
-                        `Which artifact should be updated? Select one below, or click **Update** (✏) on any open artifact workspace.\n\n` +
-                        `Detected artifact${artifactsInConv === 1 ? '' : 's'} in this chat:\n${previews}${artifactsInConv > 3 ? `\n…and ${artifactsInConv - 3} more` : ''}`,
-                    timestamp: Date.now(),
-                    artifactSuggestions: suggestions,
-                    artifactSuggestionOriginalPrompt: content,
-                });
-                return;
-            }
-        }
-
-        // Hard-block: artifact too large to safely patch (>100k chars).
-        // We surface a synthesized assistant message instead of burning a
-        // turn that's almost certain to truncate.
-        if (targetedArtifact && targetedArtifact.content.length > 100_000) {
-            if (!opts?.hideUserMessage) {
-                await addMessage(convId, {
-                    id: uuidv4(), role: 'user', content, timestamp: Date.now(),
-                    attachments: attachments || undefined,
-                });
-            }
-            await addMessage(convId, {
-                id: uuidv4(),
-                role: 'assistant',
-                content:
-                    `⚠️ This artifact is ${Math.round(targetedArtifact.content.length / 1000)}k chars — too large to patch reliably. Consider rewriting it from scratch (close the update binding and ask for a fresh artifact instead).`,
-                timestamp: Date.now(),
-            });
-            useChatStore.getState().setTargetArtifact(convId, null);
-            return;
-        }
-
         if (!opts?.hideUserMessage) {
             await addMessage(convId, {
                 // eslint-disable-next-line react-hooks/purity
@@ -943,23 +475,6 @@ const ChatArea: React.FC = () => {
             // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
         });
-
-        if (targetedArtifact) {
-            // Drive the status overlay through its full pipeline. Each phase
-            // is set explicitly so the UI doesn't flicker between states.
-            useArtifactStore.getState().setPatchStatus(targetedArtifact.id, 'reading');
-            // Tiny micro-delay so the user perceives the read step before the
-            // model's first token arrives.
-            window.setTimeout(() => {
-                useArtifactStore.getState().setPatchStatus(targetedArtifact.id, 'patching');
-            }, 80);
-            await runStream(convId, assistantMsgId, {
-                trackReasoning: true,
-                targetedArtifact,
-                patchRetryCount: 0,
-            });
-            return;
-        }
 
         await doStreamResponse(convId, assistantMsgId);
     };
@@ -1154,48 +669,16 @@ const ChatArea: React.FC = () => {
         }
     };
 
-    /**
-     * Artifact suggestion picker — called when user clicks a candidate in
-     * the inline picker rendered inside an ambiguous-update assistant message.
-     * If originalPrompt is empty the user dismissed without selecting.
-     */
     const handleArtifactSuggestionSelect = useCallback(async (
-        suggestion: NonNullable<import('../types').Message['artifactSuggestions']>[0],
-        originalPrompt: string,
+        _suggestion: NonNullable<import('../types').Message['artifactSuggestions']>[0],
+        _originalPrompt: string,
         suggestionMessageId: string,
     ) => {
+        // Patch/update flow removed: suggestion pickers are now no-ops.
         const convId = activeConversationId;
         if (!convId) return;
-
-        // Always clear the suggestion picker from the message (whether dismissed or selected).
         updateMessage(convId, suggestionMessageId, { artifactSuggestions: undefined, artifactSuggestionOriginalPrompt: undefined });
-
-        if (!originalPrompt.trim()) {
-            // Dismissed — user will click Update manually.
-            return;
-        }
-
-        // Bind the selected artifact as the patch target.
-        const artifactForBinding = {
-            id: suggestion.id,
-            type: suggestion.type,
-            title: suggestion.title,
-            content: suggestion.content,
-            messageId: '',
-            dbId: suggestion.dbId,
-            lineageId: suggestion.lineageId,
-            version: suggestion.version,
-        };
-        // Open the artifact workspace if it's not already visible.
-        const currentActive = useArtifactStore.getState().activeArtifact;
-        if (!currentActive || currentActive.id !== suggestion.id) {
-            useArtifactStore.getState().setActiveArtifact(artifactForBinding);
-        }
-        useChatStore.getState().setTargetArtifact(convId, artifactForBinding);
-
-        // Re-send the original prompt — it now routes through the patch engine.
-        await handleSend(originalPrompt, undefined, { hideUserMessage: false });
-    }, [activeConversationId, handleSend, updateMessage]);
+    }, [activeConversationId, updateMessage]);
 
     const scrollToMessage = useCallback((msgId: string) => {
         pinJumpLockUntilRef.current = Date.now() + 900;
@@ -1796,7 +1279,6 @@ const ChatArea: React.FC = () => {
                     setPrefillCounter((c) => c + 1);
                 }}
             />
-            <ArtifactUpdateBinding />
             <MessageInput
                 onSend={handleSend} onStop={handleStop} onHaltAndEdit={handleHaltAndEdit}
                 isStreaming={isStreaming} disabled={!hasEnoughCredits()}
