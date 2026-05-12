@@ -1,0 +1,13 @@
+-- ============================================================================
+-- Tombstone migration.
+--
+-- This version was briefly pushed to the remote database while the reliable
+-- artifact-generation job architecture was being tested, then the local file was
+-- removed when that approach was simplified. Supabase requires every remote
+-- migration version to exist locally before `supabase db push` can proceed.
+--
+-- Keep this file as a no-op so migration history remains consistent. The
+-- follow-up migration removes the unused objects if that experimental migration
+-- was applied to a database.
+-- ============================================================================
+
