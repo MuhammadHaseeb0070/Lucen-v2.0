@@ -184,7 +184,6 @@ Deno.serve(async (req: Request) => {
             requestId: accounting.requestId,
             parentRequestId: accounting.parentRequestId,
             modelId: accounting.modelId,
-            artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
             durationMs: Date.now() - startedAt,
             inputCostPer1M: accounting.inputCostPer1M,
             outputCostPer1M: accounting.outputCostPer1M,
@@ -268,7 +267,6 @@ Deno.serve(async (req: Request) => {
             parent_request_id,
             conversation_id,
             message_id,
-            artifact_job_id,
             call_kind,
             input_cost_per_1m,
             output_cost_per_1m,
@@ -278,9 +276,6 @@ Deno.serve(async (req: Request) => {
         if (typeof parent_request_id === 'string') accounting.parentRequestId = parent_request_id;
         if (typeof conversation_id === 'string') accounting.conversationId = conversation_id;
         if (typeof message_id === 'string') accounting.messageId = message_id;
-        if (typeof artifact_job_id === 'string') {
-            (accounting as Record<string, unknown>).artifactJobId = artifact_job_id;
-        }
         if (typeof call_kind === 'string') {
             accounting.callKind = call_kind as UsageCallKind;
         }
@@ -514,8 +509,6 @@ Deno.serve(async (req: Request) => {
                 requestId: accounting.requestId,
                 parentRequestId: accounting.parentRequestId,
                 modelId: accounting.modelId,
-                finishReason,
-                artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
                 durationMs: Date.now() - startedAt,
                 promptTokens,
                 completionTokens,
@@ -685,8 +678,6 @@ Deno.serve(async (req: Request) => {
                     requestId: accounting.requestId,
                     parentRequestId: accounting.parentRequestId,
                     modelId: accounting.modelId,
-                    finishReason,
-                    artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
                     durationMs: Date.now() - startedAt,
                     promptTokens,
                     completionTokens,
@@ -731,7 +722,6 @@ Deno.serve(async (req: Request) => {
                 requestId: accounting.requestId,
                 parentRequestId: accounting.parentRequestId,
                 modelId: accounting.modelId,
-                artifactJobId: (accounting as Record<string, unknown>).artifactJobId as string | null | undefined,
                 durationMs: Date.now() - startedAt,
                 inputCostPer1M: accounting.inputCostPer1M,
                 outputCostPer1M: accounting.outputCostPer1M,

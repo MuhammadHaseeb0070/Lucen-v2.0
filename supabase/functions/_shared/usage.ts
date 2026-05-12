@@ -39,10 +39,7 @@ export type UsageCallKind =
     | 'title_gen'
     | 'patch'
     | 'patch_retry'
-    | 'patch_continuation'
-    | 'artifact_plan'
-    | 'artifact_section'
-    | 'artifact_repair';
+    | 'patch_continuation';
 
 export interface RecordUsageInput {
     userId: string;
@@ -60,9 +57,6 @@ export interface RecordUsageInput {
 
     modelId?: string | null;
     provider?: string | null;
-    finishReason?: string | null;
-    providerAttempts?: unknown;
-    artifactJobId?: string | null;
 
     // Token counts (defaults to 0 if missing).
     promptTokens?: number;
@@ -173,9 +167,6 @@ export async function recordUsage(input: RecordUsageInput): Promise<void> {
 
             model_id: input.modelId ?? null,
             provider,
-            finish_reason: input.finishReason ?? null,
-            provider_attempts: input.providerAttempts ?? null,
-            artifact_job_id: input.artifactJobId ?? null,
 
             prompt_tokens: input.promptTokens ?? 0,
             completion_tokens: input.completionTokens ?? 0,

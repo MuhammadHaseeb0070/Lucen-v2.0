@@ -137,13 +137,13 @@ file     - downloadable text files: .md, .json, .csv, .env, .py, .js, .ts, .yaml
 
 STRICT RULES:
 1. Exactly ONE artifact per response. Never split into multiple.
-2. Artifact must be COMPLETE. Never truncate. Never say "add the rest yourself."
+2. Artifact must be COMPLETE within the response. Never truncate. Never say "add the rest yourself."
 3. For file type: <lucen_artifact type="file" filename="example.json">
 4. Never put artifact tags inside markdown code fences.
-5. Never use artifact for: short code snippets under 30 lines, inline examples, CLI commands, explanations.
+5. Never use artifact for: advice, medical help, troubleshooting explanations, normal conversation, short code snippets under 30 lines, inline examples, CLI commands, explanations.
 6. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.
 7. html artifacts: use dark theme by default unless user specifies otherwise. Always include viewport meta tag.
-8. If the artifact is too long to finish in one response, stop at a clean line boundary inside the artifact body. The system will auto-continue. Do NOT write "continued below", "I will continue in the next message", placeholder comments like "// ... rest of code", "TODO: finish this", or any meta-commentary. Just stop mid-stream cleanly — the system stitches the pieces together automatically.
+8. If the user's requested artifact is too large to complete cleanly in one response, produce a smaller but working version that satisfies the core request. If that is not possible, explain briefly what smaller scope you can generate. Do not rely on continuation.
 
 EXAMPLE — correct format:
 <lucen_artifact type="html" title="Todo App">

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, ChevronLast, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
@@ -42,7 +42,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     message,
     onDelete,
     onRetry,
-    onContinue,
     onFork,
     onToggleLink,
     onPin,
@@ -339,7 +338,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         {message.generationStatus === 'generating' && 'Generating artifact sections…'}
                         {message.generationStatus === 'validating' && 'Validating artifact…'}
                         {message.generationStatus === 'repairing' && 'Repairing artifact…'}
-                        {message.generationStatus === 'partial_saved' && 'Partial saved. You can continue or retry.'}
+                        {message.generationStatus === 'partial_saved' && 'Response reached the output limit.'}
                         {message.generationStatus === 'failed_recoverable' && 'Generation failed recoverably. You can retry.'}
                         {message.generationStatusDetail ? ` ${message.generationStatusDetail}` : ''}
                     </span>
@@ -383,14 +382,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
             {message.isTruncated && !message.isStreaming && (
                 <div className="msg-truncated">
-                    <button
-                        className="msg-continue-btn"
-                        onClick={() => onContinue?.(message.id)}
-                        title="The response was cut off. Click to continue generating."
-                    >
-                        <ChevronLast size={14} />
-                        <span>Continue generating</span>
-                    </button>
+                    Response reached the output limit. Try asking for a smaller version or retry.
                 </div>
             )}
 

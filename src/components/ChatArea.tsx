@@ -12,7 +12,6 @@ import Logo from './Logo';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
 import { streamChat } from '../services/openrouter';
-import { runArtifactGenerationJob, shouldUseArtifactJob } from '../services/artifactGenerator';
 import { getActiveModel } from '../config/models';
 import { processFiles } from '../services/fileProcessor';
 import type { FileAttachment, Message } from '../types';
@@ -360,7 +359,9 @@ const ChatArea: React.FC = () => {
                     isReasoningStreaming: false,
                     isTruncated: truncated || false,
                     generationStatus: truncated ? 'partial_saved' : 'complete',
-                    generationStatusDetail: truncated ? 'Response needs continuation' : 'Response complete',
+                    generationStatusDetail: truncated
+                        ? 'Response reached the output limit. Ask for a smaller version or retry.'
+                        : 'Response complete',
                 });
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();
@@ -488,58 +489,6 @@ const ChatArea: React.FC = () => {
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
             generationStatus: 'streaming',
         });
-
-        const contextMessages = getContextMessages(convId);
-        if (shouldUseArtifactJob(contextMessages)) {
-            const controller = new AbortController();
-            abortRef.current = controller;
-            try {
-                const result = await runArtifactGenerationJob({
-                    messages: contextMessages,
-                    conversationId: convId,
-                    messageId: assistantMsgId,
-                    signal: controller.signal,
-                    callbacks: {
-                        onStatus: (generationStatus, generationStatusDetail) => {
-                            updateMessage(convId, assistantMsgId, {
-                                generationStatus,
-                                generationStatusDetail,
-                            });
-                        },
-                        onPartial: (partialContent) => {
-                            updateMessage(convId, assistantMsgId, { content: partialContent });
-                        },
-                    },
-                });
-                updateMessage(convId, assistantMsgId, {
-                    content: result.content,
-                    isStreaming: false,
-                    isReasoningStreaming: false,
-                    isTruncated: !result.complete,
-                    generationStatus: result.complete ? 'complete' : 'partial_saved',
-                    generationStatusDetail: result.complete
-                        ? 'Validated artifact complete'
-                        : 'Saved partial artifact; validation did not pass',
-                    artifactJobId: result.jobId,
-                    artifactValidation: result.validation,
-                });
-                if (result.finalArtifactId) {
-                    useArtifactStore.getState().setDbId(`${assistantMsgId}-artifact-0`, result.finalArtifactId);
-                }
-            } catch (err) {
-                updateMessage(convId, assistantMsgId, {
-                    content: err instanceof Error ? `⚠️ Artifact generation failed: ${err.message}` : '⚠️ Artifact generation failed.',
-                    isStreaming: false,
-                    isReasoningStreaming: false,
-                    generationStatus: 'failed_recoverable',
-                    generationStatusDetail: err instanceof Error ? err.message : 'Artifact generation failed',
-                });
-            } finally {
-                abortRef.current = null;
-                useCreditsStore.getState().syncFromServer();
-            }
-            return;
-        }
 
         await doStreamResponse(convId, assistantMsgId);
     };
@@ -714,7 +663,6 @@ const ChatArea: React.FC = () => {
             content: '', reasoning: '', isStreaming: true, isReasoningStreaming: model.supportsReasoning,
             generationStatus: 'streaming',
             generationStatusDetail: undefined,
-            artifactValidation: undefined,
         });
         doStreamResponse(activeConversationId, assistantMsgId);
     };

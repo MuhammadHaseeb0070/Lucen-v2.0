@@ -1,5 +1,10 @@
 import type { Message, ModelInfo } from '../types';
-import { ABSOLUTE_OUTPUT_CEILING, PLATFORM_MAX_STREAM_SECONDS } from '../config/models';
+import {
+    ABSOLUTE_OUTPUT_CEILING,
+    ARTIFACT_OUTPUT_CEILING,
+    CHAT_OUTPUT_CEILING,
+    PLATFORM_MAX_STREAM_SECONDS,
+} from '../config/models';
 
 /**
  * Response mode dictates how many output tokens a single model call is
@@ -32,7 +37,7 @@ export const ABSOLUTE_CEILING = ABSOLUTE_OUTPUT_CEILING;
 
 const BUILD_VERBS = /\b(build|make|create|generate|write|produce|draft|design|code|render|compose)\b/i;
 const ARTIFACT_NOUNS =
-    /\b(html|app|site|website|page|component|widget|game|dashboard|form|calculator|chart|graph|diagram|flowchart|mermaid|svg|icon|logo|illustration|artifact|document|file|script|snippet|report|resume|cv|email template|landing page|story|essay|novel|chapter|article|book)\b/i;
+    /\b(html|web app|website|landing page|component|widget|game|dashboard|form|calculator|chart|graph|diagram|flowchart|mermaid|svg|icon|logo|illustration|artifact|downloadable file|script|email template)\b/i;
 const ARTIFACT_FILE_EXT = /\.(html|svg|mermaid|md|json|csv|yaml|yml|env|py|ts|tsx|js|jsx|css|xml|txt)\b/i;
 const ARTIFACT_IMPERATIVE =
     /\b(give me|show me|turn this into|convert to|export as|download|full code|complete code|entire code)\b/i;
@@ -64,14 +69,12 @@ export function detectResponseMode(messages: Message[]): ResponseMode {
         return 'chat';
     }
 
-    // Strong artifact signals
-    if (ARTIFACT_IMPERATIVE.test(text)) return 'artifact';
+    // Strong artifact signals. Long advice, medical help, plans, essays, or
+    // reports should stay as normal chat unless the user asks for a concrete
+    // renderable/downloadable deliverable.
+    if (ARTIFACT_IMPERATIVE.test(text) && (ARTIFACT_NOUNS.test(text) || ARTIFACT_FILE_EXT.test(text))) return 'artifact';
     if (BUILD_VERBS.test(text) && ARTIFACT_NOUNS.test(text)) return 'artifact';
     if (ARTIFACT_FILE_EXT.test(text)) return 'artifact';
-
-    // A user asking for long-form prose (essay, story, chapter) benefits from
-    // artifact-mode caps even without an explicit "make a file" request.
-    if (LONG_FORM.test(text) && BUILD_VERBS.test(text)) return 'artifact';
 
     // Code attachment + a build verb → user is asking for a transformation.
     const hasCodeAttachment = (lastUser.attachments || []).some(
@@ -112,7 +115,8 @@ export function getPerCallOutput(mode: ResponseMode, model: ModelInfo): number {
     const modelCap = Math.max(1, model.maxOutputTokens || wallClockCap);
     const ctxCap = Math.max(1, (model.contextWindow || wallClockCap) - SAFETY_HEADROOM);
 
-    const raw = Math.min(wallClockCap, modelCap, ABSOLUTE_CEILING, ctxCap);
+    const productCap = mode === 'artifact' ? ARTIFACT_OUTPUT_CEILING : CHAT_OUTPUT_CEILING;
+    const raw = Math.min(wallClockCap, modelCap, ABSOLUTE_CEILING, productCap, ctxCap);
     return Math.max(MIN_PER_CALL_OUTPUT, raw);
 }
 

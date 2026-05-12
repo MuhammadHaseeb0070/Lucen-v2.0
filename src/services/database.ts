@@ -105,10 +105,6 @@ export interface DbMessage {
     content: string;
     reasoning?: string;
     is_truncated: boolean;
-    generation_status?: Message['generationStatus'] | null;
-    generation_status_detail?: string | null;
-    artifact_job_id?: string | null;
-    artifact_validation?: Message['artifactValidation'] | null;
     is_pinned: boolean;
     attachments?: Record<string, unknown>[];
     created_at: string;
@@ -213,10 +209,6 @@ export async function saveMessage(
             content: message.content,
             reasoning: message.reasoning || null,
             is_truncated: message.isTruncated || false,
-            generation_status: message.generationStatus || null,
-            generation_status_detail: message.generationStatusDetail || null,
-            artifact_job_id: message.artifactJobId || null,
-            artifact_validation: message.artifactValidation || null,
             is_pinned: message.isPinned || false,
             is_streaming: message.isStreaming || false,
             // Save attachment metadata only (no file content)
@@ -267,7 +259,7 @@ export async function saveMessage(
 /** Update an existing message (e.g., after streaming completes) */
 export async function updateMessageInDb(
     messageId: string,
-    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming' | 'generationStatus' | 'generationStatusDetail' | 'artifactJobId' | 'artifactValidation'>>
+    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming'>>
 ): Promise<boolean> {
     if (!hasActiveSessionSync() || !supabase) return false;
 
@@ -276,10 +268,6 @@ export async function updateMessageInDb(
     if (updates.reasoning !== undefined) dbUpdates.reasoning = updates.reasoning;
     if (updates.isTruncated !== undefined) dbUpdates.is_truncated = updates.isTruncated;
     if (updates.isStreaming !== undefined) dbUpdates.is_streaming = updates.isStreaming;
-    if (updates.generationStatus !== undefined) dbUpdates.generation_status = updates.generationStatus;
-    if (updates.generationStatusDetail !== undefined) dbUpdates.generation_status_detail = updates.generationStatusDetail;
-    if (updates.artifactJobId !== undefined) dbUpdates.artifact_job_id = updates.artifactJobId;
-    if (updates.artifactValidation !== undefined) dbUpdates.artifact_validation = updates.artifactValidation;
 
     const { error } = await supabase
         .from('messages')
@@ -317,10 +305,6 @@ export async function upsertStreamingMessage(
                 content: message.content,
                 reasoning: message.reasoning || null,
                 is_truncated: message.isTruncated || false,
-                generation_status: message.generationStatus || null,
-                generation_status_detail: message.generationStatusDetail || null,
-                artifact_job_id: message.artifactJobId || null,
-                artifact_validation: message.artifactValidation || null,
                 is_pinned: message.isPinned || false,
                 is_streaming: message.isStreaming === true,
                 attachments:
@@ -480,10 +464,6 @@ function dbToMessage(row: DbMessage): Message {
         reasoning: row.reasoning,
         timestamp: new Date(row.created_at).getTime(),
         isTruncated: row.is_truncated,
-        generationStatus: row.generation_status || undefined,
-        generationStatusDetail: row.generation_status_detail || undefined,
-        artifactJobId: row.artifact_job_id || undefined,
-        artifactValidation: row.artifact_validation || undefined,
         isPinned: row.is_pinned,
         // Restore attachment metadata (no file content — that's transient)
         attachments: row.attachments?.map((a: Record<string, unknown>) => ({
