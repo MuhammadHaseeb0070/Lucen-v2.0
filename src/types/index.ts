@@ -36,7 +36,7 @@ export interface Message {
   patchReport?: {
     targetArtifactId?: string;
     targetTitle?: string;
-    attempts: number;
+    attempts: number; 
     retries: number;
     totalBlocksSeen: number;
     appliedBlocks?: number;

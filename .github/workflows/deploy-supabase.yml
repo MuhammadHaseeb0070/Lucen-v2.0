@@ -2,20 +2,20 @@ name: Deploy Supabase
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - 'supabase/**'
-      # Workflow edits don’t live under supabase/ — include them so secrets deploy + function list updates actually run.
       - '.github/workflows/deploy-supabase.yml'
   workflow_dispatch:
 
 concurrency:
-  group: supabase-deploy
+  group: supabase-deploy-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     steps:
       - name: Checkout Repo
@@ -27,7 +27,21 @@ jobs:
           version: latest
 
       - name: Link Project
-        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            PROJECT_ID="${{ secrets.PROD_SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_ID }}"
+            DB_PASSWORD="${{ secrets.PROD_SUPABASE_DB_PASSWORD || secrets.SUPABASE_DB_PASSWORD }}"
+          else
+            PROJECT_ID="${{ secrets.DEV_SUPABASE_PROJECT_ID }}"
+            DB_PASSWORD="${{ secrets.DEV_SUPABASE_DB_PASSWORD }}"
+          fi
+          
+          if [ -z "$PROJECT_ID" ]; then
+            echo "Error: PROJECT_ID is not set for branch ${{ github.ref_name }}"
+            exit 1
+          fi
+          
+          supabase link --project-ref "$PROJECT_ID" --password "$DB_PASSWORD"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
@@ -36,15 +50,23 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      # Only set when GitHub has a value. Empty ${{ secrets.* }} would overwrite dashboard secrets with "".
       - name: Set Edge Function Secrets
         run: |
           set_e() {
             [ -z "$2" ] && return 0
             supabase secrets set "$1=$2"
           }
+          # Common secrets
           set_e OPENROUTER_API_KEY "${{ secrets.OPENROUTER_API_KEY }}"
-          set_e VITE_APP_URL "${{ secrets.VITE_APP_URL }}"
+          set_e TAVILY_API_KEY "${{ secrets.TAVILY_API_KEY }}"
+          
+          # Branch-specific URL
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            set_e VITE_APP_URL "${{ secrets.VITE_APP_URL }}"
+          else
+            set_e VITE_APP_URL "${{ secrets.DEV_VITE_APP_URL || secrets.VITE_APP_URL }}"
+          fi
+          
           set_e LEMON_SQUEEZY_API_KEY "${{ secrets.LEMON_SQUEEZY_API_KEY }}"
           set_e LEMON_SQUEEZY_STORE_ID "${{ secrets.LEMON_SQUEEZY_STORE_ID }}"
           set_e LEMON_SQUEEZY_WEBHOOK_SECRET "${{ secrets.LEMON_SQUEEZY_WEBHOOK_SECRET }}"
@@ -60,5 +82,10 @@ jobs:
           supabase functions deploy deduct-credits --no-verify-jwt
           supabase functions deploy ls-checkout --no-verify-jwt
           supabase functions deploy ls-webhook --no-verify-jwt
+          supabase functions deploy classify-intent --no-verify-jwt
+          supabase functions deploy describe-image --no-verify-jwt
+          supabase functions deploy generate-title --no-verify-jwt
+          supabase functions deploy embed --no-verify-jwt
+          supabase functions deploy retrieve-chunks --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
