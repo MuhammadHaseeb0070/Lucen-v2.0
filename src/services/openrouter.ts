@@ -746,7 +746,7 @@ export async function streamChat(
             {
                 role: 'system',
                 content:
-                    "[System Note: Keep this response complete and bounded. Answer the user's real need directly. Do not create an artifact unless the user explicitly asks for a renderable or downloadable deliverable. If the full requested scope is too large, provide the most useful complete smaller version or explain the smaller scope you can complete. Do not mention tokens, budgets, limits, or chunking.]",
+                    "[System Note: Plan the answer so it naturally finishes in this reply—pick depth and breadth you can carry to a clear ending (no mid-sentence cutoffs). If the ask is too large for one pass, deliver one complete useful slice and state that scope in plain language. Answer the user's real need directly. Do not create an artifact unless they explicitly want a renderable or downloadable deliverable. Never mention tokens, budgets, limits, or chunking.]",
             },
         ];
 
@@ -1041,8 +1041,8 @@ async function streamViaEdgeFunctionWrapper(
             const lowEntropy = continuationCount > 0 && isLowEntropy(passText);
             const structuralIssue = continuationCount > 0 && hasStructuralRegression(fullResponse);
 
-            const shouldContinue = false
-                && truncated === true
+            const shouldContinue =
+                truncated === true
                 && !userAborted
                 && !hitChunkCeiling
                 && !stalled

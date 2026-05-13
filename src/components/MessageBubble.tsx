@@ -203,7 +203,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const firstArtifactId = artifacts[0]?.id ?? '';
     const showGenerationStatus =
         message.generationStatus &&
-        !['idle', 'streaming', 'complete'].includes(message.generationStatus);
+        !['idle', 'streaming', 'complete', 'partial_saved'].includes(message.generationStatus);
 
     useEffect(() => {
         if (disableArtifacts) {
@@ -338,7 +338,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         {message.generationStatus === 'generating' && 'Generating artifact sections…'}
                         {message.generationStatus === 'validating' && 'Validating artifact…'}
                         {message.generationStatus === 'repairing' && 'Repairing artifact…'}
-                        {message.generationStatus === 'partial_saved' && 'Response reached the output limit.'}
                         {message.generationStatus === 'failed_recoverable' && 'Generation failed recoverably. You can retry.'}
                         {message.generationStatusDetail ? ` ${message.generationStatusDetail}` : ''}
                     </span>
@@ -381,8 +380,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             )}
 
             {message.isTruncated && !message.isStreaming && (
-                <div className="msg-truncated">
-                    Response reached the output limit. Try asking for a smaller version or retry.
+                <div className="msg-truncated" role="status">
+                    {message.generationStatusDetail?.trim() ||
+                        'Try a narrower question or retry if this still looks cut off.'}
                 </div>
             )}
 

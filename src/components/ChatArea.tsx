@@ -360,7 +360,7 @@ const ChatArea: React.FC = () => {
                     isTruncated: truncated || false,
                     generationStatus: truncated ? 'partial_saved' : 'complete',
                     generationStatusDetail: truncated
-                        ? 'Response reached the output limit. Ask for a smaller version or retry.'
+                        ? 'Still incomplete after automatic finish passes—try a narrower question or retry.'
                         : 'Response complete',
                 });
                 abortRef.current = null;
