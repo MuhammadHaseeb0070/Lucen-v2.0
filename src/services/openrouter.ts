@@ -1453,7 +1453,7 @@ async function streamViaEdgeFunction(
                 }
             }
 
-            const searchInjection = `\n\n[SYSTEM INJECTION: WEB SEARCH ALREADY COMPLETED]\n${searchResults}\n\nCRITICAL INSTRUCTION: The web search requested above has ALREADY been executed automatically by the system. The results are provided above. You MUST NOT attempt to invoke any search tools, output search queries, or generate internal tool blocks. You must immediately synthesize these results into a highly detailed, comprehensive, and tailored natural language response to the user's original request. Do not ask the user to find information themselves.`;
+            const searchInjection = `\n\n--- Web Search Context ---\n${searchResults}\n--- End of Web Search Context ---\n\nUsing the web search results above, answer the user's question directly and in full detail. Do not ask the user to search elsewhere or tell them you cannot access real-time data — the live results are already included above. Synthesize a complete, helpful response.`;
             const urlInjection = urls.length > 0 ? `\n\n[User referenced these URLs: ${urls.join(', ')}. Retrieve and use their content.]` : '';
             const finalInjection = searchInjection + urlInjection;
 
