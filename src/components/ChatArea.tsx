@@ -475,7 +475,7 @@ const ChatArea: React.FC = () => {
         if (!convId) convId = createConversation();
 
         if (!opts?.hideUserMessage) {
-            await addMessage(convId, {
+            addMessage(convId, {
                 // eslint-disable-next-line react-hooks/purity
                 id: uuidv4(), role: 'user', content, timestamp: Date.now(),
                 attachments: attachments || undefined,
@@ -483,7 +483,7 @@ const ChatArea: React.FC = () => {
         }
 
         const assistantMsgId = uuidv4();
-        await addMessage(convId, {
+        addMessage(convId, {
             id: assistantMsgId, role: 'assistant', content: '', reasoning: '',
             // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
