@@ -121,8 +121,8 @@ const BlockquoteTool = React.memo<{ children: React.ReactNode }>(({ children }) 
     let textContent = '';
     React.Children.forEach(children, (child) => {
         if (typeof child === 'string') textContent += child;
-        else if (React.isValidElement(child) && child.props.children) {
-            const c = child.props.children;
+        else if (React.isValidElement(child) && (child as any).props.children) {
+            const c = (child as any).props.children;
             if (typeof c === 'string') textContent += c;
             else if (Array.isArray(c) && typeof c[0] === 'string') textContent += c[0];
         }
