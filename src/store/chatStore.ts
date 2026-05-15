@@ -226,6 +226,11 @@ interface ChatStore {
     loadMessages: (convId: string) => Promise<void>;
 }
 
+// ─── DB Write Queue ────────────────────────────────────────────────────────
+// Serializes message inserts to preserve created_at order while allowing
+// immediate synchronous state updates in the UI.
+let dbWriteQueue = Promise.resolve();
+
 export const useChatStore = create<ChatStore>()(
     persist(
         (set, get) => ({
@@ -381,11 +386,6 @@ export const useChatStore = create<ChatStore>()(
                     }
                 }
             },
-
-// ─── DB Write Queue ────────────────────────────────────────────────────────
-// Serializes message inserts to preserve created_at order while allowing
-// immediate synchronous state updates in the UI.
-let dbWriteQueue = Promise.resolve();
 
             addMessage: (convId, message) => {
                 let isFirstMessage = false;
