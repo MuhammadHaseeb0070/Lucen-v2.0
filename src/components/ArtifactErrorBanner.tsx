@@ -126,7 +126,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
     lines.push('Regenerate the full artifact with the smallest possible changes that resolve this error.');
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);
 
-    setPendingAutoSend({ content: lines.join('\n') });
+    setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: true });
   };
 
   return (

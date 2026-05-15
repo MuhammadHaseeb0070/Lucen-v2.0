@@ -144,7 +144,6 @@ STRICT RULES:
 6. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.
 7. html artifacts: use dark theme by default unless user specifies otherwise. Always include viewport meta tag.
 8. If the user's requested artifact is too large to complete cleanly in one response, produce a smaller but working version that satisfies the core request. If that is not possible, explain briefly what smaller scope you can generate. Do not rely on continuation.
-9. Link/Button Rules: NEVER use relative URLs (like '/login' or 'index.html') or real absolute URLs unless specifically requested. Use '#' or 'javascript:void(0)' to prevent the sandboxed iframe from breaking or navigating away.
 
 EXAMPLE — correct format:
 <lucen_artifact type="html" title="Todo App">

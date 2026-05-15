@@ -119,24 +119,28 @@ export function parseArtifacts(
   }
 
   const artifacts: Artifact[] = [];
-
-  // Strip markdown fences that AI might accidentally wrap around the entire artifact block.
-  // We do this BEFORE neutralizing fences, so accidental wrappers are saved.
-  // We use a regex that matches even if the closing tag or fence is missing (streaming).
-  let cleanContent = content.replace(
-    /```(?:xml|html|svg|mermaid|file)?\s*\n?(<lucen_artifact[\s\S]*?)(?:\n?```|$)/g,
-    '$1'
-  );
-
-  cleanContent = neutralizeFencedArtifactTags(cleanContent);
+  let cleanContent = neutralizeFencedArtifactTags(content);
   let index = 0;
 
-  // Strip <lucen_patch> blocks BEFORE the artifact regex fires.
-  // Patch blocks are just side-effects (file writes) and should never appear
-  // in the chat UI.
-  cleanContent = cleanContent.replace(/<lucen_patch[\s\S]*?<\/lucen_patch>/g, '');
-  // Also strip unclosed patch blocks if streaming
-  cleanContent = cleanContent.replace(/<lucen_patch[^>]*>[\s\S]*$/, '');
+  // Strip <lucen_patch> blocks BEFORE the artifact regex fires. Patches
+  // are routed through artifactPatchParser.ts; if we let them flow into
+  // the artifact extractor below they'd appear as conversational text
+  // (which is wrong — they're tool calls, not prose).
+  cleanContent = cleanContent.replace(
+    /<lucen_patch\s*[^>]*>[\s\S]*?<\/lucen_patch>/g,
+    ''
+  );
+  // Also strip any trailing partial patch — same rule as artifacts: the
+  // owning patch parser handles it; this parser must not emit it as
+  // conversational text.
+  cleanContent = cleanContent.replace(/<lucen_patch\s*[^>]*>[\s\S]*$/, '');
+  cleanContent = cleanContent.replace(/<lucen_patch[^>]*$/, '');
+
+  // Strip markdown fences that AI might accidentally wrap around the entire artifact block
+  cleanContent = cleanContent.replace(
+    /```(?:xml|html|svg|mermaid|file)?\s*\n(<lucen_artifact[\s\S]*?<\/lucen_artifact>)\s*\n?```/g,
+    '$1'
+  );
 
   // Extract all complete artifacts
   cleanContent = cleanContent.replace(

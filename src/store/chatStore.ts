@@ -223,14 +223,6 @@ interface ChatStore {
 
     // Supabase sync
     loadFromSupabase: () => Promise<void>;
-    loadMessages: (convId: string) => Promise<void>;
-}
-
-// ─── DB Write Queue ────────────────────────────────────────────────────────
-// Serializes message inserts to preserve created_at order while allowing
-// immediate synchronous state updates in the UI.
-let dbWriteQueue = Promise.resolve();
-
 export const useChatStore = create<ChatStore>()(
     persist(
         (set, get) => ({
@@ -412,11 +404,12 @@ export const useChatStore = create<ChatStore>()(
                     return Promise.resolve();
                 }
 
-                // IMPORTANT: We enqueue the DB write instead of awaiting it directly.
-                // This guarantees `created_at` ordering (user then assistant) even if
-                // multiple `addMessage` calls are made synchronously, while allowing the
-                // React state to update immediately without UI pauses.
-                dbWriteQueue = dbWriteQueue.then(async () => {
+                // IMPORTANT: this promise must be awaited for the *user* message before
+                // adding a streaming *assistant* row. If both run in parallel, the
+                // assistant upsert can commit first with an earlier `created_at`,
+                // so after refresh ORDER BY created_at shows the reply above the
+                // request (inverted bubble order).
+                return (async () => {
                     try {
                         if (isFirstMessage) {
                             const conv = get().conversations.find((c) => c.id === convId);
@@ -430,7 +423,7 @@ export const useChatStore = create<ChatStore>()(
                         }
                         await db.saveMessage(convId, message);
 
-                        // RAG embeds: fire-and-forget (do not block the queue)
+                        // RAG embeds: fire-and-forget (do not block the returned promise)
                         if (message.attachments && message.attachments.length > 0) {
                             const { data: { session } } = await supabase!.auth.getSession();
                             if (session?.access_token) {
@@ -490,11 +483,7 @@ export const useChatStore = create<ChatStore>()(
                     } catch (err) {
                         console.error('[Sync] Error saving message to Supabase:', err);
                     }
-                }).catch(err => {
-                    console.error('[Sync] Queue error:', err);
-                });
-
-                return dbWriteQueue;
+                })();
             },
 
             updateMessage: (convId, msgId, updates) => {
