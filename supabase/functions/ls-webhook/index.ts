@@ -145,6 +145,9 @@ function getCreditsForVariant(variantId: string): { credits: number; plan: strin
 
   const cleanId = variantId.replace(/["'#]/g, "").trim();
 
+  // Diagnostic: log exactly what values are being compared so mismatches are immediately visible.
+  console.log(`ls-webhook: variant match check — incoming="${cleanId}" regular="${VARIANT_REGULAR ?? '(unset)'}" pro="${VARIANT_PRO ?? '(unset)'}"`);
+
   if (cleanId === VARIANT_REGULAR) return { credits: CREDITS_REGULAR, plan: "regular" };
   if (cleanId === VARIANT_PRO) return { credits: CREDITS_PRO, plan: "pro" };
   return null;
@@ -433,6 +436,9 @@ serve(async (req: Request) => {
   const variantId = extractVariantId(payload);
   const subscriptionId = extractSubscriptionId(payload);
   const eventId = extractEventId(payload, req);
+
+  // Diagnostic: log every webhook arrival so nothing is invisible.
+  console.log(`ls-webhook: ▶ EVENT=${eventName} user=${userId} variant=${variantId ?? 'null'} sub=${subscriptionId ?? 'null'} eventId=${eventId}`);
 
   const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR");
   const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
