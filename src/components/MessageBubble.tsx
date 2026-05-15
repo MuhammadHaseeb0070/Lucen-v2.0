@@ -308,18 +308,27 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         {searchSourcesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                     {searchSourcesOpen && (
-                        <div className="reasoning-content search-sources-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <div className="citation-cards-container">
                             {message.webSearchUrls.map((url, idx) => {
                                 try {
-                                    const domain = new URL(url).hostname.replace('www.', '');
+                                    const parsedUrl = new URL(url);
+                                    const domain = parsedUrl.hostname.replace('www.', '');
+                                    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
                                     return (
-                                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="search-source-link" style={{ fontSize: '0.8rem', color: 'inherit', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.5rem', borderRadius: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                                            <span style={{ fontWeight: 600, color: 'var(--accent-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{domain}</span>
-                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.7 }}>{url}</span>
+                                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="citation-card" title={url}>
+                                            <div className="citation-card-header">
+                                                <img src={faviconUrl} alt={`${domain} favicon`} className="citation-favicon" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                                <span className="citation-domain">{domain}</span>
+                                            </div>
+                                            <div className="citation-url">{parsedUrl.pathname !== '/' ? parsedUrl.pathname : url}</div>
                                         </a>
                                     );
                                 } catch {
-                                    return <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="search-source-link" style={{ fontSize: '0.8rem', color: 'inherit', wordBreak: 'break-all' }}>{url}</a>;
+                                    return (
+                                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="citation-card">
+                                            <div className="citation-url" style={{ wordBreak: 'break-all' }}>{url}</div>
+                                        </a>
+                                    );
                                 }
                             })}
                         </div>
