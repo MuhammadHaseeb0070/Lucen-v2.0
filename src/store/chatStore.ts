@@ -223,6 +223,9 @@ interface ChatStore {
 
     // Supabase sync
     loadFromSupabase: () => Promise<void>;
+    loadMessages: (convId: string) => Promise<void>;
+}
+
 export const useChatStore = create<ChatStore>()(
     persist(
         (set, get) => ({
