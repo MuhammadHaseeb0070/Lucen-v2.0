@@ -252,7 +252,9 @@ async function updateSubscriptionStatus(params: {
     p_renews_at: params.renewsAt ?? null,
   });
 
-  // Ignoring errors here since meta might fail if RPC was dropped during migration
+  if (error) {
+    console.error(`ls-webhook: update_subscription_meta failed for ${params.userId}: ${error.message}`);
+  }
 }
 
 /** Set user to free tier (cancellation/expiry) */
@@ -448,9 +450,11 @@ serve(async (req: Request) => {
       return jsonResponse({ received: true, duplicate: true }, { status: 200 });
     }
   } catch (err) {
-    console.error("ls-webhook: idempotency check failed, proceeding cautiously:", err);
-    // If the idempotency check itself fails, we still proceed
-    // (better to double-grant than to silently drop a valid event)
+    console.error("ls-webhook: idempotency check failed — returning 500 to force LS retry:", err);
+    // SECURITY: Do NOT proceed if the idempotency check itself fails.
+    // Returning 500 tells Lemon Squeezy to retry later when DB is stable.
+    // Proceeding would risk a double-grant if LS retries concurrently.
+    return jsonResponse({ error: "Idempotency check unavailable, please retry" }, { status: 500 });
   }
 
   try {
@@ -555,7 +559,9 @@ serve(async (req: Request) => {
 
       const variantInfo = getCreditsForVariant(variantId);
       if (!variantInfo) {
-        console.log(`ls-webhook: ignoring unknown variant_id=${variantId}`);
+        // ALERT: This fires when LS_VARIANT_REGULAR/LS_VARIANT_PRO secrets don't
+        // match the variant in the payload. User paid but gets NO credits!
+        console.error(`[ALERT] ls-webhook: UNKNOWN variant_id=${variantId} for user=${userId}. Verify LS_VARIANT_* secrets match your Lemon Squeezy variant IDs!`);
         await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
@@ -602,12 +608,22 @@ serve(async (req: Request) => {
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      // We explicitly ignore upgrades/downgrades here.
-      // Every variant purchase creates a NEW independent subscription now,
-      // handled by subscription_created and subscription_payment_success.
-      
+      // No credit changes on a generic subscription_updated event.
+      // However, we DO sync renewsAt/portal URL so account metadata stays
+      // accurate when LS pushes a new renewal date (e.g. payment method update).
+      const { error: metaErr } = await supabaseAdmin.rpc("update_subscription_meta", {
+        p_user_id: userId,
+        p_plan: currentDbPlan,
+        p_subscription_id: subscriptionId ?? null,
+        p_customer_portal_url: customerPortalUrl ?? null,
+        p_renews_at: renewsAt ?? null,
+      });
+      if (metaErr) {
+        console.error(`ls-webhook: subscription_updated meta-sync failed for ${userId}: ${metaErr.message}`);
+      }
+
       await recordEvent({ eventId, eventName, userId });
-      console.log(`ls-webhook: updated metadata successfully for user ${userId}. No credit changes applied.`);
+      console.log(`ls-webhook: subscription_updated — synced metadata for user ${userId}. No credit changes applied.`);
       return jsonResponse({ received: true }, { status: 200 });
     }
 
@@ -617,11 +633,32 @@ serve(async (req: Request) => {
     if (eventName.toLowerCase() === "subscription_payment_success") {
       // CRITICAL: subscription_payment_success fires alongside subscription_created
       // for the INITIAL payment. We already granted credits on subscription_created.
-      // We MUST NOT double-grant.
+      // We MUST NOT double-grant on the initial payment.
+      //
+      // DUAL GUARD strategy (immune to LS API inconsistencies):
+      //   1. Primary:  billing_reason === "initial" (set by LS when available)
+      //   2. Fallback: query webhook_events to confirm subscription_created was
+      //                already processed for this user+variant in the last 2 hrs.
+      //      This covers LS versions/product types where billing_reason is absent.
       const billingReason = payload?.data?.attributes?.billing_reason;
-      
-      if (billingReason === "initial") {
-        console.log(`ls-webhook: ignoring INITIAL payment success — credits already granted on subscription_created`);
+      let isInitialPayment = billingReason === "initial";
+
+      if (!isInitialPayment && variantId) {
+        const { data: recentCreated } = await supabaseAdmin
+          .from("webhook_events")
+          .select("event_id")
+          .eq("event_name", "subscription_created")
+          .eq("user_id", userId)
+          .eq("variant_id", variantId)
+          .gt("processed_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+          .maybeSingle();
+        if (recentCreated) {
+          isInitialPayment = true;
+        }
+      }
+
+      if (isInitialPayment) {
+        console.log(`ls-webhook: ignoring INITIAL payment success (billing_reason=${billingReason ?? "unset"}, sub=${subscriptionId}) — credits already granted on subscription_created`);
         await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
@@ -641,50 +678,15 @@ serve(async (req: Request) => {
         await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
         console.log(`ls-webhook: RENEWAL granted ${variantInfo.credits} LC. Plan: ${variantInfo.plan}. Balance: ${newBalance}`);
       } else {
-        console.error(`ls-webhook: missing or invalid variant_id on renewal event for user ${userId}`);
+        console.error(`[ALERT] ls-webhook: missing or invalid variant_id on RENEWAL for user ${userId}. Verify LS_VARIANT_* secrets!`);
         await recordEvent({ eventId, eventName, userId });
       }
 
       return jsonResponse({ received: true }, { status: 200 });
     }
 
-    // ═════════════════════════════════════════
-    //  EXPIRATION / DELETION — Instant removal
-    // ═════════════════════════════════════════
-    if (isExpiryEvent(eventName)) {
-       console.log(`ls-webhook: explicit ${eventName} event for ${userId}. Invalidating sub ${subscriptionId}.`);
-       if (subscriptionId) {
-         await expireSubscriptionLedgers({ userId, subscriptionId });
-       }
-       await recordEvent({ eventId, eventName, userId });
-       return jsonResponse({ received: true }, { status: 200 });
-    }
-
-    if (isCancellationEvent(eventName)) {
-      console.log(`ls-webhook: explicit cancellation for user ${userId}. Status set to cancelled.`);
-      await setCancelledStatus({ userId });
-      await recordEvent({ eventId, eventName, userId });
-      return jsonResponse({ received: true }, { status: 200 });
-    }
-
-    if (isPaymentFailedEvent(eventName)) {
-      console.log(`ls-webhook: payment failure for user ${userId}. Marking past_due.`);
-      await setPastDueStatus({ userId });
-      await recordEvent({ eventId, eventName, userId });
-      return jsonResponse({ received: true }, { status: 200 });
-    }
-
-    if (isRefundEvent(eventName)) {
-      console.log(`ls-webhook: refund event ${eventName} for user ${userId}. Targetting sub ${subscriptionId}.`);
-      if (subscriptionId) {
-        await expireSubscriptionLedgers({ userId, subscriptionId });
-      }
-      await recordEvent({ eventId, eventName, userId });
-      return jsonResponse({ received: true }, { status: 200 });
-    }
-
     // ── Unhandled event types (acknowledge to prevent retries) ──
-    console.log(`ls-webhook: unhandled or standard-ignore event ${eventName}`);
+    console.log(`ls-webhook: unhandled or standard-ignore event ${eventName} for user ${userId}`);
     await recordEvent({ eventId, eventName, userId });
     return jsonResponse({ received: true }, { status: 200 });
   } catch (err) {

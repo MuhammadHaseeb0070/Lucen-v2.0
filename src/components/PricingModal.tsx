@@ -195,6 +195,22 @@ const PricingModal: React.FC = () => {
             return;
         }
 
+        // Safety confirmation: warn the user if they're about to add a SECOND subscription
+        // (i.e. they're already on a paid plan). This prevents accidental double-billing.
+        const isAlreadyOnPaidPlan =
+            subscriptionStatus === 'active' &&
+            (subscriptionPlan === 'regular' || subscriptionPlan === 'pro');
+
+        if (isAlreadyOnPaidPlan) {
+            const confirmed = window.confirm(
+                `⚠️ You already have an active ${planLabel(subscriptionPlan)} subscription.\n\n` +
+                `Proceeding will ADD a second "${plan.name}" subscription and you will be charged again ($${plan.priceUsd}/mo). ` +
+                `Your existing credits will stack with the new ones.\n\n` +
+                `Are you sure you want to add another package?`
+            );
+            if (!confirmed) return;
+        }
+
         setLoadingTier(tier);
         try {
             const redirectUrl = `${window.location.origin}/chat?subscription_updated=1`;

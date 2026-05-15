@@ -185,6 +185,21 @@ serve(async (req: Request) => {
       );
     }
 
+    // SECURITY: Validate that the requested variant is one of our known configured plans.
+    // This prevents crafted requests from creating checkouts for arbitrary LS products.
+    const KNOWN_VARIANTS = [
+      Deno.env.get("LS_VARIANT_REGULAR")?.replace(/[\"'#\s]/g, ""),
+      Deno.env.get("LS_VARIANT_PRO")?.replace(/[\"'#\s]/g, ""),
+    ].filter(Boolean);
+
+    if (KNOWN_VARIANTS.length > 0 && !KNOWN_VARIANTS.includes(variantNormalized)) {
+      console.error(`ls-checkout: rejected unknown variantId=${variantNormalized} from user=${user.id}`);
+      return jsonResponse(
+        { error: "Invalid variant ID — must match a configured subscription plan." },
+        { status: 400, headers: cors },
+      );
+    }
+
     const redirectUrl =
       typeof body.redirectUrl === "string" && body.redirectUrl.trim()
         ? body.redirectUrl.trim()
