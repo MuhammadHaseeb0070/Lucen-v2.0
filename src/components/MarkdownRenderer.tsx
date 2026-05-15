@@ -104,13 +104,59 @@ const CodeTool = React.memo<{
 CodeTool.displayName = 'CodeTool';
 
 const TableTool = React.memo<{ children: React.ReactNode }>(({ children }) => {
+    const tableRef = React.useRef<HTMLTableElement>(null);
+    const [copied, setCopied] = useState(false);
+
+    const getCsvData = () => {
+        if (!tableRef.current) return '';
+        const rows = Array.from(tableRef.current.querySelectorAll('tr'));
+        return rows.map(row => {
+            const cells = Array.from(row.querySelectorAll('th, td'));
+            return cells.map(cell => {
+                const text = cell.textContent || '';
+                // Escape quotes and wrap in quotes if there's a comma
+                return text.includes(',') || text.includes('"') || text.includes('\n') 
+                    ? `"${text.replace(/"/g, '""')}"` 
+                    : text;
+            }).join(',');
+        }).join('\n');
+    };
+
+    const handleCopy = async () => {
+        const csv = getCsvData();
+        await navigator.clipboard.writeText(csv);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleDownload = () => {
+        const csv = getCsvData();
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `table_export_${Date.now()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div className="powertool-table-wrapper">
             <div className="powertool-table-header">
                 <span className="powertool-table-title">Data Table</span>
+                <div className="powertool-table-actions">
+                    <button className="powertool-btn" onClick={handleDownload} title="Download CSV">
+                        <Download size={13} /> CSV
+                    </button>
+                    <button className="powertool-btn" onClick={handleCopy} title="Copy CSV">
+                        {copied ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                </div>
             </div>
             <div className="powertool-table-container">
-                <table>{children}</table>
+                <table ref={tableRef}>{children}</table>
             </div>
         </div>
     );
