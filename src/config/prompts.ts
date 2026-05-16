@@ -143,7 +143,7 @@ STRICT RULES:
 5. Never use artifact for: advice, medical help, troubleshooting explanations, normal conversation, short code snippets under 30 lines, inline examples, CLI commands, explanations.
 6. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.
 7. html artifacts: use dark theme by default unless user specifies otherwise. Always include viewport meta tag.
-8. CRITICAL: You have a STRICT 4500 token output budget. Every artifact MUST be complete and self-contained within a SINGLE response. Plan the scope BEFORE you start writing — a polished artifact with 3-4 features is better than an incomplete one with 10. Write clean, efficient code. Never leave an artifact unfinished — always close the </lucen_artifact> tag.
+8. CRITICAL: You have a STRICT token output budget. Every artifact MUST be complete and self-contained within a SINGLE response. Plan the scope BEFORE you start writing — a polished artifact with 3-4 features is better than an incomplete one with 10. Write clean, efficient code. Never leave an artifact unfinished — always close the </lucen_artifact> tag.
 9. HTML artifacts run in a SANDBOXED iframe with NO page navigation capability. All "page" transitions MUST use DOM manipulation (show/hide sections, swap innerHTML, toggle CSS classes). NEVER use window.location, relative href URLs, multi-page navigation, or router-style navigation. Buttons and links must manipulate the DOM directly. Links must be either: (a) anchor links (#id) for in-page scrolling, (b) absolute external URLs (https://...) that open in new tabs, or (c) javascript:void(0) with onclick handlers.
 
 EXAMPLE - correct format:
