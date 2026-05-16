@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
@@ -60,6 +60,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [copied, setCopied] = useState(false);
 
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
+    const storeUpdateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
     const isDismissed = useArtifactStore((s) => s.isDismissed);
 
     const parseSerialRef = useRef(0);
@@ -206,13 +207,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         setTimeout(() => setCopied(false), 2000);
     }, [message.content]);
 
-    // Open the artifact workspace when parsing completes (after stream ends).
-    // Since artifact parsing is now deferred until stream completion, this
-    // effect only fires once per artifact — no mid-stream store churn.
+    // Open the artifact workspace when an artifact is first detected AND
+    // stream live content updates so the renderer shows real-time progress.
     const openedRef = useRef(false);
     const artifactsRef = useRef(artifacts);
     artifactsRef.current = artifacts;
     const firstArtifactId = artifacts[0]?.id ?? '';
+    const firstArtifactContent = artifacts[0]?.content ?? '';
+    const firstArtifactIsStreaming = artifacts[0]?.isStreaming ?? false;
     const showGenerationStatus =
         message.generationStatus &&
         !['idle', 'streaming', 'complete', 'partial_saved'].includes(message.generationStatus);
@@ -235,10 +237,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         }
 
         if (!openedRef.current) {
+            // First time seeing this artifact — open the workspace.
             openedRef.current = true;
-            setActiveArtifact({ ...first, isStreaming: false });
+            setActiveArtifact({ ...first, isStreaming: message.isStreaming ?? false });
+        } else if (message.isStreaming && first.content) {
+            // Stream is still running — push live content updates to the
+            // workspace so the renderer shows real-time progress.
+            storeUpdateArtifactContent({ ...first, isStreaming: true });
+        } else if (!message.isStreaming) {
+            // Stream completed — push the final content.
+            storeUpdateArtifactContent({ ...first, isStreaming: false });
         }
-    }, [disableArtifacts, firstArtifactId, setActiveArtifact, isDismissed]);
+    }, [disableArtifacts, firstArtifactId, firstArtifactContent, firstArtifactIsStreaming, message.isStreaming, setActiveArtifact, storeUpdateArtifactContent, isDismissed]);
 
     if (actionsOnly) {
         if (!message.content) return null;
@@ -400,10 +410,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                 </>
             )}
 
-            {message.isTruncated && !message.isStreaming && (
-                <div className="msg-truncated" role="status">
-                    {message.generationStatusDetail?.trim() ||
-                        'Try a narrower question or retry if this still looks cut off.'}
+            {message.isTruncated && !message.isStreaming && artifacts.length === 0 && (
+                <div className="msg-truncated" role="status" style={{ opacity: 0.6, fontSize: '0.82em', marginTop: '0.5em' }}>
+                    Response was cut short.
                 </div>
             )}
 

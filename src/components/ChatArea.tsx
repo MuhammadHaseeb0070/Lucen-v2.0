@@ -362,7 +362,7 @@ const ChatArea: React.FC = () => {
                     isTruncated: truncated || false,
                     generationStatus: truncated ? 'partial_saved' : 'complete',
                     generationStatusDetail: truncated
-                        ? 'Still incomplete after automatic finish passes—try a narrower question or retry.'
+                        ? undefined
                         : 'Response complete',
                 });
                 abortRef.current = null;

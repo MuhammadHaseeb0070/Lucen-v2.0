@@ -19,7 +19,7 @@ interface RendererProps {
 // Heavy preview renders (iframe reload, mermaid compile, SVG parse) are
 // throttled to this interval while the artifact is still streaming. Code view
 // continues to update in real time.
-const STREAMING_PREVIEW_THROTTLE_MS = 5000;
+const STREAMING_PREVIEW_THROTTLE_MS = 1500;
 
 // Custom hook: exposes a "previewContent" that only updates every N ms while
 // `isStreaming` is true. When streaming ends, the final content is flushed
