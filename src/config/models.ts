@@ -71,8 +71,8 @@ const SIDE_OUTPUT_COST_PER_1M = envFloat('VITE_SIDE_CHAT_OUTPUT_COST_PER_1M', 0)
 // ─── Platform budgets (exported for outputBudget + openrouter services) ───
 export const PLATFORM_MAX_STREAM_SECONDS = envInt('VITE_PLATFORM_MAX_STREAM_SECONDS', 140);
 /** Grace passes — set to 0 to disable continuation entirely (one-shot). */
-export const CONTINUATION_MAX_CHUNKS_ARTIFACT = envInt('VITE_CONTINUATION_MAX_CHUNKS_ARTIFACT', 0);
-export const CONTINUATION_MAX_CHUNKS_CHAT = envInt('VITE_CONTINUATION_MAX_CHUNKS_CHAT', 0);
+export const CONTINUATION_MAX_CHUNKS_ARTIFACT = 0;
+export const CONTINUATION_MAX_CHUNKS_CHAT = 0;
 export const ABSOLUTE_OUTPUT_CEILING = envInt('VITE_ABSOLUTE_OUTPUT_CEILING', 4500);
 export const CHAT_OUTPUT_CEILING = envInt('VITE_CHAT_OUTPUT_CEILING', 4500);
 export const ARTIFACT_OUTPUT_CEILING = envInt('VITE_ARTIFACT_OUTPUT_CEILING', 4500);
