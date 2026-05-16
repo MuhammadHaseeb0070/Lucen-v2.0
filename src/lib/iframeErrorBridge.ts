@@ -67,20 +67,57 @@ export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
       var href=el.href;
       if(href==="javascript:void(0)"||href.startsWith("javascript:"))return;
       if(href.startsWith("#"))return;
-      e.preventDefault();
-      e.stopPropagation();
-      try{window.open(href,"_blank","noopener,noreferrer");}catch(_){/*noop*/}
+      /* Allow data: URIs (e.g. download links) */
+      if(href.startsWith("data:"))return;
+      /* Only open absolute http(s) URLs externally; block everything else (relative URLs, about:, etc.) */
+      if(href.match(/^https?:\\/\\//i)){
+        e.preventDefault();
+        e.stopPropagation();
+        try{window.open(href,"_blank","noopener,noreferrer");}catch(_){/*noop*/}
+      } else {
+        /* Relative or non-http URL — block navigation entirely */
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }catch(_){/*noop*/}
   },true);
   /* ── Prevent form-based navigation ── */
   document.addEventListener("submit",function(e){
     try{
       var form=e.target;
-      if(form&&form.tagName==="FORM"&&form.action&&!form.action.startsWith("javascript:")){
-        e.preventDefault();
+      if(form&&form.tagName==="FORM"){
+        var action=form.getAttribute("action")||"";
+        /* Allow javascript: and empty/# actions (in-page handlers) */
+        if(action&&!action.startsWith("javascript:")&&action!=="#"&&action!==""){
+          e.preventDefault();
+        }
       }
     }catch(_){/*noop*/}
   },true);
+  /* ── Block iframe navigation via beforeunload ── */
+  window.addEventListener("beforeunload",function(e){
+    try{e.preventDefault();e.returnValue="";}catch(_){/*noop*/}
+  });
+  /* ── Intercept history API to prevent SPA-style navigation issues ── */
+  try{
+    var origPushState=history.pushState.bind(history);
+    var origReplaceState=history.replaceState.bind(history);
+    history.pushState=function(){try{return origPushState.apply(history,arguments);}catch(_){/*noop*/}};
+    history.replaceState=function(){try{return origReplaceState.apply(history,arguments);}catch(_){/*noop*/}};
+  }catch(_){/*noop*/}
+  /* ── Intercept window.open for relative URLs ── */
+  try{
+    var origOpen=window.open.bind(window);
+    window.open=function(url){
+      try{
+        if(url&&typeof url==="string"&&url.match(/^https?:\\/\\//i)){
+          return origOpen.apply(window,arguments);
+        }
+        /* Block non-absolute URLs */
+        return null;
+      }catch(_){return null;}
+    };
+  }catch(_){/*noop*/}
   /* ── Error capture ── */
   window.addEventListener("error",function(e){
     try{

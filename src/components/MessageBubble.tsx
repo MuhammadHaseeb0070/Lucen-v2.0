@@ -97,13 +97,25 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             return;
         }
 
-        // During streaming: show raw content, skip expensive artifact parsing.
-        // Artifacts are only extracted once the stream completes.
+        // During streaming: run parseArtifacts on the main thread so the
+        // <lucen_artifact> tag is stripped from the visible chat text as
+        // soon as it appears. The regex is fast enough for real-time; we
+        // only skip the Web Worker path during streaming.
         if (message.isStreaming) {
             setWorkerParsing(false);
+            const next = parseArtifacts(content, message.id, false);
             setParsed((prev) => {
-                if (prev?.cleanContent === content && prev.artifacts === EMPTY_ARTIFACTS) return prev;
-                return { cleanContent: content, artifacts: EMPTY_ARTIFACTS };
+                if (
+                    prev &&
+                    prev.cleanContent === next.cleanContent &&
+                    prev.artifacts.length === next.artifacts.length &&
+                    (prev.artifacts.length === 0 ||
+                        (prev.artifacts[0]?.id === next.artifacts[0]?.id &&
+                            prev.artifacts[0]?.content === next.artifacts[0]?.content))
+                ) {
+                    return prev;
+                }
+                return next;
             });
             return;
         }

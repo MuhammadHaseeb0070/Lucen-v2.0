@@ -34,7 +34,8 @@ const ChatArea: React.FC = () => {
 
     const {
         createConversation,
-        addMessage,
+        addMessageLocal,
+        addMessageRemote,
         updateMessage,
         deleteMessagePair,
         getContextMessages,
@@ -46,7 +47,8 @@ const ChatArea: React.FC = () => {
     } = useChatStore(
         useShallow((s) => ({
             createConversation: s.createConversation,
-            addMessage: s.addMessage,
+            addMessageLocal: s.addMessageLocal,
+            addMessageRemote: s.addMessageRemote,
             updateMessage: s.updateMessage,
             deleteMessagePair: s.deleteMessagePair,
             getContextMessages: s.getContextMessages,
@@ -474,22 +476,45 @@ const ChatArea: React.FC = () => {
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 
+        // Optimistic UI: add messages to local store SYNCHRONOUSLY so the
+        // user/assistant bubbles appear instantly. DB writes happen in the
+        // background and never block the stream.
+        let isFirstMessage = false;
+
+        const userMsg = {
+            // eslint-disable-next-line react-hooks/purity
+            id: uuidv4(), role: 'user' as const, content, timestamp: Date.now(),
+            attachments: attachments || undefined,
+        };
+
         if (!opts?.hideUserMessage) {
-            await addMessage(convId, {
-                // eslint-disable-next-line react-hooks/purity
-                id: uuidv4(), role: 'user', content, timestamp: Date.now(),
-                attachments: attachments || undefined,
-            });
+            const isFirst = addMessageLocal(convId, userMsg);
+            if (isFirst) isFirstMessage = true;
         }
 
         const assistantMsgId = uuidv4();
-        await addMessage(convId, {
-            id: assistantMsgId, role: 'assistant', content: '', reasoning: '',
+        const assistantMsg = {
+            id: assistantMsgId, role: 'assistant' as const, content: '', reasoning: '',
             // eslint-disable-next-line react-hooks/purity
             timestamp: Date.now(), isStreaming: true, isReasoningStreaming: model.supportsReasoning,
-            generationStatus: 'streaming',
-        });
+            generationStatus: 'streaming' as const,
+        };
+        const isFirst2 = addMessageLocal(convId, assistantMsg);
+        if (isFirst2) isFirstMessage = true;
 
+        // Fire DB persistence in background (fire-and-forget). The user
+        // message is persisted first; the assistant row is delayed by a
+        // single tick so its server-side created_at is always later,
+        // preserving correct bubble order on page refresh.
+        if (!opts?.hideUserMessage) {
+            addMessageRemote(convId, userMsg, isFirstMessage);
+            // Delay assistant row so user row commits with an earlier created_at.
+            setTimeout(() => addMessageRemote(convId, assistantMsg, false), 0);
+        } else {
+            addMessageRemote(convId, assistantMsg, isFirstMessage);
+        }
+
+        // Start streaming immediately — no await on DB.
         await doStreamResponse(convId, assistantMsgId);
     };
 

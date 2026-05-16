@@ -208,6 +208,10 @@ interface ChatStore {
     // Message actions
     /** Resolves when the message row is persisted (or no-op if offline). Await the user turn before queuing the assistant to preserve DB `created_at` order. */
     addMessage: (convId: string, message: Message) => Promise<void>;
+    /** Synchronously adds a message to local state only (no DB). Returns true if this was the first message in the conversation. */
+    addMessageLocal: (convId: string, message: Message) => boolean;
+    /** Persists a message to DB in the background. Fire-and-forget with error logging. */
+    addMessageRemote: (convId: string, message: Message, isFirstMessage: boolean) => void;
     updateMessage: (convId: string, msgId: string, updates: Partial<Message>) => void;
     deleteMessagePair: (convId: string, userMsgId: string) => void;
     getActiveConversation: () => Conversation | undefined;
@@ -382,60 +386,46 @@ export const useChatStore = create<ChatStore>()(
                 }
             },
 
-            addMessage: (convId, message) => {
+            // ─── Optimistic split: local (sync) + remote (async) ────────
+            // addMessageLocal adds to Zustand immediately (sync). Returns
+            // true if this was the conversation's first message.
+            addMessageLocal: (convId, message) => {
                 let isFirstMessage = false;
-
                 set((state) => ({
                     conversations: state.conversations.map((c) => {
                         if (c.id !== convId) return c;
-
-                        const isFirst = c.messages.length === 0;
-                        if (isFirst) {
-                            isFirstMessage = true;
-                        }
-
-                        const messages = [...c.messages, message];
-                        // Leave the title as 'New Chat' for now — the AI title
-                        // generator will produce a proper 1-3 word title after
-                        // the first assistant reply completes. If it fails we
-                        // still keep 'New Chat' (safer than a truncated prompt).
-                        return { ...c, messages, updatedAt: Date.now() };
+                        if (c.messages.length === 0) isFirstMessage = true;
+                        return { ...c, messages: [...c.messages, message], updatedAt: Date.now() };
                     }),
                 }));
+                return isFirstMessage;
+            },
 
-                if (!hasActiveSessionSync()) {
-                    return Promise.resolve();
-                }
-
-                // IMPORTANT: this promise must be awaited for the *user* message before
-                // adding a streaming *assistant* row. If both run in parallel, the
-                // assistant upsert can commit first with an earlier `created_at`,
-                // so after refresh ORDER BY created_at shows the reply above the
-                // request (inverted bubble order).
-                return (async () => {
+            // addMessageRemote persists to Supabase in the background.
+            // Fire-and-forget: errors are logged but never block the UI.
+            addMessageRemote: (convId, message, isFirstMessage) => {
+                if (!hasActiveSessionSync()) return;
+                (async () => {
                     try {
                         if (isFirstMessage) {
                             const conv = get().conversations.find((c) => c.id === convId);
                             const currentTitle = conv?.title || 'New Chat';
                             await db.createConversation(convId, currentTitle);
                         }
-
                         if (message.isStreaming) {
                             await db.upsertStreamingMessage(convId, message);
                             return;
                         }
                         await db.saveMessage(convId, message);
 
-                        // RAG embeds: fire-and-forget (do not block the returned promise)
+                        // RAG embeds: fire-and-forget
                         if (message.attachments && message.attachments.length > 0) {
                             const { data: { session } } = await supabase!.auth.getSession();
                             if (session?.access_token) {
                                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
                                 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
                                 for (const att of message.attachments) {
                                     const contentToEmbed = att.textContent || att.aiDescription;
-
                                     if (contentToEmbed && contentToEmbed.length > 200) {
                                         const embedRequestId =
                                             typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -455,7 +445,101 @@ export const useChatStore = create<ChatStore>()(
                                             endpoint: embedEndpoint,
                                             request: embedBody,
                                         });
+                                        fetch(embedEndpoint, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'Authorization': `Bearer ${session.access_token}`,
+                                                'apikey': anonKey || '',
+                                            },
+                                            body: JSON.stringify(embedBody),
+                                        })
+                                            .then(async (r) => {
+                                                const text = await r.text().catch(() => '');
+                                                finalizeEmbed({
+                                                    status: r.status,
+                                                    response: text.slice(0, 4000),
+                                                    error: r.ok ? undefined : `HTTP ${r.status}`,
+                                                });
+                                            })
+                                            .catch((err) => {
+                                                console.error('[RAG Embed] Failed:', err);
+                                                finalizeEmbed({
+                                                    error: err instanceof Error ? err.message : 'unknown',
+                                                });
+                                            });
+                                    }
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.error('[Sync] Error saving message to Supabase:', err);
+                    }
+                })();
+            },
 
+            // Original addMessage kept for backward compatibility (calls both).
+            addMessage: (convId, message) => {
+                let isFirstMessage = false;
+
+                set((state) => ({
+                    conversations: state.conversations.map((c) => {
+                        if (c.id !== convId) return c;
+
+                        const isFirst = c.messages.length === 0;
+                        if (isFirst) {
+                            isFirstMessage = true;
+                        }
+
+                        const messages = [...c.messages, message];
+                        return { ...c, messages, updatedAt: Date.now() };
+                    }),
+                }));
+
+                if (!hasActiveSessionSync()) {
+                    return Promise.resolve();
+                }
+
+                return (async () => {
+                    try {
+                        if (isFirstMessage) {
+                            const conv = get().conversations.find((c) => c.id === convId);
+                            const currentTitle = conv?.title || 'New Chat';
+                            await db.createConversation(convId, currentTitle);
+                        }
+
+                        if (message.isStreaming) {
+                            await db.upsertStreamingMessage(convId, message);
+                            return;
+                        }
+                        await db.saveMessage(convId, message);
+
+                        if (message.attachments && message.attachments.length > 0) {
+                            const { data: { session } } = await supabase!.auth.getSession();
+                            if (session?.access_token) {
+                                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                                const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                                for (const att of message.attachments) {
+                                    const contentToEmbed = att.textContent || att.aiDescription;
+                                    if (contentToEmbed && contentToEmbed.length > 200) {
+                                        const embedRequestId =
+                                            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                                                ? crypto.randomUUID()
+                                                : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                                        const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
+                                        const embedBody = {
+                                            text: contentToEmbed,
+                                            file_name: att.name,
+                                            message_id: message.id,
+                                            conversation_id: convId,
+                                            request_id: embedRequestId,
+                                        };
+                                        const finalizeEmbed = captureCall({
+                                            id: embedRequestId,
+                                            kind: 'embed',
+                                            endpoint: embedEndpoint,
+                                            request: embedBody,
+                                        });
                                         fetch(embedEndpoint, {
                                             method: 'POST',
                                             headers: {

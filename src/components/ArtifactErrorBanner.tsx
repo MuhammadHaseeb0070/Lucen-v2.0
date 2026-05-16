@@ -68,7 +68,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
       lines.push('Fix the following runtime error in this HTML artifact.');
       lines.push('');
       lines.push('Environment: sandboxed iframe (allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals)');
-      lines.push('Constraints: No Node.js, no filesystem, no require(), no npm imports, no cross-origin localStorage. CDN script tags are fine.');
+      lines.push('Constraints: No Node.js, no filesystem, no require(), no npm imports, no cross-origin localStorage. CDN script tags are fine. All page navigation is blocked - use DOM manipulation (show/hide sections, swap innerHTML) instead of window.location or relative links.');
       lines.push(`Error message: ${runtimeError.message}`);
       // Map iframe line number back to artifact source line by subtracting
       // the injected error-bridge script lines.
@@ -79,19 +79,6 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
       if (runtimeError.stack) {
         lines.push('Stack trace (first 8 lines):');
         lines.push(runtimeError.stack.split('\n').slice(0, 8).join('\n'));
-      }
-      // Include the actual artifact source code around the error line so
-      // the model can see what it needs to fix (not just an error message).
-      if (sourceLine && artifact.content) {
-        const sourceLines = artifact.content.split('\n');
-        const start = Math.max(0, sourceLine - 6);
-        const end = Math.min(sourceLines.length, sourceLine + 5);
-        const excerpt = sourceLines.slice(start, end)
-          .map((l, i) => `${start + i + 1}${start + i + 1 === sourceLine ? ' >>>' : '    '} | ${l}`)
-          .join('\n');
-        lines.push('');
-        lines.push(`Source context (lines ${start + 1}-${end}):`);
-        lines.push(excerpt);
       }
     } else if (origin === 'mermaid') {
       // Mermaid diagram syntax error.
@@ -122,9 +109,26 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
       }
     }
 
+    // Include the FULL artifact source so the model can see and fix the code.
+    // Truncate at 15K chars to avoid blowing the context window.
+    if (artifact.content) {
+      const MAX_SOURCE_CHARS = 15_000;
+      const src = artifact.content.length > MAX_SOURCE_CHARS
+        ? artifact.content.slice(0, MAX_SOURCE_CHARS) + '\n... [truncated]'
+        : artifact.content;
+      lines.push('');
+      lines.push('=== FULL ARTIFACT SOURCE CODE (fix and re-output this) ===');
+      lines.push(src);
+      lines.push('=== END SOURCE ===');
+    }
+
     lines.push('');
-    lines.push('Regenerate the full artifact with the smallest possible changes that resolve this error.');
+    lines.push(`IMPORTANT: Output the COMPLETE fixed artifact wrapped in <lucen_artifact type="${artifact.type}" title="${artifact.title}">...</lucen_artifact> tags. Do not explain the changes - just output the corrected artifact.`);
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);
+
+    // Clear the current error so the banner disappears and the new artifact
+    // gets a clean rendering slate.
+    setRuntimeError(artifact.id, null);
 
     setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: true });
   };

@@ -144,8 +144,9 @@ STRICT RULES:
 6. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.
 7. html artifacts: use dark theme by default unless user specifies otherwise. Always include viewport meta tag.
 8. If the user's requested artifact is too large to complete cleanly in one response, produce a smaller but working version that satisfies the core request. If that is not possible, explain briefly what smaller scope you can generate. Do not rely on continuation.
+9. HTML artifacts run in a SANDBOXED iframe with NO page navigation capability. All "page" transitions MUST use DOM manipulation (show/hide sections, swap innerHTML, toggle CSS classes). NEVER use window.location, relative href URLs, multi-page navigation, or router-style navigation. Buttons and links must manipulate the DOM directly. Links must be either: (a) anchor links (#id) for in-page scrolling, (b) absolute external URLs (https://...) that open in new tabs, or (c) javascript:void(0) with onclick handlers.
 
-EXAMPLE — correct format:
+EXAMPLE - correct format:
 <lucen_artifact type="html" title="Todo App">
 <!DOCTYPE html>
 <html>...complete code...</html>
