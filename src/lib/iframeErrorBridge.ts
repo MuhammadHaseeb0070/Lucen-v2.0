@@ -95,9 +95,7 @@ export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
     }catch(_){/*noop*/}
   },true);
   /* ── Block iframe navigation via beforeunload ── */
-  window.addEventListener("beforeunload",function(e){
-    try{e.preventDefault();e.returnValue="";}catch(_){/*noop*/}
-  });
+  /* Removed: Chrome blocks beforeunload on frames without user gesture anyway, causing console spam. */
   /* ── Intercept history API to prevent SPA-style navigation issues ── */
   try{
     var origPushState=history.pushState.bind(history);

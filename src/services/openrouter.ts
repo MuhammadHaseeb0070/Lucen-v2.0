@@ -746,7 +746,7 @@ export async function streamChat(
             {
                 role: 'system',
                 content:
-                    "[System Note: Plan the answer so it naturally finishes in this reply—pick depth and breadth you can carry to a clear ending (no mid-sentence cutoffs). If the ask is too large for one pass, deliver one complete useful slice and state that scope in plain language. Answer the user's real need directly. Do not create an artifact unless they explicitly want a renderable or downloadable deliverable. Never mention tokens, budgets, limits, or chunking.]",
+                    "[System Note: You have a STRICT 4500 token budget for this response. Plan your answer so it naturally finishes in this budget—pick depth and breadth you can carry to a clear ending (no mid-sentence cutoffs). If the ask is too large for one pass, deliver one complete useful slice and state that scope in plain language. Answer the user's real need directly. For artifacts: build a COMPLETE, working version — choose a scope you can finish, not one you'll have to truncate. Do not create an artifact unless they explicitly want a renderable or downloadable deliverable. Never mention tokens, budgets, limits, or chunking.]",
             },
         ];
 
