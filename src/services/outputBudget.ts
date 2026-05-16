@@ -116,7 +116,7 @@ export function getPerCallOutput(mode: ResponseMode, model: ModelInfo): number {
     const ctxCap = Math.max(1, (model.contextWindow || wallClockCap) - SAFETY_HEADROOM);
 
     const productCap = mode === 'artifact' ? ARTIFACT_OUTPUT_CEILING : CHAT_OUTPUT_CEILING;
-    const raw = Math.min(wallClockCap, modelCap, ABSOLUTE_CEILING, productCap, ctxCap);
+    const raw = Math.min(modelCap, ABSOLUTE_CEILING, productCap, ctxCap);
     return Math.max(MIN_PER_CALL_OUTPUT, raw);
 }
 
