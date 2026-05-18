@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { highlightCode } from '../workers/highlighterWorkerClient';
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
 import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
@@ -500,13 +499,31 @@ const SafeHtml: React.FC<{ html: string; className?: string }> = ({ html, classN
 
 const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content, language, isStreaming }) => {
   const displayContent = useThrottledContent(content, !!isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
+  const [html, setHtml] = useState<string>('');
+  const [isError, setIsError] = useState(false);
+
+  useEffect(() => {
+    let isCancelled = false;
+    highlightCode(displayContent, language || 'text')
+      .then((result) => {
+        if (!isCancelled) {
+          setHtml(result);
+          setIsError(false);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) setIsError(true);
+      });
+    return () => { isCancelled = true; };
+  }, [displayContent, language]);
   
   return (
     <div className="artifact-code-fallback" data-lenis-prevent="true">
-      <SyntaxHighlighter style={oneDark} language={language || 'text'} PreTag="div" wrapLongLines
-        customStyle={{ margin: 0, borderRadius: '8px', fontSize: '13px', lineHeight: '1.6', padding: '16px' }}>
-        {displayContent}
-      </SyntaxHighlighter>
+      {html && !isError ? (
+         <div dangerouslySetInnerHTML={{ __html: html }} className="shiki-container" />
+      ) : (
+         <div className="shiki-container shiki-fallback-text">{displayContent}</div>
+      )}
     </div>
   );
 };

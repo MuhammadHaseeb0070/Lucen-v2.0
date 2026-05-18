@@ -4,8 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeKatex from 'rehype-katex';
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/light-async';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { highlightCode } from '../workers/highlighterWorkerClient';
 import { Copy, Check, Download, ExternalLink, TriangleAlert, CheckCircle, AlertOctagon, Terminal, Info } from 'lucide-react';
 import { highlightChildren } from '../lib/searchHighlight';
 import { useArtifactStore } from '../store/artifactStore';
@@ -21,7 +20,16 @@ const CodeTool = React.memo<{
 }>(({ language, value }) => {
     const [copied, setCopied] = useState(false);
     const [wrapped, setWrapped] = useState(false);
+    const [html, setHtml] = useState<string>('');
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
+
+    React.useEffect(() => {
+        let isCancelled = false;
+        highlightCode(value, language || 'text').then((res) => {
+            if (!isCancelled) setHtml(res);
+        }).catch(() => {});
+        return () => { isCancelled = true; };
+    }, [value, language]);
 
     const handleCopy = async () => {
         await navigator.clipboard.writeText(value);
@@ -81,22 +89,13 @@ const CodeTool = React.memo<{
                     </button>
                 </div>
             </div>
-            <SyntaxHighlighter
-                style={oneDark}
-                language={language || 'text'}
-                PreTag="div"
-                wrapLines={wrapped}
-                wrapLongLines={wrapped}
-                customStyle={{
-                    margin: 0,
-                    borderRadius: '0 0 8px 8px',
-                    fontSize: '13px',
-                    lineHeight: '1.5',
-                    background: 'transparent'
-                }}
-            >
-                {value}
-            </SyntaxHighlighter>
+            <div className={`powertool-code-body ${wrapped ? 'powertool-code-body--wrapped' : ''}`}>
+                {html ? (
+                    <div dangerouslySetInnerHTML={{ __html: html }} className="shiki-container shiki-container--markdown" />
+                ) : (
+                    <div className="shiki-container shiki-container--markdown shiki-fallback-text">{value}</div>
+                )}
+            </div>
         </div>
     );
 });
