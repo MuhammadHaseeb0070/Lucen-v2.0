@@ -48,9 +48,18 @@ class SmoothScrollErrorBoundary extends Component<Props, State> {
 
 export const SmoothScroll = forwardRef<HTMLDivElement, Props>(
     ({ children, className, style, disabled }, ref) => {
+        const setLenisRef = (lenisInstance: any) => {
+            const wrapper = lenisInstance?.wrapper || null;
+            if (typeof ref === 'function') {
+                ref(wrapper);
+            } else if (ref) {
+                ref.current = wrapper;
+            }
+        };
+
         return (
             <SmoothScrollErrorBoundary className={className} style={style} disabled={disabled}>
-                <ReactLenis className={className} style={style} ref={ref} options={{ autoRaf: true, syncTouch: true }}>
+                <ReactLenis className={className} style={style} ref={setLenisRef} options={{ autoRaf: true, syncTouch: true }}>
                     {children}
                 </ReactLenis>
             </SmoothScrollErrorBoundary>
