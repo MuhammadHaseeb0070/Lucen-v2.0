@@ -1,4 +1,5 @@
-import React, { Component, ReactNode, forwardRef } from 'react';
+import React, { Component, forwardRef } from 'react';
+import type { ReactNode } from 'react';
 import { ReactLenis } from 'lenis/react';
 
 interface Props {
