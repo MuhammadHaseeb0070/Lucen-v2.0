@@ -63,21 +63,20 @@ export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
     try{
       var el=e.target;
       while(el&&el.tagName!=="A"){el=el.parentElement;}
-      if(!el||!el.href)return;
-      var href=el.href;
-      if(href==="javascript:void(0)"||href.startsWith("javascript:"))return;
-      if(href.startsWith("#"))return;
+      if(!el)return;
+      var attrHref=el.getAttribute("href");
+      if(attrHref===null)return;
+      /* Allow empty links, anchors, hash routes and inline javascript */
+      if(attrHref===""||attrHref==="#"||attrHref.indexOf("#")===0||attrHref.indexOf("javascript:")===0)return;
       /* Allow data: URIs (e.g. download links) */
-      if(href.startsWith("data:"))return;
-      /* Only open absolute http(s) URLs externally; block everything else (relative URLs, about:, etc.) */
-      if(href.match(/^https?:\\/\\//i)){
-        e.preventDefault();
-        e.stopPropagation();
-        try{window.open(href,"_blank","noopener,noreferrer");}catch(_){/*noop*/}
+      if(attrHref.indexOf("data:")===0)return;
+      /* Only open absolute http(s) URLs externally; block relative navigations to protect parent frame */
+      e.preventDefault();
+      e.stopPropagation();
+      if(attrHref.match(/^https?:\\/\\//i)){
+        try{window.open(attrHref,"_blank","noopener,noreferrer");}catch(_){/*noop*/}
       } else {
-        /* Relative or non-http URL — block navigation entirely */
-        e.preventDefault();
-        e.stopPropagation();
+        console.warn("Blocked in-iframe navigation to relative URL: "+attrHref);
       }
     }catch(_){/*noop*/}
   },true);
@@ -87,9 +86,11 @@ export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
       var form=e.target;
       if(form&&form.tagName==="FORM"){
         var action=form.getAttribute("action")||"";
-        /* Allow javascript: and empty/# actions (in-page handlers) */
-        if(action&&!action.startsWith("javascript:")&&action!=="#"&&action!==""){
+        /* Block form submissions that would navigate the iframe to relative paths */
+        if(!action.match(/^https?:\\/\\//i)&&action.indexOf("javascript:")!==0){
           e.preventDefault();
+          e.stopPropagation();
+          console.warn("Blocked in-iframe form submission to: "+action);
         }
       }
     }catch(_){/*noop*/}

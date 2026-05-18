@@ -3,7 +3,6 @@ import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, D
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
-import ArtifactErrorBanner from './ArtifactErrorBanner';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
@@ -360,7 +359,6 @@ const ArtifactWorkspace: React.FC = () => {
             title={activeArtifact.title}
           />
         )}
-        <ArtifactErrorBanner artifact={activeArtifact} />
         <ArtifactRenderer
           content={activeArtifact.content}
           title={activeArtifact.title}

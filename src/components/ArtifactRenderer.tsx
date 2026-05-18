@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X } from 'lucide-react';
 import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
@@ -134,6 +134,7 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
+  const runtimeError = useArtifactStore((s) => s.runtimeErrors[artifactId || ''] ?? null);
 
   const srcDoc = useMemo(() => {
     const trimmed = previewContent.trim();
@@ -192,7 +193,7 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   const isFramed = !!vpWidth;
 
   return (
-    <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`} style={{ height: '100%' }}>
+    <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`} style={{ height: '100%', position: 'relative' }}>
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
@@ -201,6 +202,84 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
         style={isFramed ? { width: vpWidth!, maxWidth: '100%', height: '100%' } : { width: '100%', height: '100%', border: 'none' }}
         title="HTML Preview"
       />
+      {runtimeError && (
+        <div className="iframe-runtime-error-badge">
+          <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }} />
+          <div className="iframe-runtime-error-content">
+            <div className="iframe-runtime-error-title">
+              Preview Runtime Error <span style={{ opacity: 0.6 }}>· {runtimeError.sourceOrigin || 'iframe'}</span>
+            </div>
+            <div className="iframe-runtime-error-msg" title={runtimeError.message}>
+              {runtimeError.message}
+            </div>
+          </div>
+          <button 
+            type="button"
+            className="iframe-runtime-error-close" 
+            onClick={() => artifactId && setRuntimeError(artifactId, null)}
+            title="Dismiss error"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+      <style>{`
+        .iframe-runtime-error-badge {
+          position: absolute;
+          bottom: 16px;
+          left: 16px;
+          right: 16px;
+          background: var(--bg-surface);
+          border: 1px solid var(--divider);
+          border-left: 4px solid #ef4444;
+          border-radius: var(--r-md);
+          padding: 10px 14px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          z-index: 50;
+          animation: iframeSlideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .iframe-runtime-error-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .iframe-runtime-error-title {
+          font-size: 0.76rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: 2px;
+        }
+        .iframe-runtime-error-msg {
+          font-size: 0.7rem;
+          color: var(--text-secondary);
+          font-family: monospace;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .iframe-runtime-error-close {
+          background: none;
+          border: none;
+          color: var(--text-tertiary);
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.12s var(--ease), color 0.12s var(--ease);
+        }
+        .iframe-runtime-error-close:hover {
+          background: var(--bg-surface-hover);
+          color: var(--text-primary);
+        }
+        @keyframes iframeSlideUp {
+          from { transform: translateY(10px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };
