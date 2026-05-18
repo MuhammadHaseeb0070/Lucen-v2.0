@@ -20,6 +20,7 @@ import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { isAdminUser } from '../config/admin';
 import { useArtifactStore } from '../store/artifactStore';
+import { SmoothScroll } from './SmoothScroll';
 
 // Sidebar-specific conversation metadata (no message bodies).
 interface ConvMeta { id: string; title: string; updatedAt: number; }
@@ -201,7 +202,7 @@ const Sidebar: React.FC = () => {
                 </div>
             </div>
 
-            <div className="sidebar-chat-list">
+            <SmoothScroll className="sidebar-chat-list">
                 {chatsLoading ? (
                     <div className="sidebar-chat-skeleton-container" style={{ padding: '0 12px' }}>
                         {[1, 2, 3].map((i) => (
@@ -342,7 +343,7 @@ const Sidebar: React.FC = () => {
                         </div>
                     ))
                 )}
-            </div>
+            </SmoothScroll>
 
             {/* Admin Dashboard Access */}
             {!sidebarCollapsed && isAdmin && (

@@ -18,6 +18,7 @@ import type { FileAttachment, Message } from '../types';
 import { useUIStore } from '../store/uiStore';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
+import { SmoothScroll } from './SmoothScroll';
 
 // Patch/update flow removed: artifacts are generated from scratch only.
 
@@ -1207,7 +1208,7 @@ const ChatArea: React.FC = () => {
                     </div>
                 </div>
             )}
-            <div className="messages-container" ref={messagesContainerRef}>
+            <SmoothScroll className="messages-container" ref={messagesContainerRef}>
                 {isMessageLoading ? (
                     <div className="messages-list">
                         {[1, 2, 3].map((i) => (
@@ -1311,7 +1312,7 @@ const ChatArea: React.FC = () => {
                         <div ref={messagesEndRef} />
                     </div>
                 )}
-            </div>
+            </SmoothScroll>
             {showScrollBtn && (
                 <button className="scroll-bottom-btn" onClick={scrollToBottom}><ArrowDown size={18} /></button>
             )}

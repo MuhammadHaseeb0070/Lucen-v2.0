@@ -6,6 +6,7 @@ import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
+import { SmoothScroll } from './SmoothScroll';
 
 interface RendererProps {
   content: string;
@@ -498,12 +499,12 @@ const SafeHtml: React.FC<{ html: string; className?: string }> = ({ html, classN
 // ── Code Fallback ──
 
 const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content, language }) => (
-  <div className="artifact-code-fallback">
+  <SmoothScroll className="artifact-code-fallback">
     <SyntaxHighlighter style={oneDark} language={language || 'text'} PreTag="div" wrapLongLines
       customStyle={{ margin: 0, borderRadius: '8px', fontSize: '13px', lineHeight: '1.6', padding: '16px' }}>
       {content}
     </SyntaxHighlighter>
-  </div>
+  </SmoothScroll>
 );
 
 // ── File Renderer ──

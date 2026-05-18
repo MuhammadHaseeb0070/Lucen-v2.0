@@ -20,6 +20,7 @@ import { streamChat } from '../services/openrouter';
 import { SIDE_CHAT_SYSTEM_PROMPT } from '../config/prompts';
 import type { Message, FileAttachment } from '../types';
 import Logo from './Logo';
+import { SmoothScroll } from './SmoothScroll';
 
 const SideChatPanel: React.FC = () => {
     const {
@@ -352,7 +353,7 @@ const SideChatPanel: React.FC = () => {
                 )}
 
                 {/* Messages */}
-                <div className="side-chat-messages" ref={messagesContainerRef}>
+                <SmoothScroll className="side-chat-messages" ref={messagesContainerRef}>
                     {messages.length === 0 ? (
                         <div className="side-chat-empty">
                             <Minimize2 size={24} />
@@ -442,7 +443,7 @@ const SideChatPanel: React.FC = () => {
                             <div ref={messagesEndRef} />
                         </div>
                     )}
-                </div>
+                </SmoothScroll>
 
                 {/* Selection menu for side chat */}
                 <SelectionMenu
