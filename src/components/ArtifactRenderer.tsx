@@ -336,7 +336,7 @@ const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false, ar
           <AlertTriangle size={16} /><span>SVG preview failed, showing source code</span>
           <span className="artifact-render-error-detail">{renderError}</span>
         </div>
-        <CodeFallback content={content} language="xml" />
+        <CodeFallback content={content} language="xml" isStreaming={isStreaming} />
       </div>
     );
   }
@@ -475,7 +475,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
         <div className="artifact-render-error-banner">
           <AlertTriangle size={16} /><span>Diagram syntax not fully supported, showing source</span>
         </div>
-        <CodeFallback content={content} language="mermaid" />
+        <CodeFallback content={content} language="mermaid" isStreaming={isStreaming} />
       </div>
     );
   }
@@ -498,19 +498,23 @@ const SafeHtml: React.FC<{ html: string; className?: string }> = ({ html, classN
 
 // ── Code Fallback ──
 
-const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content, language }) => (
-  <SmoothScroll className="artifact-code-fallback">
-    <SyntaxHighlighter style={oneDark} language={language || 'text'} PreTag="div" wrapLongLines
-      customStyle={{ margin: 0, borderRadius: '8px', fontSize: '13px', lineHeight: '1.6', padding: '16px' }}>
-      {content}
-    </SyntaxHighlighter>
-  </SmoothScroll>
-);
+const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content, language, isStreaming }) => {
+  const displayContent = useThrottledContent(content, !!isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
+  
+  return (
+    <div className="artifact-code-fallback" data-lenis-prevent="true">
+      <SyntaxHighlighter style={oneDark} language={language || 'text'} PreTag="div" wrapLongLines
+        customStyle={{ margin: 0, borderRadius: '8px', fontSize: '13px', lineHeight: '1.6', padding: '16px' }}>
+        {displayContent}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
 
 // ── File Renderer ──
 // Renders raw file contents with a download button and uses the artifact title
 // (or filename) as the download name.
-const FileRenderer: React.FC<RendererProps> = ({ content, title }) => {
+const FileRenderer: React.FC<RendererProps> = ({ content, title, isStreaming }) => {
   const filename = (title || 'download.txt').trim();
 
   const handleDownload = () => {
@@ -534,7 +538,7 @@ const FileRenderer: React.FC<RendererProps> = ({ content, title }) => {
           <span>Download</span>
         </button>
       </div>
-      <CodeFallback content={content} language="text" />
+      <CodeFallback content={content} language="text" isStreaming={isStreaming} />
     </div>
   );
 };
@@ -565,7 +569,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
   if (viewMode === 'code')
-    return <CodeFallback content={content} language={LANGUAGE_MAP[type] || 'text'} />;
+    return <CodeFallback content={content} language={LANGUAGE_MAP[type] || 'text'} isStreaming={isStreaming} />;
 
   const Renderer = RENDERERS[type];
   const language = LANGUAGE_MAP[type] || 'text';
@@ -579,7 +583,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
   return (
     <div className="artifact-render-error">
       <div className="artifact-render-error-banner"><AlertTriangle size={16} /><span>Unsupported type "{type}"</span></div>
-      <CodeFallback content={content} language={language} />
+      <CodeFallback content={content} language={language} isStreaming={isStreaming} />
     </div>
   );
 };
