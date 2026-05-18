@@ -53,7 +53,7 @@ const ENVELOPE_KEY = '__lucen_iframe_error';
  * gets parsed every render. Avoid template-literal `${...}` here so
  * users embedding their own template literals don't collide.
  */
-export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
+export const INJECT_SCRIPT = `<script>(function(){try{
   var KEY=${JSON.stringify(ENVELOPE_KEY)};
   function send(payload){try{window.parent && window.parent.postMessage({__type:KEY,payload:payload},"*");}catch(_){/*noop*/}}
   function asString(v){try{if(v==null)return String(v);if(typeof v==="string")return v;if(v instanceof Error){return (v.message||String(v))+(v.stack?"\\n"+v.stack:"");}return JSON.stringify(v);}catch(_){return String(v);}}
@@ -66,13 +66,34 @@ export const INJECT_SCRIPT = `<base target="_blank"><script>(function(){try{
       if(!el)return;
       var attrHref=el.getAttribute("href");
       if(attrHref===null)return;
-      /* Allow empty links, anchors, hash routes and inline javascript */
-      if(attrHref===""||attrHref==="#"||attrHref.indexOf("#")===0||attrHref.indexOf("javascript:")===0)return;
+      
+      /* If it's an empty link or simple hash anchor, block any navigation/new-tab side effects completely. */
+      /* Click listeners attached by the page's JS will still execute normally. */
+      if(attrHref===""||attrHref==="#"){
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      
+      /* Allow valid hash-scrolling anchors (e.g. href="#about") to scroll natively, */
+      /* but remove target="_blank" if it was set (so it doesn't open in a new tab). */
+      if(attrHref.indexOf("#")===0){
+        if(el.getAttribute("target")==="_blank"){
+          el.removeAttribute("target");
+        }
+        return;
+      }
+      
+      /* Allow inline javascript triggers */
+      if(attrHref.indexOf("javascript:")===0)return;
       /* Allow data: URIs (e.g. download links) */
       if(attrHref.indexOf("data:")===0)return;
-      /* Only open absolute http(s) URLs externally; block relative navigations to protect parent frame */
+      
+      /* For all other links: prevent default navigation */
       e.preventDefault();
       e.stopPropagation();
+      
+      /* Only open absolute http(s) URLs externally in a new tab */
       if(attrHref.match(/^https?:\\/\\//i)){
         try{window.open(attrHref,"_blank","noopener,noreferrer");}catch(_){/*noop*/}
       } else {
