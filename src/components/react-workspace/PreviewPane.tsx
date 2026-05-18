@@ -1,7 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { SandpackPreview, useSandpack, useSandpackPreviewProgress } from '@codesandbox/sandpack-react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { highlightCode } from '../../workers/highlighterWorkerClient';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
 import { useWorkspaceSessionStore } from '../../store/workspaceSessionStore';
@@ -14,6 +13,21 @@ const PreviewPane: React.FC = () => {
   const previewProgress = useSandpackPreviewProgress({ timeout: 20000 });
 
   const activeFile = activeFilePath && activeProject ? activeProject.files[activeFilePath] : null;
+  const content = activeFile?.content || '';
+  const language = activeFile?.language || 'text';
+
+  const [html, setHtml] = useState<string>('');
+
+  useEffect(() => {
+    let isCancelled = false;
+    highlightCode(content, language)
+      .then((res) => {
+        if (!isCancelled) setHtml(res);
+      })
+      .catch(() => {});
+    return () => { isCancelled = true; };
+  }, [content, language]);
+
   const runtimeError = useMemo(() => {
     if (!sandpack.error) return '';
     const parts = [sandpack.error.title, sandpack.error.message].filter(Boolean);
@@ -30,15 +44,11 @@ const PreviewPane: React.FC = () => {
   if (previewMode === 'code') {
     return (
       <div className="react-workspace-preview-code">
-        <SyntaxHighlighter
-          style={oneDark}
-          language={activeFile?.language || 'text'}
-          PreTag="div"
-          wrapLongLines
-          customStyle={{ margin: 0, height: '100%', minHeight: '100%', borderRadius: 0 }}
-        >
-          {activeFile?.content || ''}
-        </SyntaxHighlighter>
+        {html ? (
+          <div dangerouslySetInnerHTML={{ __html: html }} className="shiki-container shiki-container--workspace" />
+        ) : (
+          <pre className="shiki-fallback-text shiki-fallback-text--workspace">{content}</pre>
+        )}
       </div>
     );
   }
