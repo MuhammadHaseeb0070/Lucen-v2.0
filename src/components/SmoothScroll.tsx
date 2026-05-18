@@ -50,10 +50,8 @@ export const SmoothScroll = forwardRef<HTMLDivElement, Props>(
     ({ children, className, style, disabled }, ref) => {
         return (
             <SmoothScrollErrorBoundary className={className} style={style} disabled={disabled}>
-                <ReactLenis root="asChild" options={{ autoRaf: true, syncTouch: true }}>
-                    <div className={className} style={style} ref={ref}>
-                        {children}
-                    </div>
+                <ReactLenis className={className} style={style} ref={ref} options={{ autoRaf: true, syncTouch: true }}>
+                    {children}
                 </ReactLenis>
             </SmoothScrollErrorBoundary>
         );
