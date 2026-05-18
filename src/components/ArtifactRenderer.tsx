@@ -5,7 +5,6 @@ import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
-import { SmoothScroll } from './SmoothScroll';
 
 interface RendererProps {
   content: string;
