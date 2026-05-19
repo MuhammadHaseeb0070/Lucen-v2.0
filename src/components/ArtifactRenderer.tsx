@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X } from 'lucide-react';
-import type { ArtifactType } from '../types';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, FileText } from 'lucide-react';
+import type { ArtifactType, Artifact } from '../types';
+import { runPython, type PythonResult } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
@@ -638,6 +639,240 @@ const FileRenderer: React.FC<RendererProps> = ({ content, title, isStreaming }) 
   );
 };
 
+// ── Python Renderer ──
+
+const pythonCache = new Map<string, PythonResult>();
+
+export function clearPythonCache(artifactId: string) {
+  pythonCache.delete(artifactId);
+}
+
+interface PythonRendererProps {
+  artifact: Artifact;
+}
+
+const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
+  const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
+  const metaPackages = (artifact as any)?.meta?.packages;
+  const packages = useMemo(() => {
+    if (!metaPackages) return [];
+    return metaPackages
+      .split(',')
+      .map((p: string) => p.trim())
+      .filter((p: string) => p.length > 0);
+  }, [metaPackages]);
+
+  const [result, setResult] = useState<PythonResult | null>(() => {
+    return pythonCache.get(artifact.id) || null;
+  });
+  const [progress, setProgress] = useState<string>('');
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+
+  const ranRef = useRef<string | null>(pythonCache.has(artifact.id) ? artifact.id : null);
+  const isRunningRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (ranRef.current === artifact.id || isRunningRef.current) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsRunning(true);
+    isRunningRef.current = true;
+    setProgress('Initializing Python worker...');
+    setResult(null);
+
+    runPython(
+      artifact.id,
+      artifact.content,
+      packages,
+      (msg) => {
+        if (isMounted) {
+          setProgress(msg);
+        }
+      }
+    )
+      .then((res) => {
+        if (isMounted) {
+          pythonCache.set(artifact.id, res);
+          setResult(res);
+          setIsRunning(false);
+          isRunningRef.current = false;
+          ranRef.current = artifact.id;
+
+          if (res.error) {
+            setRuntimeError(artifact.id, {
+              message: res.error,
+              origin: 'python' as any,
+              capturedAt: Date.now(),
+            });
+          } else {
+            const currentErr = useArtifactStore.getState().runtimeErrors[artifact.id];
+            if (currentErr) {
+              setRuntimeError(artifact.id, null);
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          const errRes = {
+            stdout: '',
+            stderr: '',
+            files: [],
+            error: err.message || String(err),
+          };
+          pythonCache.set(artifact.id, errRes);
+          setResult(errRes);
+          setIsRunning(false);
+          isRunningRef.current = false;
+          ranRef.current = artifact.id;
+
+          setRuntimeError(artifact.id, {
+            message: errRes.error,
+            origin: 'python' as any,
+            capturedAt: Date.now(),
+          });
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [artifact.id, artifact.content, packages]);
+
+  const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
+    const binaryString = atob(file.data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  if (isRunning) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 bg-zinc-950 text-zinc-400 rounded-lg border border-zinc-800 min-h-[200px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mb-4 animate-duration-1000"></div>
+        <p className="text-sm font-mono text-zinc-300">{progress}</p>
+      </div>
+    );
+  }
+
+  if (!result) return null;
+
+  const hasOutput = result.stdout || result.stderr || result.error || result.files.length > 0;
+
+  return (
+    <div className="flex flex-col gap-4 p-6 bg-zinc-950 text-zinc-100 rounded-lg min-h-full font-sans">
+      {/* Error Box */}
+      {result.error && (
+        <div className="flex flex-col gap-2 p-4 bg-red-950/40 border border-red-900/60 rounded-md text-red-200">
+          <div className="flex items-center gap-2 text-sm font-semibold text-red-400">
+            <AlertTriangle size={16} />
+            <span>Execution Error</span>
+          </div>
+          <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto bg-red-950/20 p-2.5 rounded border border-red-900/30 leading-relaxed max-h-[300px]">
+            {result.error}
+          </pre>
+        </div>
+      )}
+
+      {/* Stdout Output */}
+      {result.stdout && (
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider font-mono">Console Output</div>
+          <pre className="p-4 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-200 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-[400px]">
+            <code>{result.stdout}</code>
+          </pre>
+        </div>
+      )}
+
+      {/* Stderr Output */}
+      {result.stderr && !result.error && (
+        <div className="flex flex-col gap-2 p-4 bg-amber-950/30 border border-amber-900/40 rounded-md text-amber-200">
+          <div className="flex items-center gap-2 text-sm font-semibold text-amber-400">
+            <AlertTriangle size={15} />
+            <span>Standard Error / Warnings</span>
+          </div>
+          <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-[200px]">
+            {result.stderr}
+          </pre>
+        </div>
+      )}
+
+      {/* Created Files (Images & Downloads) */}
+      {result.files.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider font-mono">Generated Files</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {result.files.map((file, idx) => {
+              const isImage = file.mimeType.startsWith('image/');
+              return (
+                <div key={idx} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-md overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
+                    <span className="text-xs font-mono text-zinc-300 truncate max-w-[200px]" title={file.name}>
+                      {file.name}
+                    </span>
+                    {!isImage && (
+                      <button
+                        onClick={() => handleDownload(file)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-950/40 hover:bg-indigo-950/60 border border-indigo-900/50 rounded transition-colors"
+                      >
+                        <Download size={12} />
+                        Download
+                      </button>
+                    )}
+                  </div>
+                  {isImage ? (
+                    <div className="flex items-center justify-center p-4 bg-zinc-950 min-h-[200px]">
+                      <img
+                        src={`data:${file.mimeType};base64,${file.data}`}
+                        alt={file.name}
+                        className="max-w-full max-h-[350px] object-contain rounded border border-zinc-800/80 shadow-md"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-4 text-sm text-zinc-400">
+                      <div className="p-2 bg-zinc-950 border border-zinc-800 rounded text-zinc-500">
+                        <FileText size={20} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-zinc-500 font-mono">Binary File</span>
+                        <button
+                          onClick={() => handleDownload(file)}
+                          className="text-xs text-left text-zinc-300 hover:underline mt-0.5"
+                        >
+                          Click download to save {file.name}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* No output message */}
+      {!hasOutput && (
+        <div className="flex items-center justify-center p-8 text-sm text-zinc-500 font-mono border border-dashed border-zinc-800 rounded-md bg-zinc-900/20">
+          Script ran successfully with no output.
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Registry ──
 
 const RENDERERS: Record<string, React.FC<RendererProps>> = {
@@ -646,7 +881,7 @@ const RENDERERS: Record<string, React.FC<RendererProps>> = {
   mermaid: MermaidRenderer,
   file: FileRenderer,
 };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text' };
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', python: 'python' };
 
 interface ArtifactRendererProps {
   content: string;
@@ -657,14 +892,30 @@ interface ArtifactRendererProps {
   isStreaming?: boolean;
   /** Artifact id used to route runtime errors back into artifactStore. */
   artifactId?: string;
+  artifact?: Artifact;
 }
 
-const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming, artifactId }) => {
+const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming, artifactId, artifact }) => {
   if (!content || !content.trim())
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
   if (viewMode === 'code')
     return <CodeFallback content={content} language={LANGUAGE_MAP[type] || 'text'} isStreaming={isStreaming} />;
+
+  if (type === 'python') {
+    const fallbackArtifact: Artifact = {
+      id: artifactId || '',
+      type: 'python',
+      title: title || 'Python Script',
+      content: content,
+      messageId: '',
+    };
+    return (
+      <RendererErrorBoundary content={content} language="python">
+        <PythonRenderer artifact={artifact || fallbackArtifact} />
+      </RendererErrorBoundary>
+    );
+  }
 
   const Renderer = RENDERERS[type];
   const language = LANGUAGE_MAP[type] || 'text';

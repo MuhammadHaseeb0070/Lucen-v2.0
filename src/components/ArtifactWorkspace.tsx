@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2 } from 'lucide-react';
-import ArtifactRenderer from './ArtifactRenderer';
+import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, RotateCcw, Terminal } from 'lucide-react';
+import ArtifactRenderer, { clearPythonCache } from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
@@ -13,6 +13,7 @@ const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> 
   svg: { label: 'SVG', icon: <Image size={14} /> },
   mermaid: { label: 'Diagram', icon: <GitBranch size={14} /> },
   file: { label: 'File', icon: <FileCode2 size={14} /> },
+  python: { label: 'Python', icon: <Terminal size={14} /> },
 };
 
 const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: string; width: string | null }[] = [
@@ -133,6 +134,7 @@ const ArtifactWorkspace: React.FC = () => {
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isPublishLoading, setIsPublishLoading] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [reRunKey, setReRunKey] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
 
@@ -303,6 +305,18 @@ const ArtifactWorkspace: React.FC = () => {
               <span>Code</span>
             </button>
           </div>
+          {activeArtifact.type === 'python' && !activeArtifact.isStreaming && (
+            <button
+              className="artifact-action-btn"
+              onClick={() => {
+                clearPythonCache(activeArtifact.id);
+                setReRunKey((prev) => prev + 1);
+              }}
+              title="Re-run code"
+            >
+              <RotateCcw size={15} />
+            </button>
+          )}
           <button className="artifact-action-btn" onClick={handleCopy} title="Copy code">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
@@ -360,6 +374,7 @@ const ArtifactWorkspace: React.FC = () => {
           />
         )}
         <ArtifactRenderer
+          key={`${activeArtifact.id}-${reRunKey}`}
           content={activeArtifact.content}
           title={activeArtifact.title}
           type={activeArtifact.type}
@@ -367,6 +382,7 @@ const ArtifactWorkspace: React.FC = () => {
           viewport={previewViewport}
           isStreaming={!!activeArtifact.isStreaming}
           artifactId={activeArtifact.id}
+          artifact={activeArtifact}
         />
       </div>
 

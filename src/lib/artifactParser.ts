@@ -1,6 +1,6 @@
 import type { Artifact, ArtifactType } from '../types';
 
-const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file']);
+const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 'python']);
 
 // Matches complete artifact tags with any attributes.
 const COMPLETE_ARTIFACT_RE =
@@ -29,6 +29,7 @@ function parseArtifactAttrs(attrs: string): {
   parentId?: string;
   version?: number;
   isHead?: boolean;
+  meta?: { packages?: string };
 } {
   const typeRaw = getAttr(attrs, 'type');
   const titleRaw = getAttr(attrs, 'title');
@@ -39,6 +40,7 @@ function parseArtifactAttrs(attrs: string): {
   const parentIdRaw = getAttr(attrs, 'parent_id');
   const versionRaw = getAttr(attrs, 'version_no') || getAttr(attrs, 'version');
   const isHeadRaw = getAttr(attrs, 'is_head');
+  const packagesRaw = getAttr(attrs, 'packages');
 
   const type = (typeRaw || 'html').trim().toLowerCase();
   const filename = filenameRaw?.trim();
@@ -64,6 +66,7 @@ function parseArtifactAttrs(attrs: string): {
     parentId: parentIdRaw?.trim() || undefined,
     version,
     isHead,
+    meta: packagesRaw ? { packages: packagesRaw.trim() } : undefined,
   };
 }
 
@@ -146,7 +149,7 @@ export function parseArtifacts(
   cleanContent = cleanContent.replace(
     COMPLETE_ARTIFACT_RE,
     (_match, attrs: string, code: string) => {
-      const { type, title, filename, imported, dbId, lineageId, parentId, version, isHead } = parseArtifactAttrs(attrs || '');
+      const { type, title, filename, imported, dbId, lineageId, parentId, version, isHead, meta } = parseArtifactAttrs(attrs || '');
       artifacts.push({
         id: `${messageId}-artifact-${index++}`,
         type: (SUPPORTED_TYPES.has(type) ? type : 'html') as ArtifactType,
@@ -160,6 +163,7 @@ export function parseArtifacts(
         content: code.trim(),
         messageId,
         isImported: imported,
+        meta,
       });
       return '';
     }
@@ -169,7 +173,7 @@ export function parseArtifacts(
   const partialMatch = cleanContent.match(PARTIAL_OPEN_RE);
   if (partialMatch) {
     const [fullMatch, attrs, partialCode] = partialMatch;
-    const { type, title, filename, imported, dbId, lineageId, parentId, version, isHead } = parseArtifactAttrs(attrs || '');
+    const { type, title, filename, imported, dbId, lineageId, parentId, version, isHead, meta } = parseArtifactAttrs(attrs || '');
     artifacts.push({
       id: `${messageId}-artifact-${index}`,
       type: (SUPPORTED_TYPES.has(type) ? type : 'html') as ArtifactType,
@@ -188,6 +192,7 @@ export function parseArtifacts(
       // as NOT streaming so it renders as a complete — if truncated — card.
       isStreaming: !forceClose,
       generationStatus: forceClose ? 'partial_saved' : 'streaming',
+      meta,
     });
     cleanContent = cleanContent.slice(0, cleanContent.indexOf(fullMatch));
   } else {
