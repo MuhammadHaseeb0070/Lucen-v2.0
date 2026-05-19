@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, RotateCcw, Terminal } from 'lucide-react';
 import ArtifactRenderer, { clearPythonCache } from './ArtifactRenderer';
+import { setFocusedPythonArtifact } from '../workers/pyodideWorkerClient';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
@@ -139,6 +140,11 @@ const ArtifactWorkspace: React.FC = () => {
 
 
   const prevStreamingRef = useRef(false);
+
+  useEffect(() => {
+    setFocusedPythonArtifact(activeArtifact?.id ?? null);
+  }, [activeArtifact?.id]);
+
   useEffect(() => {
     if (!activeArtifact) return;
     if (activeArtifact.isStreaming && !prevStreamingRef.current) {

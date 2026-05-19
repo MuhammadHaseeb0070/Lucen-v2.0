@@ -10,6 +10,9 @@ type WorkerMessage =
   | { type: 'result'; artifactId: string; stdout: string; stderr: string; files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
 
 let worker: Worker | undefined;
+/** Only this artifact's run may update UI callbacks (the open workspace artifact). */
+let focusedArtifactId: string | null = null;
+
 const pending = new Map<
   string,
   {
@@ -18,16 +21,32 @@ const pending = new Map<
   }
 >();
 
+const CANCELLED: PythonResult = {
+  stdout: '',
+  stderr: '',
+  files: [],
+  error: null,
+};
+
+export function setFocusedPythonArtifact(artifactId: string | null) {
+  focusedArtifactId = artifactId;
+}
+
+export function cancelPendingPythonRun(artifactId: string) {
+  pending.delete(artifactId);
+}
+
 function getWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
       const data = e.data;
       if (!data) return;
+      if (data.artifactId !== focusedArtifactId) return;
 
       if (data.type === 'status') {
         const handler = pending.get(data.artifactId);
-        if (handler && handler.onProgress) {
+        if (handler?.onProgress) {
           handler.onProgress(data.message);
         }
       } else if (data.type === 'result') {
@@ -58,7 +77,22 @@ export function runPython(
   mode?: string,
   onProgress?: (message: string) => void
 ): Promise<PythonResult> {
+  focusedArtifactId = artifactId;
+
+  for (const id of pending.keys()) {
+    if (id !== artifactId) {
+      const stale = pending.get(id);
+      pending.delete(id);
+      stale?.resolve(CANCELLED);
+    }
+  }
+
   return new Promise((resolve) => {
+    if (focusedArtifactId !== artifactId) {
+      resolve(CANCELLED);
+      return;
+    }
+
     pending.set(artifactId, { resolve, onProgress });
     getWorker().postMessage({
       type: 'run',

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback, Component } f
 import { highlightCode } from '../workers/highlighterWorkerClient';
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText, Terminal, XCircle, CheckCircle2 } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
-import { runPython, type PythonResult } from '../workers/pyodideWorkerClient';
+import { runPython, cancelPendingPythonRun, type PythonResult } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
@@ -670,6 +670,7 @@ function getFileTypeMeta(ext?: string): { label: string; iconClass: string } {
 
 const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
+  const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
   const metaPackages = artifact.meta?.packages;
   const mode = artifact.meta?.mode;
   const packages = useMemo(() => {
@@ -691,11 +692,20 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const isRunningRef = useRef<boolean>(false);
 
   useEffect(() => {
+    if (activeArtifactId !== artifact.id) {
+      return;
+    }
+
     if (ranRef.current === artifact.id || isRunningRef.current) {
       return;
     }
 
     let isMounted = true;
+
+    const isStillActive = () =>
+      isMounted &&
+      useArtifactStore.getState().activeArtifact?.id === artifact.id;
+
     setIsRunning(true);
     isRunningRef.current = true;
     setProgress('Initializing Python worker...');
@@ -707,62 +717,64 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       packages,
       mode,
       (msg) => {
-        if (isMounted) {
+        if (isStillActive()) {
           setProgress(msg);
         }
       }
     )
       .then((res) => {
-        if (isMounted) {
-          pythonCache.set(artifact.id, res);
-          setResult(res);
-          setIsRunning(false);
-          isRunningRef.current = false;
-          ranRef.current = artifact.id;
+        if (!isStillActive()) return;
 
-          const isLimitation =
-            !!res.error && /not supported|cannot run in browser/i.test(res.error);
+        pythonCache.set(artifact.id, res);
+        setResult(res);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = artifact.id;
 
-          if (res.error && !isLimitation) {
-            setRuntimeError(artifact.id, {
-              message: res.error,
-              origin: 'python' as any,
-              capturedAt: Date.now(),
-            });
-          } else {
-            const currentErr = useArtifactStore.getState().runtimeErrors[artifact.id];
-            if (currentErr) {
-              setRuntimeError(artifact.id, null);
-            }
+        const isLimitation =
+          !!res.error && /not supported|cannot run in browser/i.test(res.error);
+
+        if (res.error && !isLimitation) {
+          setRuntimeError(artifact.id, {
+            message: res.error,
+            origin: 'python' as any,
+            capturedAt: Date.now(),
+          });
+        } else {
+          const currentErr = useArtifactStore.getState().runtimeErrors[artifact.id];
+          if (currentErr) {
+            setRuntimeError(artifact.id, null);
           }
         }
       })
       .catch((err) => {
-        if (isMounted) {
-          const errRes = {
-            stdout: '',
-            stderr: '',
-            files: [],
-            error: err.message || String(err),
-          };
-          pythonCache.set(artifact.id, errRes);
-          setResult(errRes);
-          setIsRunning(false);
-          isRunningRef.current = false;
-          ranRef.current = artifact.id;
+        if (!isStillActive()) return;
 
-          setRuntimeError(artifact.id, {
-            message: errRes.error,
-            origin: 'python' as any,
-            capturedAt: Date.now(),
-          });
-        }
+        const errRes = {
+          stdout: '',
+          stderr: '',
+          files: [],
+          error: err.message || String(err),
+        };
+        pythonCache.set(artifact.id, errRes);
+        setResult(errRes);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = artifact.id;
+
+        setRuntimeError(artifact.id, {
+          message: errRes.error,
+          origin: 'python' as any,
+          capturedAt: Date.now(),
+        });
       });
 
     return () => {
       isMounted = false;
+      isRunningRef.current = false;
+      cancelPendingPythonRun(artifact.id);
     };
-  }, [artifact.id, artifact.content, packages, mode]);
+  }, [activeArtifactId, artifact.id, artifact.content, packages, mode, setRuntimeError]);
 
   const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
     const binaryString = atob(file.data);
@@ -963,7 +975,10 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     };
     return (
       <RendererErrorBoundary content={content} language="python">
-        <PythonRenderer artifact={artifact || fallbackArtifact} />
+        <PythonRenderer
+          key={(artifact || fallbackArtifact).id}
+          artifact={artifact || fallbackArtifact}
+        />
       </RendererErrorBoundary>
     );
   }

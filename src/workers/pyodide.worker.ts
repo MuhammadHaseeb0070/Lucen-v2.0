@@ -52,6 +52,32 @@ function getFilesMeta(dir: string): Map<string, FileMeta> {
   return meta;
 }
 
+function rmRecursive(py: any, path: string) {
+  const stat = py.FS.stat(path);
+  if (py.FS.isDir(stat.mode)) {
+    for (const name of py.FS.readdir(path)) {
+      if (name === '.' || name === '..') continue;
+      rmRecursive(py, path.endsWith('/') ? `${path}${name}` : `${path}/${name}`);
+    }
+    py.FS.rmdir(path);
+  } else {
+    py.FS.unlink(path);
+  }
+}
+
+/** Wipe output files from prior artifact runs in this shared worker. */
+function clearWorkspace(py: any) {
+  const dir = '/home/pyodide';
+  try {
+    for (const name of py.FS.readdir(dir)) {
+      if (name === '.' || name === '..') continue;
+      rmRecursive(py, `${dir}/${name}`);
+    }
+  } catch {
+    // Directory may not exist yet on first run
+  }
+}
+
 async function initPyodide(artifactId: string) {
   if (pyodide) return pyodide;
 
@@ -182,6 +208,8 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
     // 2. Dynamic package installation (imports + packages attribute)
     await installPackagesDynamic(py, packageList, code, artifactId);
 
+    clearWorkspace(py);
+
     ctx.postMessage({
       type: 'status',
       artifactId,
@@ -189,7 +217,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
       message: 'Executing script...'
     });
 
-    // 4. Snapshot FS before execution
+    // 3. Snapshot FS before execution (empty workspace for this artifact only)
     const beforeMeta = getFilesMeta('/home/pyodide');
 
     // 5. Redirect stdout/stderr & Inject Matplotlib backend
