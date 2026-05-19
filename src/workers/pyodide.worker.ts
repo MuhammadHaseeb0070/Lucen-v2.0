@@ -2,18 +2,6 @@ const ctx: Worker = self as any;
 
 let pyodide: any = null;
 
-const MODE_PACKAGES: Record<string, string[]> = {
-  excel: ['pandas', 'openpyxl'],
-  chart: ['matplotlib', 'numpy'],
-  data: ['pandas', 'numpy'],
-  pdf: ['reportlab'],
-  calc: ['numpy', 'sympy'],
-};
-
-const PYODIDE_NATIVE = new Set([
-  'numpy', 'pandas', 'matplotlib', 'sympy', 'micropip',
-]);
-
 const OUTPUT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'svg', 'csv', 'xlsx', 'json', 'txt', 'pdf'];
 
 function arrayBufferToBase64(bytes: Uint8Array): string {
@@ -100,54 +88,78 @@ async function initPyodide(artifactId: string) {
   return pyodide;
 }
 
-function getLoadedPackageNames(py: any): Set<string> {
-  return new Set(Object.keys(py.loadedPackages || {}));
-}
-
-async function installViaMicropip(py: any, pkg: string): Promise<void> {
-  const micropip = py.pyimport('micropip');
-  await micropip.install(pkg);
-}
-
-async function loadPackageSafe(
+async function installPackagesDynamic(
   py: any,
-  pkg: string,
-  loaded: Set<string>
+  packages: string[],
+  code: string,
+  artifactId: string
 ): Promise<void> {
-  if (loaded.has(pkg)) return;
-
-  if (PYODIDE_NATIVE.has(pkg)) {
-    await py.loadPackage(pkg);
-    loaded.add(pkg);
-    return;
-  }
-
+  // Step 1: Let Pyodide auto-detect and load its own native packages
+  // from import statements in the code
   try {
-    await installViaMicropip(py, pkg);
-    loaded.add(pkg);
+    ctx.postMessage({
+      type: 'status',
+      artifactId,
+      status: 'installing_packages',
+      message: 'Scanning imports...',
+    });
+    await py.loadPackagesFromImports(code);
   } catch (err) {
-    console.warn(`Failed to install package via micropip: ${pkg}`, err);
+    console.warn('loadPackagesFromImports error:', err);
   }
-}
 
-async function loadPackagesList(
-  py: any,
-  pkgs: string[],
-  artifactId: string,
-  statusMessage: string
-): Promise<void> {
-  if (pkgs.length === 0) return;
+  // Step 2: For explicitly requested packages, check Pyodide's runtime registry
+  if (packages.length === 0) return;
 
-  ctx.postMessage({
-    type: 'status',
-    artifactId,
-    status: 'installing_packages',
-    message: statusMessage,
-  });
+  const repoPackages: Record<string, unknown> = py._api?.repodata_packages ?? {};
+  const alreadyLoaded = new Set(Object.keys(py.loadedPackages ?? {}));
 
-  const loaded = getLoadedPackageNames(py);
-  for (const pkg of pkgs) {
-    await loadPackageSafe(py, pkg, loaded);
+  const nativeToLoad: string[] = [];
+  const pipToInstall: string[] = [];
+
+  for (const pkg of packages) {
+    const normalized = pkg.trim().toLowerCase();
+    if (!normalized) continue;
+    if (alreadyLoaded.has(pkg) || alreadyLoaded.has(normalized)) continue;
+
+    const isNative =
+      normalized in repoPackages ||
+      pkg in repoPackages ||
+      Object.keys(repoPackages).some((k) => k.toLowerCase() === normalized);
+
+    if (isNative) {
+      nativeToLoad.push(pkg);
+    } else {
+      pipToInstall.push(pkg);
+    }
+  }
+
+  if (nativeToLoad.length > 0) {
+    ctx.postMessage({
+      type: 'status',
+      artifactId,
+      status: 'installing_packages',
+      message: `Loading ${nativeToLoad.join(', ')}...`,
+    });
+    await py.loadPackage(nativeToLoad);
+  }
+
+  if (pipToInstall.length > 0) {
+    ctx.postMessage({
+      type: 'status',
+      artifactId,
+      status: 'installing_packages',
+      message: `Downloading ${pipToInstall.join(', ')} from PyPI...`,
+    });
+    await py.loadPackage('micropip');
+    const micropip = py.pyimport('micropip');
+    await Promise.all(
+      pipToInstall.map((pkg) =>
+        micropip.install(pkg).catch((err: unknown) => {
+          console.warn(`micropip could not install ${pkg}:`, err);
+        })
+      )
+    );
   }
 }
 
@@ -155,47 +167,20 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
 
-  const { code, packages = [], mode, artifactId } = d;
+  const { code, packages = [], mode: _mode, artifactId } = d;
 
   try {
     // 1. Lazy load Pyodide
     const py = await initPyodide(artifactId);
 
-    const modeKey = typeof mode === 'string' ? mode.trim().toLowerCase() : '';
-    const modePkgs = modeKey && MODE_PACKAGES[modeKey] ? MODE_PACKAGES[modeKey] : [];
-
-    // 2. Mode-first package loading
-    if (modePkgs.length > 0) {
-      await loadPackagesList(
-        py,
-        modePkgs,
-        artifactId,
-        `Loading packages for ${modeKey} mode...`
-      );
-    }
-
-    // 3. Extra packages from artifact attribute (deduped, skip mode packages)
-    const extraPackages = [...new Set(
+    const packageList = [...new Set(
       (packages as string[])
         .map((p: string) => p.trim())
         .filter((p: string) => p.length > 0)
-    )].filter((pkg) => !modePkgs.includes(pkg));
+    )];
 
-    if (extraPackages.length > 0) {
-      await loadPackagesList(
-        py,
-        extraPackages,
-        artifactId,
-        `Loading ${extraPackages.join(', ')}...`
-      );
-    }
-
-    // 4. Safety net: loadPackagesFromImports
-    try {
-      await py.loadPackagesFromImports(code);
-    } catch (err) {
-      console.warn('loadPackagesFromImports failed:', err);
-    }
+    // 2. Dynamic package installation (imports + packages attribute)
+    await installPackagesDynamic(py, packageList, code, artifactId);
 
     ctx.postMessage({
       type: 'status',

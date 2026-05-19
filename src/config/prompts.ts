@@ -134,27 +134,24 @@ html     - interactive apps, widgets, games, dashboards, calculators, forms. Inl
 svg      - icons, logos, illustrations, static diagrams. Output only the <svg> element with proper viewBox.
 mermaid  - flowcharts, sequence diagrams, architecture maps, ERDs. Valid mermaid syntax only. No box-shadow.
 file     - downloadable text files: .md, .json, .csv, .env, .py, .js, .ts, .yaml etc. Must include filename attribute.
-python   - Use type="python" only for these 5 supported modes:
-           mode="excel"  → generate Excel spreadsheets with pandas/openpyxl.
-                           Save to /home/pyodide/filename.xlsx
-           mode="chart"  → generate matplotlib charts/plots.
-                           Save to /home/pyodide/chart.png using plt.savefig()
-                           Always call plt.tight_layout() before savefig()
-           mode="data"   → data analysis with pandas/numpy. Use print() for output.
-                           Optionally save results to /home/pyodide/results.csv
-           mode="pdf"    → generate PDF documents with reportlab.
-                           Save to /home/pyodide/filename.pdf
-           mode="calc"   → math/statistics with numpy/sympy. Use print() for all output.
-           Always include mode attribute. Always include packages attribute listing
-           only what is actually used.
-           Do NOT generate python artifacts for:
-           - Network requests (no internet in browser WebAssembly)
-           - File reading from user's disk
-           - GUI or interactive widgets (use html artifact instead)
+python   - Any Python script that can run in Pyodide (Python in WebAssembly).
+           Always include a packages attribute listing every third-party package
+           the script imports (comma-separated): packages="pandas,numpy,matplotlib"
+           Only list packages actually used. They are auto-installed at runtime:
+           Pyodide native packages load via loadPackage; others install via micropip.
+           The code runs with a virtual filesystem at /home/pyodide. Write output files
+           there (e.g. .xlsx, .csv, .png, .pdf) so they appear as downloads or previews.
+           Use print() for text output. Use matplotlib with Agg backend; call
+           plt.tight_layout() before plt.savefig('/home/pyodide/chart.png').
+           Optional mode attribute (excel, chart, data, pdf, calc) is UI metadata only.
+           Do NOT use python artifacts for:
+           - Network requests (requests, httpx, urllib - no internet in WebAssembly)
+           - Reading files from the user's disk
+           - GUI toolkits (tkinter, PyQt, wx) or interactive widgets - use type="html"
            - Database connections
-           - subprocess or system calls
-           If asked for these, explain in chat that it cannot run in the browser
-           and provide the code as a plain code block instead.
+           - subprocess, multiprocessing, or system calls
+           If asked for these, explain in chat that it cannot run in the browser and
+           provide the code as a plain markdown code block instead.
 
 STRICT RULES:
 1. Exactly ONE artifact per response. Never split into multiple.
