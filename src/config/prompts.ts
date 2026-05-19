@@ -143,6 +143,16 @@ python   - data analysis, generating Excel/CSV files, matplotlib charts and plot
            * Print output is captured and displayed. Use print() freely for results.
            * Do NOT use input(), do NOT make network requests, do NOT use subprocess.
            * Do NOT use type="python" for interactive UIs, forms, or anything visual that requires user interaction - use type="html" for those.
+           * IMPORTANT - What works and what does NOT work in the browser:
+             WORKS: numpy, pandas, matplotlib, scipy, openpyxl, pillow, scikit-learn, sympy, statsmodels, networkx, beautifulsoup4, json, csv, math, datetime, regex, io, base64, collections, itertools, pathlib, hashlib, uuid, copy, random, struct
+             DOES NOT WORK (tell the user instead of generating broken code):
+             - Network requests (requests, httpx, aiohttp, urllib.request) - no internet access from WebAssembly
+             - File system access outside /home/pyodide
+             - subprocess, multiprocessing, threading
+             - Database connections (psycopg2, pymysql, sqlite3 has limits)
+             - GUI libraries (tkinter, PyQt, wx)
+             - Any package requiring compiled C extensions not in Pyodide
+           * If the user asks for something that requires a non-supported package or capability, respond in chat explaining that this specific task cannot run in the browser Python environment, and suggest they run it locally with the code you provide as a regular code block instead of a python artifact.
 
 STRICT RULES:
 1. Exactly ONE artifact per response. Never split into multiple.

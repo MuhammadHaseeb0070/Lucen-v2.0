@@ -87,7 +87,7 @@ async function initPyodide(artifactId: string) {
     type: 'status',
     artifactId,
     status: 'loading_pyodide',
-    message: 'Loading Pyodide environment (~10MB)...'
+    message: 'Setting up Python environment (~10MB first load)...'
   });
 
   const pyodideModule = await (Function('u', 'return import(u)')(
@@ -98,6 +98,12 @@ async function initPyodide(artifactId: string) {
   });
 
   // Pre-load micropip for package installs
+  ctx.postMessage({
+    type: 'status',
+    artifactId,
+    status: 'loading_micropip',
+    message: 'Preparing package installer...'
+  });
   await pyodide.loadPackage('micropip');
 
   ctx.postMessage({
@@ -126,7 +132,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
         type: 'status',
         artifactId,
         status: 'installing_packages',
-        message: `Installing explicit packages: ${packages.join(', ')}...`
+        message: `Downloading ${packages.join(', ')} from PyPI...`
       });
       await py.loadPackage('micropip');
       const micropip = py.pyimport('micropip');
@@ -140,7 +146,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
         type: 'status',
         artifactId,
         status: 'installing_packages',
-        message: 'Resolving and loading imports...'
+        message: `Loading ${imports.join(', ')} - compiled for WebAssembly...`
       });
       
       // Load any pre-compiled Pyodide packages from imports
@@ -157,7 +163,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
           type: 'status',
           artifactId,
           status: 'installing_packages',
-          message: `Installing auto-detected packages: ${toInstall.join(', ')}...`
+          message: `Downloading ${toInstall.join(', ')} from PyPI...`
         });
         await Promise.all(
           toInstall.map((pkg: string) =>
@@ -173,7 +179,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
       type: 'status',
       artifactId,
       status: 'running',
-      message: 'Running code...'
+      message: 'Executing script...'
     });
 
     // 4. Snapshot FS before execution
