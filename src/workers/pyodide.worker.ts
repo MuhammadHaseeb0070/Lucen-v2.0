@@ -128,6 +128,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
         status: 'installing_packages',
         message: `Installing explicit packages: ${packages.join(', ')}...`
       });
+      await py.loadPackage('micropip');
       const micropip = py.pyimport('micropip');
       await Promise.all(packages.map((pkg: string) => micropip.install(pkg)));
     }
@@ -146,6 +147,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
       await py.loadPackagesFromImports(code);
 
       // Install pure python packages from PyPI using micropip if not already loaded
+      await py.loadPackage('micropip');
       const micropip = py.pyimport('micropip');
       const loadedPackages = new Set(Object.keys(py.loadedPackages));
       const toInstall = imports.filter(pkg => !loadedPackages.has(pkg));
