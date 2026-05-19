@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, FileText } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
 import { runPython, type PythonResult } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';

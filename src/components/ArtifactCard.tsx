@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileCode2, Image, GitBranch, ExternalLink, Loader2, FileText } from 'lucide-react';
+import { FileCode2, Image, GitBranch, ExternalLink, Loader2, FileText, Terminal } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Artifact, ArtifactType } from '../types';
 
@@ -8,6 +8,7 @@ const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
   svg: <Image size={18} />,
   mermaid: <GitBranch size={18} />,
   file: <FileText size={18} />,
+  python: <Terminal size={18} />,
 };
 
 const TYPE_LABELS: Record<ArtifactType, string> = {
@@ -15,6 +16,7 @@ const TYPE_LABELS: Record<ArtifactType, string> = {
   svg: 'SVG',
   mermaid: 'Diagram',
   file: 'File',
+  python: 'Python',
 };
 
 interface ArtifactCardProps {

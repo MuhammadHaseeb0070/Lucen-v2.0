@@ -90,7 +90,9 @@ async function initPyodide(artifactId: string) {
     message: 'Loading Pyodide environment (~10MB)...'
   });
 
-  const pyodideModule = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs');
+  const pyodideModule = await (Function('u', 'return import(u)')(
+    'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs'
+  ));
   pyodide = await pyodideModule.loadPyodide({
     indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/',
   });

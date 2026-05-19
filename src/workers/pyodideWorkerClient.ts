@@ -75,7 +75,7 @@ export function terminateWorker() {
   if (worker) {
     worker.terminate();
     worker = undefined;
-    for (const [artifactId, handler] of pending.entries()) {
+    for (const [, handler] of pending.entries()) {
       handler.resolve({
         stdout: '',
         stderr: '',
