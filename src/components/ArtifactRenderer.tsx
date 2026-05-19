@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText, Terminal, XCircle, CheckCircle2 } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
 import { runPython, type PythonResult } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
@@ -667,6 +667,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   });
   const [progress, setProgress] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [warningsExpanded, setWarningsExpanded] = useState<boolean>(false);
 
   const ranRef = useRef<string | null>(pythonCache.has(artifact.id) ? artifact.id : null);
   const isRunningRef = useRef<boolean>(false);
@@ -760,9 +761,18 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
 
   if (isRunning) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 bg-zinc-950 text-zinc-400 rounded-lg border border-zinc-800 min-h-[200px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mb-4 animate-duration-1000"></div>
-        <p className="text-sm font-mono text-zinc-300">{progress}</p>
+      <div className="flex flex-col items-center justify-center p-8 bg-zinc-950 text-zinc-400 rounded-lg border border-zinc-800 min-h-[300px] relative overflow-hidden">
+        <div className="relative flex items-center justify-center mb-6">
+          <div className="absolute inset-0 rounded-full bg-indigo-500/10 animate-ping scale-150 duration-1000"></div>
+          <div className="absolute inset-0 rounded-full bg-indigo-500/20 animate-pulse duration-1000"></div>
+          <div className="relative p-4 bg-zinc-900 border border-zinc-800 rounded-full text-indigo-400">
+            <Terminal size={32} />
+          </div>
+        </div>
+        <p className="text-sm font-mono text-zinc-300 animate-pulse mb-12">{progress}</p>
+        <div className="absolute bottom-4 text-[10px] font-mono text-zinc-600 tracking-wider uppercase select-none">
+          Powered by Pyodide
+        </div>
       </div>
     );
   }
@@ -772,40 +782,57 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const hasOutput = result.stdout || result.stderr || result.error || result.files.length > 0;
 
   return (
-    <div className="flex flex-col gap-4 p-6 bg-zinc-950 text-zinc-100 rounded-lg min-h-full font-sans">
+    <div className="flex flex-col gap-5 p-5 bg-zinc-950 text-zinc-100 rounded-lg min-h-full font-sans transition-all duration-300 animate-in fade-in">
       {/* Error Box */}
       {result.error && (
-        <div className="flex flex-col gap-2 p-4 bg-red-950/40 border border-red-900/60 rounded-md text-red-200">
+        <div className="flex flex-col gap-2.5 p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-200">
           <div className="flex items-center gap-2 text-sm font-semibold text-red-400">
-            <AlertTriangle size={16} />
+            <XCircle size={16} />
             <span>Execution Error</span>
           </div>
-          <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto bg-red-950/20 p-2.5 rounded border border-red-900/30 leading-relaxed max-h-[300px]">
+          <pre className="text-xs font-mono whitespace-pre-wrap overflow-y-auto bg-red-950/10 p-3 rounded border border-red-900/20 leading-relaxed max-h-48">
             {result.error}
           </pre>
         </div>
       )}
 
-      {/* Stdout Output */}
+      {/* Stdout Output (Terminal Style) */}
       {result.stdout && (
-        <div className="flex flex-col gap-1.5">
-          <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider font-mono">Console Output</div>
-          <pre className="p-4 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-200 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-[400px]">
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 border border-zinc-800 border-b-0 rounded-t-lg">
+            <div className="flex gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500/80"></span>
+            </div>
+            <span className="text-xs font-mono text-zinc-500 select-none">stdout</span>
+          </div>
+          <pre className="p-4 bg-zinc-900 border border-zinc-800 rounded-b-lg text-emerald-300 font-mono text-sm leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-64">
             <code>{result.stdout}</code>
           </pre>
         </div>
       )}
 
-      {/* Stderr Output */}
+      {/* Stderr Output (Warnings) */}
       {result.stderr && !result.error && (
-        <div className="flex flex-col gap-2 p-4 bg-amber-950/30 border border-amber-900/40 rounded-md text-amber-200">
-          <div className="flex items-center gap-2 text-sm font-semibold text-amber-400">
-            <AlertTriangle size={15} />
-            <span>Standard Error / Warnings</span>
+        <div className="flex flex-col gap-2 p-4 bg-amber-950/20 border border-amber-900/40 rounded-lg text-amber-200">
+          <div className="flex items-center justify-between text-sm font-semibold text-amber-400">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} />
+              <span>Warnings</span>
+            </div>
+            <button
+              onClick={() => setWarningsExpanded(!warningsExpanded)}
+              className="text-xs text-amber-400 hover:text-amber-300 font-medium px-2 py-0.5 bg-amber-950/40 hover:bg-amber-950/60 rounded border border-amber-900/40 transition-colors"
+            >
+              {warningsExpanded ? 'Hide' : 'Show'}
+            </button>
           </div>
-          <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed max-h-[200px]">
-            {result.stderr}
-          </pre>
+          {warningsExpanded && (
+            <pre className="text-xs font-mono whitespace-pre-wrap overflow-y-auto leading-relaxed max-h-36 bg-amber-950/10 p-2.5 rounded border border-amber-900/20 mt-1">
+              {result.stderr}
+            </pre>
+          )}
         </div>
       )}
 
@@ -816,46 +843,73 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {result.files.map((file, idx) => {
               const isImage = file.mimeType.startsWith('image/');
-              return (
-                <div key={idx} className="flex flex-col bg-zinc-900 border border-zinc-800 rounded-md overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/50">
-                    <span className="text-xs font-mono text-zinc-300 truncate max-w-[200px]" title={file.name}>
-                      {file.name}
-                    </span>
-                    {!isImage && (
+              
+              if (isImage) {
+                return (
+                  <div key={idx} className="relative group bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between px-4 py-2 bg-zinc-900/50 border-b border-zinc-800">
+                      <span className="text-xs font-mono text-zinc-400 truncate max-w-[250px]" title={file.name}>
+                        {file.name}
+                      </span>
                       <button
                         onClick={() => handleDownload(file)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-950/40 hover:bg-indigo-950/60 border border-indigo-900/50 rounded transition-colors"
+                        className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-zinc-100 rounded transition-colors"
+                        title="Download Image"
                       >
-                        <Download size={12} />
-                        Download
+                        <Download size={14} />
                       </button>
-                    )}
-                  </div>
-                  {isImage ? (
-                    <div className="flex items-center justify-center p-4 bg-zinc-950 min-h-[200px]">
+                    </div>
+                    <div className="flex items-center justify-center p-4 bg-zinc-950/50 min-h-[220px] flex-grow">
                       <img
                         src={`data:${file.mimeType};base64,${file.data}`}
                         alt={file.name}
-                        className="max-w-full max-h-[350px] object-contain rounded border border-zinc-800/80 shadow-md"
+                        className="max-w-full max-h-[350px] object-contain rounded border border-zinc-800 shadow-sm"
                       />
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-3 p-4 text-sm text-zinc-400">
-                      <div className="p-2 bg-zinc-950 border border-zinc-800 rounded text-zinc-500">
-                        <FileText size={20} />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs text-zinc-500 font-mono">Binary File</span>
-                        <button
-                          onClick={() => handleDownload(file)}
-                          className="text-xs text-left text-zinc-300 hover:underline mt-0.5"
-                        >
-                          Click download to save {file.name}
-                        </button>
-                      </div>
+                  </div>
+                );
+              }
+
+              // Downloadable Files (.xlsx / .csv / .json / .txt etc)
+              let iconColor = 'text-zinc-400';
+              let fileTypeLabel = 'File';
+              const ext = file.name.split('.').pop()?.toLowerCase();
+              if (ext === 'xlsx') {
+                iconColor = 'text-emerald-400';
+                fileTypeLabel = 'Excel Spreadsheet';
+              } else if (ext === 'csv') {
+                iconColor = 'text-sky-400';
+                fileTypeLabel = 'CSV Data';
+              } else if (ext === 'json') {
+                iconColor = 'text-blue-400';
+                fileTypeLabel = 'JSON Data';
+              } else if (ext === 'txt') {
+                iconColor = 'text-zinc-400';
+                fileTypeLabel = 'Text File';
+              }
+
+              return (
+                <div key={idx} className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-900/80 hover:border-zinc-750 transition-all duration-200 group">
+                  <div className="flex items-center gap-3 truncate mr-4">
+                    <div className={`p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg ${iconColor}`}>
+                      <FileText size={20} />
                     </div>
-                  )}
+                    <div className="flex flex-col truncate">
+                      <span className="text-sm font-semibold text-zinc-200 truncate font-mono" title={file.name}>
+                        {file.name}
+                      </span>
+                      <span className="text-xs text-zinc-500 font-sans mt-0.5">
+                        {fileTypeLabel}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDownload(file)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-100 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-750 hover:border-zinc-650 rounded-md transition-all duration-200 shadow-sm shrink-0"
+                  >
+                    <Download size={13} />
+                    <span>Download</span>
+                  </button>
                 </div>
               );
             })}
@@ -865,8 +919,10 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
 
       {/* No output message */}
       {!hasOutput && (
-        <div className="flex items-center justify-center p-8 text-sm text-zinc-500 font-mono border border-dashed border-zinc-800 rounded-md bg-zinc-900/20">
-          Script ran successfully with no output.
+        <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-zinc-800 rounded-lg bg-zinc-900/10">
+          <CheckCircle2 size={32} className="text-emerald-500/80 mb-3" />
+          <h3 className="text-sm font-semibold text-zinc-300">Ran successfully</h3>
+          <p className="text-xs text-zinc-500 font-mono mt-1">Script completed with no console output or generated files</p>
         </div>
       )}
     </div>
