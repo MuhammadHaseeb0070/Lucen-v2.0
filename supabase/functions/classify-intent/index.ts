@@ -22,21 +22,30 @@ const TAVILY_USD_PER_1K_SEARCHES = 4;
 const TAVILY_MAX_RESULTS = 5;
 const WEBSEARCH_DEBUG = (Deno.env.get('WEBSEARCH_DEBUG') || '').toLowerCase() === 'true';
 
-const INTENT_SYSTEM = `You are a web search intent classifier. The user has EXPLICITLY ENABLED the Web Search toggle for this turn. Your job is to generate the optimal search query.
+const INTENT_SYSTEM = `You are a highly intelligent web search intent classifier. The user has enabled Web Search. Your job is to analyze the conversation history and generate the optimal search query or ask a clarifying question.
 
-If a search is needed, you MUST craft a hyper-specific, Google-optimized search query. DO NOT use lazy shorthands (e.g., never use 'real madrid schedule'). Instead, explicitly expand the topic to cast a wide net (e.g., 'Real Madrid upcoming fixture schedule all competitions Champions League La Liga').
+### Rules for Deciding the State:
+1. "search": Return this when the request can be resolved with a web search. You must construct a high-quality, specific query in the "query" field.
+2. "skip": Return this only for truly trivial messages (pure greetings/thanks, "ok", "cool") or purely personal/subjective queries where web search adds no value.
+3. "clarify": Return this when the user's request is extremely ambiguous or missing a critical keyword (e.g., they ask "what's the price?" but don't specify the product) such that you cannot construct any meaningful search query.
 
-Respond ONLY with raw JSON. No markdown. No backticks. Just JSON.
+### Conversational Intelligence & Clarification Handling:
+1. If the conversation history shows that you (the assistant) already asked a clarifying question, and the user is responding to it:
+   - If the user's response is a broad/general term (e.g., "everything", "all of it", "technical details", "all details", "any"), DO NOT ask for clarification again. Doing so creates an infinite loop. Instead, realize they want a comprehensive query, set state to "search", and generate a high-quality broad query covering the entire topic (e.g., "chatbot deep context memory implementation details vector database architecture").
+   - If the user provides a specific answer (e.g., "Pinecone"), synthesize this with the original request and generate a specific query: "implement deep context memory Pinecone vector db".
+2. If you return "clarify", the "question" field must contain a polite, human-like question (e.g., "Could you specify which product or model you are asking about?"). Never mention system internals, "web search", "intent", or "JSON".
 
-Formats:
-{"state":"search","query":"highly descriptive, specific search engine query"}
-{"state":"skip","query":null}
-{"state":"clarify","query":null,"question":"one specific question"}
+### Query Writing Standards:
+- Generate a highly optimized search query that retrieves the best possible web results.
+- Synthesize all relevant conversation history into the query (do not just use the user's last message if it depends on previous context).
+- DO NOT use lazy shorthands. Expand terms if helpful.
 
-Rules:
-- search: return 'search' when web results would materially improve the answer (reviews, prices, availability, current events, documentation, references, comparisons, citations, \"find real reviews\", etc.). Output a query that a search engine would understand.
-- clarify: return 'clarify' only when the user has clearly enabled web search but the request is missing one key detail needed to search effectively.
-- skip: return 'skip' only for truly trivial messages (pure greetings/thanks) or when the request is purely subjective/personal and web search would not add value.`;
+Respond ONLY with raw JSON in this format:
+{"state":"search","query":"optimal search query","question":null}
+or
+{"state":"skip","query":null,"question":null}
+or
+{"state":"clarify","query":null,"question":"polite clarifying question"}`;
 
 function extractText(content: unknown): string {
     if (typeof content === 'string') return content;
@@ -240,7 +249,8 @@ Deno.serve(async (req: Request) => {
             return new Response(JSON.stringify({ state: 'skip', query: null }), { headers: { ...cors, 'Content-Type': 'application/json' } });
         }
 
-        const contextWindow = messages.slice(-6);
+        // Increase context window to the last 10 messages (5 turns) to capture the original request and clarification flow.
+        const contextWindow = messages.slice(-10);
         const lastUserMsg = [...contextWindow].reverse().find((m: any) => m?.role === 'user');
         const lastUserText = truncate(extractText(lastUserMsg?.content).trim(), 1200);
         const explicitSearch = hasExplicitSearchRequest(lastUserText);
@@ -260,9 +270,24 @@ Deno.serve(async (req: Request) => {
         const forcedIntent: Record<string, unknown> | null = explicitSearch
             ? { state: 'search', query: lastUserText }
             : null;
+
+        // Check if the assistant recently asked a clarifying question
+        let alreadyClarified = false;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m && m.role === 'assistant') {
+                const text = extractText(m.content);
+                if (text.includes('Search paused') || text.includes('I need a bit more info') || text.includes('Clarification needed')) {
+                    alreadyClarified = true;
+                    break;
+                }
+            }
+        }
+
+        // Increase character slice to 1200 characters per message to capture details while remaining token-efficient.
         const conversationText = contextWindow
             .filter((m: any) => m.role === 'user' || m.role === 'assistant')
-            .map((m: any) => (m.role === 'user' ? 'User: ' : 'Assistant: ') + extractText(m.content).slice(-800))
+            .map((m: any) => (m.role === 'user' ? 'User: ' : 'Assistant: ') + extractText(m.content).slice(-1200))
             .join('\n');
 
         const currentDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -274,11 +299,16 @@ Deno.serve(async (req: Request) => {
         let cleaned = '';
 
         if (!forcedIntent) {
+            let systemPrompt = INTENT_SYSTEM + "\nToday's exact date is: " + currentDate + ". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures').";
+            if (alreadyClarified) {
+                systemPrompt += "\n\nCRITICAL WARNING: You have already asked a clarifying question in this conversation. You are STRICTLY FORBIDDEN from returning 'clarify' on this turn. You MUST choose 'search' (synthesizing the user's latest response with context into a broad query) or 'skip'.";
+            }
+
             const orPayload = {
                 model: INTENT_MODEL,
                 messages: [
-                    { role: 'system', content: INTENT_SYSTEM + "\nToday's exact date is: " + currentDate + ". If the user asks for upcoming events, YOU MUST explicitly include the current month and year in your query output (e.g. 'April 2026 real madrid fixtures')." },
-                    { role: 'user', content: 'Conversation:\\n' + conversationText + '\\n\\nClassify intent.' }
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: 'Conversation:\n' + conversationText + '\n\nClassify intent.' }
                 ],
                 max_tokens: 120,
                 stream: false,
@@ -335,6 +365,15 @@ Deno.serve(async (req: Request) => {
             try {
                 intent = JSON.parse(cleaned);
                 console.log('[DEBUG] Parsed Intent State:', JSON.stringify(intent));
+                
+                // Code-level safety fallback: if already clarified but model still returned clarify, override
+                if (alreadyClarified && intent.state === 'clarify') {
+                    console.log('[DEBUG] Loop prevention: already clarified once. Overriding clarify to search.');
+                    intent = {
+                        state: 'search',
+                        query: lastUserText
+                    };
+                }
             } catch {
                 console.log('[DEBUG] Failed to parse intent JSON, defaulting to search');
                 intent = { state: 'search', query: null };

@@ -417,8 +417,8 @@ const ChatArea: React.FC = () => {
                 flushAllPending();
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation
-                        ? `${renderedContent}\n\n_Search paused._\n\n**${question}**`
-                        : `_Search paused. I need a bit more info to get you the right results:_\n\n**${question}**`,
+                        ? `${renderedContent}\n\n${question}`
+                        : question,
                     isStreaming: false,
                     isReasoningStreaming: false,
                     generationStatus: 'failed_recoverable',
