@@ -651,9 +651,27 @@ interface PythonRendererProps {
   artifact: Artifact;
 }
 
+function getFileTypeMeta(ext?: string): { label: string; iconClass: string } {
+  switch (ext) {
+    case 'xlsx':
+      return { label: 'Excel Spreadsheet', iconClass: 'python-output-file-icon--xlsx' };
+    case 'csv':
+      return { label: 'CSV File', iconClass: 'python-output-file-icon--csv' };
+    case 'pdf':
+      return { label: 'PDF Document', iconClass: 'python-output-file-icon--pdf' };
+    case 'json':
+      return { label: 'JSON File', iconClass: 'python-output-file-icon--json' };
+    case 'txt':
+      return { label: 'Text File', iconClass: '' };
+    default:
+      return { label: 'File', iconClass: '' };
+  }
+}
+
 const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
-  const metaPackages = (artifact as any)?.meta?.packages;
+  const metaPackages = artifact.meta?.packages;
+  const mode = artifact.meta?.mode;
   const packages = useMemo(() => {
     if (!metaPackages) return [];
     return metaPackages
@@ -687,6 +705,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       artifact.id,
       artifact.content,
       packages,
+      mode,
       (msg) => {
         if (isMounted) {
           setProgress(msg);
@@ -701,7 +720,10 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
           isRunningRef.current = false;
           ranRef.current = artifact.id;
 
-          if (res.error) {
+          const isLimitation =
+            !!res.error && /not supported|cannot run in browser/i.test(res.error);
+
+          if (res.error && !isLimitation) {
             setRuntimeError(artifact.id, {
               message: res.error,
               origin: 'python' as any,
@@ -740,7 +762,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
     return () => {
       isMounted = false;
     };
-  }, [artifact.id, artifact.content, packages]);
+  }, [artifact.id, artifact.content, packages, mode]);
 
   const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
     const binaryString = atob(file.data);
@@ -761,153 +783,127 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
 
   if (isRunning) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 bg-zinc-950 text-zinc-400 rounded-lg border border-zinc-800 min-h-[300px] relative overflow-hidden">
-        <div className="relative flex items-center justify-center mb-6">
-          <div className="animate-pulse rounded-full border-2 border-indigo-500/40 p-4">
-            <Terminal size={32} className="text-indigo-400" />
-          </div>
+      <div className="python-output python-output--loading">
+        <div className="python-output-spinner-wrap">
+          <Terminal size={32} style={{ color: '#818cf8' }} />
         </div>
-        <p className="text-sm font-mono text-zinc-300">{progress}</p>
-        <div className="w-48 h-0.5 bg-zinc-800 rounded-full overflow-hidden mt-4">
-          <div className="h-full bg-indigo-500 rounded-full animate-pulse w-3/4"/>
+        <p className="python-output-progress">{progress || 'Initializing Python worker...'}</p>
+        <div className="python-output-progress-bar">
+          <div className="python-output-progress-bar-fill" />
         </div>
-        <div className="absolute bottom-4 text-zinc-600 text-xs select-none">
-          Powered by Pyodide · Python in WebAssembly
-        </div>
+        <div className="python-output-powered">Powered by Pyodide</div>
       </div>
     );
   }
 
   if (!result) return null;
 
-  const hasOutput = result.stdout || result.stderr || result.error || result.files.length > 0;
+  const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
+  const isLimitationError =
+    !!result.error && /not supported|cannot run in browser/i.test(result.error);
+  const hasOutput =
+    result.stdout || result.stderr || result.error || uniqueFiles.length > 0;
   const stderrLineCount = result.stderr ? result.stderr.trim().split('\n').length : 0;
 
   return (
-    <div className="flex flex-col gap-0 min-h-full bg-zinc-950 overflow-auto">
-      {/* A) STDOUT BLOCK */}
+    <div className="python-output">
       {result.stdout && (
-        <div className="flex flex-col">
-          <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 border-b border-zinc-800">
-            <div className="flex gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-red-500"></span>
-              <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
-              <span className="w-3 h-3 rounded-full bg-green-500"></span>
+        <div className="python-output-terminal">
+          <div className="python-output-terminal-bar">
+            <div className="python-output-terminal-dots">
+              <span />
+              <span />
+              <span />
             </div>
-            <span className="text-xs font-mono text-zinc-500">stdout</span>
+            <span className="python-output-terminal-label">stdout</span>
           </div>
-          <pre className="bg-zinc-950 px-5 py-4 font-mono text-sm text-emerald-300 leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-72 border-b border-zinc-800/60">
+          <pre className="python-output-terminal-body">
             <code>{result.stdout}</code>
           </pre>
         </div>
       )}
 
-      {/* B) ERROR BLOCK */}
-      {result.error && (
-        <div className="bg-red-950/30 border-l-2 border-red-500 px-5 py-4 mx-4 mt-4 rounded-r-md">
-          <div className="flex items-center gap-2 text-red-400 text-xs font-semibold mb-2">
+      {result.error && isLimitationError && (
+        <div className="python-output-limitation">
+          <div className="python-output-limitation-header">
+            <AlertTriangle size={14} />
+            <span>Cannot run in browser</span>
+          </div>
+          <p>
+            This script needs capabilities that are not available in the browser Python
+            environment (no network, disk access, databases, or system calls). Run the
+            code locally instead.
+          </p>
+          <pre>{result.error}</pre>
+        </div>
+      )}
+
+      {result.error && !isLimitationError && (
+        <div className="python-output-error">
+          <div className="python-output-error-header">
             <XCircle size={14} />
             <span>Execution Error</span>
           </div>
-          <pre className="font-mono text-xs text-red-300 whitespace-pre-wrap overflow-y-auto max-h-48 leading-relaxed">
-            {result.error}
-          </pre>
+          <pre>{result.error}</pre>
         </div>
       )}
 
-      {/* C) STDERR BLOCK */}
       {result.stderr && !result.error && (
-        <div className="mx-4 mt-4">
+        <>
           <button
+            type="button"
+            className="python-output-stderr-toggle"
             onClick={() => setShowStderr(!showStderr)}
-            className="text-xs text-amber-500 underline hover:text-amber-400 font-medium font-sans"
           >
             {showStderr ? 'Hide warnings' : `Show warnings (${stderrLineCount})`}
           </button>
-          {showStderr && (
-            <div className="bg-amber-950/20 border border-amber-900/30 rounded-md mt-2 p-3 font-mono text-xs text-amber-300 whitespace-pre-wrap max-h-36 overflow-y-auto">
-              {result.stderr}
-            </div>
-          )}
-        </div>
+          {showStderr && <div className="python-output-stderr-body">{result.stderr}</div>}
+        </>
       )}
 
-      {/* D) GENERATED FILES SECTION */}
-      {result.files.length > 0 && (
-        <div className="flex flex-col">
-          <div className="px-5 pt-5 pb-2 text-xs font-semibold text-zinc-500 uppercase tracking-widest font-sans">
-            Generated Files
-          </div>
-          
-          {result.files.map((file, idx) => {
+      {uniqueFiles.length > 0 && (
+        <>
+          <div className="python-output-files-heading">Generated Files</div>
+          {uniqueFiles.map((file) => {
             const isImage = file.mimeType.startsWith('image/');
-            
             if (isImage) {
               return (
-                <div key={idx} className="mx-4 mb-3 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 flex flex-col">
+                <div key={file.name} className="python-output-image">
                   <img
                     src={`data:${file.mimeType};base64,${file.data}`}
                     alt={file.name}
-                    className="w-full object-contain max-h-80 bg-zinc-950 p-2"
                   />
-                  <div className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-t border-zinc-800">
-                    <span className="text-xs font-mono text-zinc-400">
-                      {file.name}
-                    </span>
-                    <button
-                      onClick={() => handleDownload(file)}
-                      className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                      title="Download Image"
-                    >
-                      <Download size={14} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="python-output-image-download"
+                    onClick={() => handleDownload(file)}
+                    title={`Download ${file.name}`}
+                  >
+                    <Download size={16} />
+                  </button>
                 </div>
               );
             }
 
-            // Downloadable Files (.xlsx / .csv / .json / .txt etc)
-            let iconBoxStyle = 'bg-zinc-800 border border-zinc-700';
-            let iconColor = 'text-zinc-400';
-            let fileTypeLabel = 'File';
             const ext = file.name.split('.').pop()?.toLowerCase();
-            
-            if (ext === 'xlsx') {
-              iconBoxStyle = 'bg-green-950/60 border border-green-900/40';
-              iconColor = 'text-green-400';
-              fileTypeLabel = 'Excel Spreadsheet';
-            } else if (ext === 'csv') {
-              iconBoxStyle = 'bg-blue-950/60 border border-blue-900/40';
-              iconColor = 'text-blue-400';
-              fileTypeLabel = 'CSV File';
-            } else if (ext === 'json') {
-              iconBoxStyle = 'bg-purple-950/60 border border-purple-900/40';
-              iconColor = 'text-purple-400';
-              fileTypeLabel = 'JSON File';
-            } else if (ext === 'txt') {
-              iconBoxStyle = 'bg-zinc-850 border border-zinc-700';
-              iconColor = 'text-zinc-400';
-              fileTypeLabel = 'Text File';
-            }
-
+            const { label, iconClass } = getFileTypeMeta(ext);
             return (
-              <div key={idx} className="mx-4 mb-3 flex items-center justify-between px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800/60 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconBoxStyle}`}>
-                    <FileText size={18} className={iconColor} />
+              <div key={file.name} className="python-output-file">
+                <div className="python-output-file-info">
+                  <div className={`python-output-file-icon ${iconClass}`.trim()}>
+                    <FileText size={18} />
                   </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-mono text-zinc-200 truncate max-w-[240px]" title={file.name}>
+                  <div>
+                    <div className="python-output-file-name" title={file.name}>
                       {file.name}
-                    </span>
-                    <span className="text-xs text-zinc-500 font-sans mt-0.5">
-                      {fileTypeLabel}
-                    </span>
+                    </div>
+                    <div className="python-output-file-type">{label}</div>
                   </div>
                 </div>
                 <button
+                  type="button"
+                  className="python-output-download-btn"
                   onClick={() => handleDownload(file)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shrink-0"
                 >
                   <Download size={13} />
                   Download
@@ -915,13 +911,12 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
               </div>
             );
           })}
-        </div>
+        </>
       )}
 
-      {/* E) EMPTY STATE */}
       {!hasOutput && (
-        <div className="flex-1 flex items-center justify-center p-12 text-zinc-500 font-mono text-sm gap-2">
-          <CheckCircle2 size={20} className="text-emerald-500" />
+        <div className="python-output-success">
+          <CheckCircle2 size={20} />
           <span>Ran successfully</span>
         </div>
       )}

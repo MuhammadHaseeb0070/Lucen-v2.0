@@ -55,6 +55,7 @@ export function runPython(
   artifactId: string,
   code: string,
   packages: string[],
+  mode?: string,
   onProgress?: (message: string) => void
 ): Promise<PythonResult> {
   return new Promise((resolve) => {
@@ -64,6 +65,7 @@ export function runPython(
       artifactId,
       code,
       packages,
+      mode,
     });
   });
 }

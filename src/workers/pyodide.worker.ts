@@ -2,35 +2,19 @@ const ctx: Worker = self as any;
 
 let pyodide: any = null;
 
-const STANDARD_LIBS = new Set([
-  'sys', 'os', 'math', 'json', 're', 'csv', 'datetime', 'time', 'collections',
-  'itertools', 'functools', 'random', 'hashlib', 'io', 'base64', 'ast',
-  'pathlib', 'tempfile', 'shutil', 'subprocess', 'threading', 'xml', 'uuid',
-  'copy', 'pickle', 'logging', 'urllib', 'http', 'socket', 'struct', 'select'
+const MODE_PACKAGES: Record<string, string[]> = {
+  excel: ['pandas', 'openpyxl'],
+  chart: ['matplotlib', 'numpy'],
+  data: ['pandas', 'numpy'],
+  pdf: ['reportlab'],
+  calc: ['numpy', 'sympy'],
+};
+
+const PYODIDE_NATIVE = new Set([
+  'numpy', 'pandas', 'matplotlib', 'sympy', 'micropip',
 ]);
 
-function findImports(code: string): string[] {
-  const imports = new Set<string>();
-  const lines = code.split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('import ')) {
-      const parts = trimmed.substring(7).split(',');
-      for (const part of parts) {
-        const mod = part.trim().split(/\s+/)[0];
-        if (mod) {
-          imports.add(mod.split('.')[0]);
-        }
-      }
-    } else if (trimmed.startsWith('from ')) {
-      const match = trimmed.match(/^from\s+([a-zA-Z0-9_]+)/);
-      if (match && match[1]) {
-        imports.add(match[1]);
-      }
-    }
-  }
-  return Array.from(imports);
-}
+const OUTPUT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'svg', 'csv', 'xlsx', 'json', 'txt', 'pdf'];
 
 function arrayBufferToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -116,63 +100,101 @@ async function initPyodide(artifactId: string) {
   return pyodide;
 }
 
+function getLoadedPackageNames(py: any): Set<string> {
+  return new Set(Object.keys(py.loadedPackages || {}));
+}
+
+async function installViaMicropip(py: any, pkg: string): Promise<void> {
+  const micropip = py.pyimport('micropip');
+  await micropip.install(pkg);
+}
+
+async function loadPackageSafe(
+  py: any,
+  pkg: string,
+  loaded: Set<string>
+): Promise<void> {
+  if (loaded.has(pkg)) return;
+
+  if (PYODIDE_NATIVE.has(pkg)) {
+    await py.loadPackage(pkg);
+    loaded.add(pkg);
+    return;
+  }
+
+  try {
+    await installViaMicropip(py, pkg);
+    loaded.add(pkg);
+  } catch (err) {
+    console.warn(`Failed to install package via micropip: ${pkg}`, err);
+  }
+}
+
+async function loadPackagesList(
+  py: any,
+  pkgs: string[],
+  artifactId: string,
+  statusMessage: string
+): Promise<void> {
+  if (pkgs.length === 0) return;
+
+  ctx.postMessage({
+    type: 'status',
+    artifactId,
+    status: 'installing_packages',
+    message: statusMessage,
+  });
+
+  const loaded = getLoadedPackageNames(py);
+  for (const pkg of pkgs) {
+    await loadPackageSafe(py, pkg, loaded);
+  }
+}
+
 ctx.addEventListener('message', async (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
 
-  const { code, packages = [], artifactId } = d;
+  const { code, packages = [], mode, artifactId } = d;
 
   try {
     // 1. Lazy load Pyodide
     const py = await initPyodide(artifactId);
 
-    // 2. Install explicitly requested packages
-    if (packages.length > 0) {
-      ctx.postMessage({
-        type: 'status',
+    const modeKey = typeof mode === 'string' ? mode.trim().toLowerCase() : '';
+    const modePkgs = modeKey && MODE_PACKAGES[modeKey] ? MODE_PACKAGES[modeKey] : [];
+
+    // 2. Mode-first package loading
+    if (modePkgs.length > 0) {
+      await loadPackagesList(
+        py,
+        modePkgs,
         artifactId,
-        status: 'installing_packages',
-        message: `Downloading ${packages.join(', ')} from PyPI...`
-      });
-      await py.loadPackage('micropip');
-      const micropip = py.pyimport('micropip');
-      await Promise.all(packages.map((pkg: string) => micropip.install(pkg)));
+        `Loading packages for ${modeKey} mode...`
+      );
     }
 
-    // 3. Scan imports and auto-install fallback packages
-    const imports = findImports(code).filter(pkg => !STANDARD_LIBS.has(pkg));
-    if (imports.length > 0) {
-      ctx.postMessage({
-        type: 'status',
+    // 3. Extra packages from artifact attribute (deduped, skip mode packages)
+    const extraPackages = [...new Set(
+      (packages as string[])
+        .map((p: string) => p.trim())
+        .filter((p: string) => p.length > 0)
+    )].filter((pkg) => !modePkgs.includes(pkg));
+
+    if (extraPackages.length > 0) {
+      await loadPackagesList(
+        py,
+        extraPackages,
         artifactId,
-        status: 'installing_packages',
-        message: `Loading ${imports.join(', ')} - compiled for WebAssembly...`
-      });
-      
-      // Load any pre-compiled Pyodide packages from imports
+        `Loading ${extraPackages.join(', ')}...`
+      );
+    }
+
+    // 4. Safety net: loadPackagesFromImports
+    try {
       await py.loadPackagesFromImports(code);
-
-      // Install pure python packages from PyPI using micropip if not already loaded
-      await py.loadPackage('micropip');
-      const micropip = py.pyimport('micropip');
-      const loadedPackages = new Set(Object.keys(py.loadedPackages));
-      const toInstall = imports.filter(pkg => !loadedPackages.has(pkg));
-
-      if (toInstall.length > 0) {
-        ctx.postMessage({
-          type: 'status',
-          artifactId,
-          status: 'installing_packages',
-          message: `Downloading ${toInstall.join(', ')} from PyPI...`
-        });
-        await Promise.all(
-          toInstall.map((pkg: string) =>
-            micropip.install(pkg).catch((err: any) => {
-              console.warn(`Failed to auto-install package: ${pkg}`, err);
-            })
-          )
-        );
-      }
+    } catch (err) {
+      console.warn('loadPackagesFromImports failed:', err);
     }
 
     ctx.postMessage({
@@ -224,7 +246,7 @@ sys.stderr = sys.__stderr__
       const before = beforeMeta.get(p);
       if (!before || before.size !== meta.size || before.mtime !== meta.mtime) {
         const ext = p.split('.').pop()?.toLowerCase();
-        if (ext && ['png', 'jpg', 'jpeg', 'svg', 'csv', 'xlsx', 'json', 'txt'].includes(ext)) {
+        if (ext && OUTPUT_EXTENSIONS.includes(ext)) {
           try {
             const contentBytes = py.FS.readFile(p);
             const base64Data = arrayBufferToBase64(contentBytes);
@@ -236,6 +258,7 @@ sys.stderr = sys.__stderr__
             else if (ext === 'csv') mimeType = 'text/csv';
             else if (ext === 'xlsx') mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
             else if (ext === 'json') mimeType = 'application/json';
+            else if (ext === 'pdf') mimeType = 'application/pdf';
 
             const name = p.replace(/^\/home\/pyodide\//, '');
             outputFiles.push({ name, data: base64Data, mimeType });
