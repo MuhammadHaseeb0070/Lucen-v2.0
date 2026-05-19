@@ -644,6 +644,11 @@ const FileRenderer: React.FC<RendererProps> = ({ content, title, isStreaming }) 
 const pythonCache = new Map<string, PythonResult>();
 
 export function clearPythonCache(artifactId: string) {
+  for (const key of Array.from(pythonCache.keys())) {
+    if (key.startsWith(artifactId + '_')) {
+      pythonCache.delete(key);
+    }
+  }
   pythonCache.delete(artifactId);
 }
 
@@ -681,14 +686,16 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       .filter((p: string) => p.length > 0);
   }, [metaPackages]);
 
+  const cacheKey = `${artifact.id}_${artifact.content}`;
+
   const [result, setResult] = useState<PythonResult | null>(() => {
-    return pythonCache.get(artifact.id) || null;
+    return pythonCache.get(cacheKey) || null;
   });
   const [progress, setProgress] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [showStderr, setShowStderr] = useState<boolean>(false);
 
-  const ranRef = useRef<string | null>(pythonCache.has(artifact.id) ? artifact.id : null);
+  const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -696,7 +703,8 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       return;
     }
 
-    if (ranRef.current === artifact.id || isRunningRef.current) {
+    const cacheKey = `${artifact.id}_${artifact.content}`;
+    if (ranRef.current === cacheKey || isRunningRef.current) {
       return;
     }
 
@@ -725,11 +733,11 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       .then((res) => {
         if (!isStillActive()) return;
 
-        pythonCache.set(artifact.id, res);
+        pythonCache.set(cacheKey, res);
         setResult(res);
         setIsRunning(false);
         isRunningRef.current = false;
-        ranRef.current = artifact.id;
+        ranRef.current = cacheKey;
 
         const isLimitation =
           !!res.error && /not supported|cannot run in browser/i.test(res.error);
@@ -756,11 +764,11 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
           files: [],
           error: err.message || String(err),
         };
-        pythonCache.set(artifact.id, errRes);
+        pythonCache.set(cacheKey, errRes);
         setResult(errRes);
         setIsRunning(false);
         isRunningRef.current = false;
-        ranRef.current = artifact.id;
+        ranRef.current = cacheKey;
 
         setRuntimeError(artifact.id, {
           message: errRes.error,
@@ -973,11 +981,12 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
       content: content,
       messageId: '',
     };
+    const currentArtifact = artifact || fallbackArtifact;
     return (
       <RendererErrorBoundary content={content} language="python">
         <PythonRenderer
-          key={(artifact || fallbackArtifact).id}
-          artifact={artifact || fallbackArtifact}
+          key={currentArtifact.isStreaming ? currentArtifact.id : `${currentArtifact.id}_${currentArtifact.content}`}
+          artifact={currentArtifact}
         />
       </RendererErrorBoundary>
     );
