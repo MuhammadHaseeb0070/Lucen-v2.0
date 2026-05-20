@@ -75,6 +75,7 @@ export function runPython(
   code: string,
   packages: string[],
   mode?: string,
+  inputFiles?: Array<{ name: string; data: string }>,
   onProgress?: (message: string) => void
 ): Promise<PythonResult> {
   focusedArtifactId = artifactId;
@@ -100,6 +101,7 @@ export function runPython(
       code,
       packages,
       mode,
+      inputFiles,
     });
   });
 }

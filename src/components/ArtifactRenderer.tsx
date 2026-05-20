@@ -6,6 +6,7 @@ import { runPython, cancelPendingPythonRun, type PythonResult } from '../workers
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
+import { useChatStore } from '../store/chatStore';
 
 interface RendererProps {
   content: string;
@@ -686,6 +687,26 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       .filter((p: string) => p.length > 0);
   }, [metaPackages]);
 
+  const conversations = useChatStore((s) => s.conversations);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const activeConversation = useMemo(() => {
+    return conversations.find((c) => c.id === activeConversationId);
+  }, [conversations, activeConversationId]);
+  const messages = activeConversation?.messages || [];
+
+  const attachments = useMemo(() => {
+    return messages.flatMap((msg) => msg.attachments || []);
+  }, [messages]);
+
+  const inputFile = artifact.meta?.inputFile;
+
+  const matchedAttachment = useMemo(() => {
+    if (!inputFile) return null;
+    return attachments.find(
+      (att) => att.name.toLowerCase() === inputFile.toLowerCase()
+    );
+  }, [attachments, inputFile]);
+
   const cacheKey = `${artifact.id}_${artifact.content}`;
 
   const [result, setResult] = useState<PythonResult | null>(() => {
@@ -694,6 +715,8 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const [progress, setProgress] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [showStderr, setShowStderr] = useState<boolean>(false);
+  const [unsupportedFile, setUnsupportedFile] = useState<boolean>(false);
+  const [fileNotFound, setFileNotFound] = useState<boolean>(false);
 
   const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef<boolean>(false);
@@ -714,16 +737,39 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       isMounted &&
       useArtifactStore.getState().activeArtifact?.id === artifact.id;
 
+    setUnsupportedFile(false);
+    setFileNotFound(false);
+
+    if (inputFile) {
+      if (!matchedAttachment) {
+        setFileNotFound(true);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        return;
+      }
+      if (!matchedAttachment.rawBase64) {
+        setUnsupportedFile(true);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        return;
+      }
+    }
+
     setIsRunning(true);
     isRunningRef.current = true;
     setProgress('Initializing Python worker...');
     setResult(null);
+
+    const inputFiles = matchedAttachment?.rawBase64
+      ? [{ name: matchedAttachment.name, data: matchedAttachment.rawBase64 }]
+      : undefined;
 
     runPython(
       artifact.id,
       artifact.content,
       packages,
       mode,
+      inputFiles,
       (msg) => {
         if (isStillActive()) {
           setProgress(msg);
@@ -782,7 +828,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       isRunningRef.current = false;
       cancelPendingPythonRun(artifact.id);
     };
-  }, [activeArtifactId, artifact.id, artifact.content, packages, mode, setRuntimeError]);
+  }, [activeArtifactId, artifact.id, artifact.content, packages, mode, setRuntimeError, inputFile, matchedAttachment]);
 
   const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
     const binaryString = atob(file.data);
@@ -800,6 +846,76 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  if (unsupportedFile) {
+    return (
+      <div className="python-output">
+        <div className="python-output-unsupported-file">
+          <div className="python-output-unsupported-file-header">
+            <AlertTriangle size={16} />
+            <span>Unsupported File Type for Python Editing</span>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+            The file <strong>{inputFile}</strong> was matched, but dynamic editing is only supported for Excel (<code>.xlsx</code>, <code>.xls</code>) and Word (<code>.docx</code>) files.
+            Other file types like PDFs cannot be safely modified inside the browser Python sandbox.
+          </p>
+        </div>
+        <style>{`
+          .python-output-unsupported-file {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: var(--r-md);
+            padding: 16px;
+            margin: 16px;
+          }
+          .python-output-unsupported-file-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #d97706;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  if (fileNotFound) {
+    return (
+      <div className="python-output">
+        <div className="python-output-unsupported-file">
+          <div className="python-output-unsupported-file-header">
+            <AlertTriangle size={16} />
+            <span>Input File Not Found</span>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+            The Python script requested the input file <strong>{inputFile}</strong>, but no matching attachment was found in the conversation history.
+            Please upload the file first.
+          </p>
+        </div>
+        <style>{`
+          .python-output-unsupported-file {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: var(--r-md);
+            padding: 16px;
+            margin: 16px;
+          }
+          .python-output-unsupported-file-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #d97706;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (isRunning) {
     return (

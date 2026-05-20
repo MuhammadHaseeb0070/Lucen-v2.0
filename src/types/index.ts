@@ -11,6 +11,7 @@ export interface FileAttachment {
   descriptionGeneratedAt?: number;
   storagePath?: string;
   tokenEstimate?: number;
+  rawBase64?: string;
 }
 
 export interface Message {
@@ -213,7 +214,7 @@ export interface Artifact {
   runtimeError?: ArtifactRuntimeError | null;
   /** Frontend pipeline status (drives the status overlay). Defaults to 'idle' when omitted. */
   patchStatus?: ArtifactPatchStatus;
-  meta?: { packages?: string; mode?: string };
+  meta?: { packages?: string; mode?: string; inputFile?: string };
 }
 
 export interface ModelInfo {

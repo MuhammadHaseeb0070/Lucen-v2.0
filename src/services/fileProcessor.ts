@@ -117,6 +117,23 @@ function readAsDataURL(file: File): Promise<string> {
     });
 }
 
+function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            const commaIndex = result.indexOf(',');
+            if (commaIndex >= 0) {
+                resolve(result.slice(commaIndex + 1));
+            } else {
+                resolve(result);
+            }
+        };
+        reader.onerror = () => reject(new Error(`Failed to read binary for ${file.name}`));
+        reader.readAsDataURL(file);
+    });
+}
+
 function readAsText(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -284,11 +301,13 @@ export async function processFile(file: File): Promise<FileAttachment> {
     }
     if (fileType === 'docx') {
         let text = await extractDocxText(file);
-        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
+        const rawBase64 = await fileToBase64(file);
+        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), rawBase64 };
     }
     if (fileType === 'xlsx') {
         let text = await extractExcelText(file);
-        return { id: uuidv4(), name: file.name, type: 'csv', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
+        const rawBase64 = await fileToBase64(file);
+        return { id: uuidv4(), name: file.name, type: 'csv', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), rawBase64 };
     }
     if (fileType === 'pptx') {
         let text = await extractPptxText(file);

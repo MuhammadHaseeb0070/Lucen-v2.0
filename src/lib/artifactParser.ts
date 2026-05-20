@@ -29,7 +29,7 @@ function parseArtifactAttrs(attrs: string): {
   parentId?: string;
   version?: number;
   isHead?: boolean;
-  meta?: { packages?: string; mode?: string };
+  meta?: { packages?: string; mode?: string; inputFile?: string };
 } {
   const typeRaw = getAttr(attrs, 'type');
   const titleRaw = getAttr(attrs, 'title');
@@ -42,6 +42,7 @@ function parseArtifactAttrs(attrs: string): {
   const isHeadRaw = getAttr(attrs, 'is_head');
   const packagesRaw = getAttr(attrs, 'packages');
   const modeRaw = getAttr(attrs, 'mode');
+  const inputFileRaw = getAttr(attrs, 'inputFile') || getAttr(attrs, 'input_file');
 
   const type = (typeRaw || 'html').trim().toLowerCase();
   const filename = filenameRaw?.trim();
@@ -67,10 +68,11 @@ function parseArtifactAttrs(attrs: string): {
     parentId: parentIdRaw?.trim() || undefined,
     version,
     isHead,
-    meta: (packagesRaw || modeRaw)
+    meta: (packagesRaw || modeRaw || inputFileRaw)
       ? {
           packages: packagesRaw?.trim(),
           mode: modeRaw?.trim().toLowerCase(),
+          inputFile: inputFileRaw?.trim(),
         }
       : undefined,
   };
