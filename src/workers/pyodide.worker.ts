@@ -94,6 +94,15 @@ function clearWorkspace(py: any) {
   }
 }
 
+function extractPythonError(err: any): string {
+  if (!err) return 'Unknown error';
+  const full = typeof err.toString === 'function' ? err.toString() : String(err);
+  if (err.message === 'PythonError' || err.type || (err.constructor && err.constructor.name === 'PythonError')) {
+    return full;
+  }
+  return err.message || full;
+}
+
 async function initPyodide(artifactId: string) {
   if (pyodide) return pyodide;
 
@@ -290,7 +299,7 @@ except Exception:
     try {
       await py.runPythonAsync(code);
     } catch (err: any) {
-      runError = err.message || String(err);
+      runError = extractPythonError(err);
     }
 
     // 7. Get outputs and restore streams
@@ -368,7 +377,7 @@ except Exception:
       stdout: '',
       stderr: '',
       files: [],
-      error: err.message || String(err)
+      error: extractPythonError(err)
     });
   }
 });
