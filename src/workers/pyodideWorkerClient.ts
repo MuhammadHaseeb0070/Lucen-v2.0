@@ -1,13 +1,77 @@
+// ── Excel schema (extracted from xlsx output files for live preview) ──────────
+export interface ExcelCellSchema {
+  v: string | number | boolean | null; // value
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  bg?: string;       // hex background e.g. "#4472C4"
+  fg?: string;       // hex font color
+  align?: 'left' | 'center' | 'right' | 'general';
+  valign?: 'top' | 'middle' | 'bottom';
+  fontSize?: number;
+  numFmt?: string;   // number format string e.g. "0.00"
+  wrap?: boolean;
+}
+
+export interface ExcelSheetSchema {
+  dims: { maxRow: number; maxCol: number };
+  colWidths: number[];   // width in pixels for each column (1-indexed via index 0 = col 1)
+  rowHeights: number[];  // height in pixels for each row (1-indexed via index 0 = row 1)
+  cells: Record<string, ExcelCellSchema>; // key = "A1", "B2" etc.
+  merges: Array<[string, string]>;        // [topLeft, bottomRight] e.g. ["A1","C1"]
+}
+
+export interface XlsxSchema {
+  sheets: string[];        // all sheet names (capped at 5)
+  totalSheets: number;     // actual total before capping
+  activeSheet: string;
+  data: Record<string, ExcelSheetSchema>;
+}
+
+// ── Word/docx schema ──────────────────────────────────────────────────────────
+export interface DocxRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fontSize?: number;
+  color?: string;
+}
+
+export interface DocxParagraph {
+  style: string;            // e.g. "Normal", "Heading 1"
+  text: string;             // full plain text
+  runs?: DocxRun[];
+  alignment?: string;
+}
+
+export interface DocxTableCell {
+  text: string;
+  bold?: boolean;
+}
+
+export interface DocxTable {
+  rows: DocxTableCell[][];
+}
+
+export interface DocxSchema {
+  paragraphs: DocxParagraph[];
+  tables: DocxTable[];
+}
+
+// ── Core result type ──────────────────────────────────────────────────────────
 export interface PythonResult {
   stdout: string;
   stderr: string;
   files: Array<{ name: string; data: string; mimeType: string }>;
   error: string | null;
+  xlsxSchema?: XlsxSchema | null;
+  docxSchema?: DocxSchema | null;
 }
 
 type WorkerMessage =
   | { type: 'status'; artifactId: string; status: string; message: string }
-  | { type: 'result'; artifactId: string; stdout: string; stderr: string; files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
+  | { type: 'result'; artifactId: string; stdout: string; stderr: string; files: Array<{ name: string; data: string; mimeType: string }>; error: string | null; xlsxSchema?: XlsxSchema | null; docxSchema?: DocxSchema | null };
 
 let worker: Worker | undefined;
 /** Only this artifact's run may update UI callbacks (the open workspace artifact). */
@@ -58,6 +122,8 @@ function getWorker(): Worker {
             stderr: data.stderr,
             files: data.files,
             error: data.error,
+            xlsxSchema: data.xlsxSchema ?? null,
+            docxSchema: data.docxSchema ?? null,
           });
         }
       }

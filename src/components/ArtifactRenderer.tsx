@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText, Terminal, XCircle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText, Terminal, XCircle, CheckCircle2, TableProperties, FileType } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
 import { runPython, cancelPendingPythonRun, type PythonResult } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
@@ -8,6 +8,7 @@ import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import { useChatStore } from '../store/chatStore';
 import { supabase } from '../lib/supabase';
+import DocumentPreview from './ExcelDocumentPreview';
 
 interface RendererProps {
   content: string;
@@ -1035,17 +1036,31 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
     );
   }
 
+  // Map raw status strings to user-friendly messages
+  const friendlyProgress = useMemo(() => {
+    if (!progress) return 'Initializing Python environment...';
+    if (progress.includes('Setting up Python')) return '⚙️  Setting up Python environment (first time: ~10-15 seconds)...';
+    if (progress.includes('Preparing package')) return '📦  Preparing package installer...';
+    if (progress.includes('Scanning imports')) return '🔍  Scanning required packages...';
+    if (progress.includes('Loading')) return `📥  ${progress}`;
+    if (progress.includes('Downloading')) return `⬇️  ${progress}`;
+    if (progress.includes('Executing')) return '▶️  Running your script...';
+    if (progress.includes('Reading spreadsheet') || progress.includes('extracting') || progress.includes('Extracting')) return '🔬  Analyzing spreadsheet for live preview...';
+    if (progress.includes('Reading document') || progress.includes('document structure')) return '🔬  Analyzing document structure for preview...';
+    return progress;
+  }, [progress]);
+
   if (isRunning) {
     return (
       <div className="python-output python-output--loading">
         <div className="python-output-spinner-wrap">
           <Terminal size={32} style={{ color: '#818cf8' }} />
         </div>
-        <p className="python-output-progress">{progress || 'Initializing Python worker...'}</p>
+        <p className="python-output-progress">{friendlyProgress}</p>
         <div className="python-output-progress-bar">
           <div className="python-output-progress-bar-fill" />
         </div>
-        <div className="python-output-powered">Powered by Pyodide</div>
+        <div className="python-output-powered">Powered by Pyodide • Please wait, this may take a moment</div>
       </div>
     );
   }
@@ -1141,11 +1156,13 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
 
             const ext = file.name.split('.').pop()?.toLowerCase();
             const { label, iconClass } = getFileTypeMeta(ext);
+            const isXlsx = ext === 'xlsx' || ext === 'xls';
+            const isDocx = ext === 'docx' || ext === 'doc';
             return (
               <div key={file.name} className="python-output-file">
                 <div className="python-output-file-info">
                   <div className={`python-output-file-icon ${iconClass}`.trim()}>
-                    <FileText size={18} />
+                    {isXlsx ? <TableProperties size={18} /> : isDocx ? <FileType size={18} /> : <FileText size={18} />}
                   </div>
                   <div>
                     <div className="python-output-file-name" title={file.name}>
@@ -1173,6 +1190,14 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
           <CheckCircle2 size={20} />
           <span>Ran successfully</span>
         </div>
+      )}
+
+      {/* ── Live document preview (xlsx / docx) ─────────────────────── */}
+      {(result.xlsxSchema || result.docxSchema) && (
+        <DocumentPreview
+          xlsxSchema={result.xlsxSchema}
+          docxSchema={result.docxSchema}
+        />
       )}
     </div>
   );

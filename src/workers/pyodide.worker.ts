@@ -2,7 +2,7 @@ const ctx: Worker = self as any;
 
 let pyodide: any = null;
 
-const OUTPUT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'svg', 'csv', 'xlsx', 'json', 'txt', 'pdf'];
+const OUTPUT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'svg', 'csv', 'xlsx', 'json', 'txt', 'pdf', 'docx', 'doc'];
 
 function arrayBufferToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -220,6 +220,292 @@ async function installPackagesDynamic(
   }
 }
 
+// ── XLSX Schema Extraction ────────────────────────────────────────────────────
+
+const XLSX_EXTRACTOR_PYTHON = `
+import json, openpyxl
+from openpyxl.utils import get_column_letter
+
+MAX_SHEETS = 5
+MAX_ROWS = 500
+MAX_COLS = 50
+
+def _argb_to_hex(argb):
+    if not argb or argb == '00000000':
+        return None
+    try:
+        s = str(argb)
+        if len(s) == 8:
+            return '#' + s[2:]
+        if len(s) == 6:
+            return '#' + s
+    except Exception:
+        pass
+    return None
+
+def _cell_color(cell):
+    try:
+        fill = cell.fill
+        if fill and fill.fgColor and fill.patternType and fill.patternType != 'none':
+            c = fill.fgColor
+            if c.type == 'rgb':
+                return _argb_to_hex(c.rgb)
+            if c.type == 'indexed' and c.indexed not in (0, 64):
+                return None
+    except Exception:
+        pass
+    return None
+
+def _font_color(cell):
+    try:
+        f = cell.font
+        if f and f.color and f.color.type == 'rgb':
+            return _argb_to_hex(f.color.rgb)
+    except Exception:
+        pass
+    return None
+
+def _align(cell):
+    try:
+        a = cell.alignment
+        if a and a.horizontal and a.horizontal != 'general':
+            return a.horizontal
+    except Exception:
+        pass
+    return None
+
+def extract_xlsx(path):
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=False)
+    except Exception as e:
+        return json.dumps({'error': str(e)})
+
+    all_sheets = wb.sheetnames
+    total_sheets = len(all_sheets)
+    sheets_to_extract = all_sheets[:MAX_SHEETS]
+    active_name = wb.active.title if wb.active else (sheets_to_extract[0] if sheets_to_extract else '')
+
+    result = {
+        'sheets': sheets_to_extract,
+        'totalSheets': total_sheets,
+        'activeSheet': active_name if active_name in sheets_to_extract else sheets_to_extract[0] if sheets_to_extract else '',
+        'data': {}
+    }
+
+    for sheet_name in sheets_to_extract:
+        ws = wb[sheet_name]
+        max_row = min(ws.max_row or 0, MAX_ROWS)
+        max_col = min(ws.max_column or 0, MAX_COLS)
+
+        # Column widths (convert from Excel units to approximate pixels: *7 + 5)
+        col_widths = []
+        for ci in range(1, max_col + 1):
+            letter = get_column_letter(ci)
+            cd = ws.column_dimensions.get(letter)
+            if cd and cd.width and cd.width > 0:
+                col_widths.append(round(cd.width * 7 + 5))
+            else:
+                col_widths.append(75)  # default
+
+        # Row heights (Excel units ~= pixels * 0.75, so pixels = units / 0.75)
+        row_heights = []
+        for ri in range(1, max_row + 1):
+            rd = ws.row_dimensions.get(ri)
+            if rd and rd.height and rd.height > 0:
+                row_heights.append(round(rd.height / 0.75))
+            else:
+                row_heights.append(20)  # default
+
+        # Merged cells
+        merges = []
+        for m in ws.merged_cells.ranges:
+            merges.append([m.min_row, m.min_col, m.max_row, m.max_col])
+
+        # Cells
+        cells = {}
+        for ri in range(1, max_row + 1):
+            for ci in range(1, max_col + 1):
+                cell = ws.cell(row=ri, column=ci)
+                v = cell.value
+                if v is None:
+                    continue
+                letter = get_column_letter(ci)
+                key = f"{letter}{ri}"
+                cell_data = {'v': str(v) if not isinstance(v, (int, float, bool)) else v}
+                try:
+                    f = cell.font
+                    if f:
+                        if f.bold: cell_data['bold'] = True
+                        if f.italic: cell_data['italic'] = True
+                        if f.underline: cell_data['underline'] = True
+                        if f.size: cell_data['fontSize'] = f.size
+                        fc = _font_color(cell)
+                        if fc: cell_data['fg'] = fc
+                except Exception:
+                    pass
+                bg = _cell_color(cell)
+                if bg: cell_data['bg'] = bg
+                al = _align(cell)
+                if al: cell_data['align'] = al
+                try:
+                    if cell.number_format and cell.number_format != 'General':
+                        cell_data['numFmt'] = cell.number_format
+                except Exception:
+                    pass
+                cells[key] = cell_data
+
+        result['data'][sheet_name] = {
+            'dims': {'maxRow': max_row, 'maxCol': max_col},
+            'colWidths': col_widths,
+            'rowHeights': row_heights,
+            'cells': cells,
+            'merges': merges,
+        }
+
+    return json.dumps(result)
+
+_xlsx_schema_result = extract_xlsx(_xlsx_extract_path)
+`;
+
+async function extractXlsxSchema(py: any, filePath: string, artifactId: string): Promise<object | null> {
+  try {
+    ctx.postMessage({
+      type: 'status',
+      artifactId,
+      status: 'extracting_schema',
+      message: 'Reading spreadsheet data for live preview...',
+    });
+
+    // Make sure openpyxl is available
+    try {
+      await py.loadPackagesFromImports('import openpyxl');
+    } catch { /* already loaded */ }
+
+    py.globals.set('_xlsx_extract_path', filePath);
+    await py.runPythonAsync(XLSX_EXTRACTOR_PYTHON);
+    const jsonStr: string = py.globals.get('_xlsx_schema_result');
+    if (!jsonStr) return null;
+    const parsed = JSON.parse(jsonStr);
+    if (parsed.error) {
+      console.warn('[xlsxSchema] extraction error:', parsed.error);
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[xlsxSchema] extraction failed:', err);
+    return null;
+  }
+}
+
+// ── DOCX Schema Extraction ────────────────────────────────────────────────────
+
+const DOCX_EXTRACTOR_PYTHON = `
+import json
+
+def extract_docx(path):
+    try:
+        from docx import Document
+        from docx.oxml.ns import qn
+    except ImportError:
+        return json.dumps({'error': 'python-docx not installed'})
+
+    try:
+        doc = Document(path)
+    except Exception as e:
+        return json.dumps({'error': str(e)})
+
+    MAX_PARAGRAPHS = 300
+    paragraphs = []
+    for i, para in enumerate(doc.paragraphs):
+        if i >= MAX_PARAGRAPHS:
+            break
+        if not para.text.strip():
+            continue
+        p_data = {
+            'style': para.style.name if para.style else 'Normal',
+            'text': para.text,
+        }
+        runs_data = []
+        for run in para.runs:
+            if not run.text:
+                continue
+            r = {'text': run.text}
+            if run.bold: r['bold'] = True
+            if run.italic: r['italic'] = True
+            if run.underline: r['underline'] = True
+            if run.font.size:
+                try: r['fontSize'] = round(run.font.size.pt)
+                except Exception: pass
+            if run.font.color and run.font.color.type == 'rgb':
+                try:
+                    rgb = run.font.color.rgb
+                    r['color'] = f'#{str(rgb)}'
+                except Exception: pass
+            runs_data.append(r)
+        if runs_data:
+            p_data['runs'] = runs_data
+        if para.alignment is not None:
+            try:
+                align_map = {0: 'left', 1: 'center', 2: 'right', 3: 'justify'}
+                p_data['alignment'] = align_map.get(para.alignment.value, 'left')
+            except Exception: pass
+        paragraphs.append(p_data)
+
+    tables_data = []
+    for table in doc.tables[:20]:
+        rows_data = []
+        for row in table.rows:
+            cells_data = []
+            for cell in row.cells:
+                cd = {'text': cell.text}
+                # Check if first para is bold
+                try:
+                    if cell.paragraphs and cell.paragraphs[0].runs:
+                        if cell.paragraphs[0].runs[0].bold:
+                            cd['bold'] = True
+                except Exception: pass
+                cells_data.append(cd)
+            rows_data.append(cells_data)
+        tables_data.append({'rows': rows_data})
+
+    return json.dumps({'paragraphs': paragraphs, 'tables': tables_data})
+
+_docx_schema_result = extract_docx(_docx_extract_path)
+`;
+
+async function extractDocxSchema(py: any, filePath: string, artifactId: string): Promise<object | null> {
+  try {
+    ctx.postMessage({
+      type: 'status',
+      artifactId,
+      status: 'extracting_schema',
+      message: 'Reading document structure for preview...',
+    });
+
+    // Make sure python-docx is available (it may need micropip install)
+    try {
+      const micropip = py.pyimport('micropip');
+      await micropip.install('python-docx').catch(() => {/* already installed */});
+    } catch { /* ignore */ }
+
+    py.globals.set('_docx_extract_path', filePath);
+    await py.runPythonAsync(DOCX_EXTRACTOR_PYTHON);
+    const jsonStr: string = py.globals.get('_docx_schema_result');
+    if (!jsonStr) return null;
+    const parsed = JSON.parse(jsonStr);
+    if (parsed.error) {
+      console.warn('[docxSchema] extraction error:', parsed.error);
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[docxSchema] extraction failed:', err);
+    return null;
+  }
+}
+
+// ── Main message handler ──────────────────────────────────────────────────────
+
 ctx.addEventListener('message', async (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
@@ -327,6 +613,9 @@ except Exception:
 
     // 8. Scan FS for new/modified files
     let outputFiles: Array<{ name: string; data: string; mimeType: string }> = [];
+    let xlsxOutputPath: string | null = null;
+    let docxOutputPath: string | null = null;
+
     try {
       const afterMeta = getFilesMeta('/home/pyodide');
 
@@ -344,8 +633,15 @@ except Exception:
               else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
               else if (ext === 'svg') mimeType = 'image/svg+xml';
               else if (ext === 'csv') mimeType = 'text/csv';
-              else if (ext === 'xlsx') mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-              else if (ext === 'json') mimeType = 'application/json';
+              else if (ext === 'xlsx') {
+                mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+                if (!xlsxOutputPath) xlsxOutputPath = p;
+              } else if (ext === 'xls') {
+                mimeType = 'application/vnd.ms-excel';
+              } else if (ext === 'docx') {
+                mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                if (!docxOutputPath) docxOutputPath = p;
+              } else if (ext === 'json') mimeType = 'application/json';
               else if (ext === 'pdf') mimeType = 'application/pdf';
 
               const name = p.replace(/^\/home\/pyodide\//, '');
@@ -360,14 +656,36 @@ except Exception:
       console.warn('FS scan failed:', err);
     }
 
-    // 9. Post back results
+    // 9. Schema extraction for xlsx/docx output files (gives live preview)
+    let xlsxSchema: object | null = null;
+    let docxSchema: object | null = null;
+
+    if (!runError && xlsxOutputPath) {
+      try {
+        xlsxSchema = await extractXlsxSchema(py, xlsxOutputPath, artifactId);
+      } catch (err) {
+        console.warn('[schema] xlsx extraction failed silently:', err);
+      }
+    }
+
+    if (!runError && docxOutputPath) {
+      try {
+        docxSchema = await extractDocxSchema(py, docxOutputPath, artifactId);
+      } catch (err) {
+        console.warn('[schema] docx extraction failed silently:', err);
+      }
+    }
+
+    // 10. Post back results
     ctx.postMessage({
       type: 'result',
       artifactId,
       stdout,
       stderr,
       files: outputFiles,
-      error: runError
+      error: runError,
+      xlsxSchema,
+      docxSchema,
     });
 
   } catch (err: any) {
@@ -377,7 +695,9 @@ except Exception:
       stdout: '',
       stderr: '',
       files: [],
-      error: extractPythonError(err)
+      error: extractPythonError(err),
+      xlsxSchema: null,
+      docxSchema: null,
     });
   }
 });
