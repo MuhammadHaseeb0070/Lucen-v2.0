@@ -182,20 +182,20 @@ python   - CRITICAL RULE - UPLOADED FILE EDITING:
            ── EXCEL FORMULAS & CALCULATION ACCURACY ──────────────────────────────
            1. NEVER calculate or compute totals/averages/percentages in your Python code 
               and write hardcoded numbers to the sheet.
-           2. ALWAYS write Excel formula strings (e.g. `=SUM(B5:D5)`, `=AVERAGE(C2:C10)`, `=B5/C5`) 
+           2. ALWAYS write Excel formula strings (e.g. \`=SUM(B5:D5)\`, \`=AVERAGE(C2:C10)\`, \`=B5/C5\`) 
               so Excel itself computes them. This guarantees 100% math correctness.
            3. Ensure standard uppercase formula names (use SUM, not sum; AVERAGE, not average).
 
            ── DYNAMIC ROW/COLUMN PLACEMENT (NO HARDCODED INDICES) ────────────────
-           1. NEVER assume a row or column number is static (e.g. never do `ws.insert_rows(7)` 
-              or `ws['B10']` unless you have dynamically verified that row 7 is the correct place).
+           1. NEVER assume a row or column number is static (e.g. never do \`ws.insert_rows(7)\` 
+              or \`ws['B10']\` unless you have dynamically verified that row 7 is the correct place).
            2. ALWAYS scan the worksheet dynamically to find headers (e.g., 'Product', 'January') 
               and summary rows (e.g., 'TOTAL', 'Total Revenue').
            3. When adding a new item/row to a table, find the summary/TOTAL row index first, 
               insert the new row EXACTLY before that index, and copy styles from the row above it.
            4. Adjust any hardcoded SUM or summary ranges to include the newly inserted row 
-              (e.g., if the summary was `=SUM(B5:B8)` and you insert a row, update the formula to 
-              `=SUM(B5:B9)`).
+              (e.g., if the summary was \`=SUM(B5:B8)\` and you insert a row, update the formula to 
+              \`=SUM(B5:B9)\`).
 
            ── WORD GOLDEN RULE (python-docx) ────────────────────────────────────
            ALWAYS load and modify, never recreate:

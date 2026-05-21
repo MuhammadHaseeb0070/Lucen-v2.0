@@ -286,9 +286,10 @@ const WordPreview: React.FC<WordPreviewProps> = ({ schema }) => {
 interface DocumentPreviewProps {
   xlsxSchema?: XlsxSchema | null;
   docxSchema?: DocxSchema | null;
+  hideDisclaimer?: boolean;
 }
 
-const DocumentPreview: React.FC<DocumentPreviewProps> = ({ xlsxSchema, docxSchema }) => {
+const DocumentPreview: React.FC<DocumentPreviewProps> = ({ xlsxSchema, docxSchema, hideDisclaimer = false }) => {
   if (!xlsxSchema && !docxSchema) return null;
 
   const isWord = !!docxSchema;
@@ -296,15 +297,17 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ xlsxSchema, docxSchem
   return (
     <div className="edp-root">
       {/* Fidelity disclaimer */}
-      <div className="edp-disclaimer">
-        <AlertTriangle size={13} className="edp-disclaimer-icon" />
-        <span>
-          {isWord
-            ? 'Word document preview is simplified — images, complex layouts, and some formatting are not shown. '
-            : 'Spreadsheet preview may not show all formatting (charts, images, custom fonts). '}
-          <strong>Download the file to see the exact result.</strong>
-        </span>
-      </div>
+      {!hideDisclaimer && (
+        <div className="edp-disclaimer">
+          <AlertTriangle size={13} className="edp-disclaimer-icon" />
+          <span>
+            {isWord
+              ? 'Word document preview is simplified — images, complex layouts, and some formatting are not shown. '
+              : 'Spreadsheet preview may not show all formatting (charts, images, custom fonts). '}
+            <strong>Download the file to see the exact result.</strong>
+          </span>
+        </div>
+      )}
 
       {xlsxSchema && <ExcelGrid schema={xlsxSchema} />}
       {docxSchema && <WordPreview schema={docxSchema} />}

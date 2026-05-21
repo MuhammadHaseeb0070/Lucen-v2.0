@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, FileText, Terminal, XCircle, CheckCircle2, TableProperties, FileType } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, XCircle, CheckCircle2, TableProperties, FileType } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
 import { runPython, cancelPendingPythonRun, type PythonResult } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
@@ -659,22 +659,7 @@ interface PythonRendererProps {
   artifact: Artifact;
 }
 
-function getFileTypeMeta(ext?: string): { label: string; iconClass: string } {
-  switch (ext) {
-    case 'xlsx':
-      return { label: 'Excel Spreadsheet', iconClass: 'python-output-file-icon--xlsx' };
-    case 'csv':
-      return { label: 'CSV File', iconClass: 'python-output-file-icon--csv' };
-    case 'pdf':
-      return { label: 'PDF Document', iconClass: 'python-output-file-icon--pdf' };
-    case 'json':
-      return { label: 'JSON File', iconClass: 'python-output-file-icon--json' };
-    case 'txt':
-      return { label: 'Text File', iconClass: '' };
-    default:
-      return { label: 'File', iconClass: '' };
-  }
-}
+
 
 const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
@@ -720,6 +705,15 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const [unsupportedFile, setUnsupportedFile] = useState<boolean>(false);
   const [fileNotFound, setFileNotFound] = useState<boolean>(false);
   const [fileDataMissing, setFileDataMissing] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'preview' | 'console'>('preview');
+
+  // Sync activeTab when result updates or loads
+  useEffect(() => {
+    if (result) {
+      const hasPreview = !!(result.xlsxSchema || result.docxSchema);
+      setActiveTab(hasPreview ? 'preview' : 'console');
+    }
+  }, [result]);
 
   const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef<boolean>(false);
@@ -1074,65 +1068,131 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
     result.stdout || result.stderr || result.error || uniqueFiles.length > 0;
   const stderrLineCount = result.stderr ? result.stderr.trim().split('\n').length : 0;
 
+  const hasPreview = !!(result.xlsxSchema || result.docxSchema);
+  const showHeader = hasPreview || uniqueFiles.length > 0;
+
   return (
     <div className="python-output">
-      {result.stdout && (
-        <div className="python-output-terminal">
-          <div className="python-output-terminal-bar">
-            <div className="python-output-terminal-dots">
-              <span />
-              <span />
-              <span />
+      {showHeader && (
+        <div className="python-output-header-bar">
+          {hasPreview ? (
+            <div className="python-output-tabs">
+              <button
+                type="button"
+                className={`python-output-tab-btn ${activeTab === 'preview' ? 'python-output-tab-btn--active' : ''}`}
+                onClick={() => setActiveTab('preview')}
+              >
+                {result.xlsxSchema ? (
+                  <>
+                    <TableProperties size={14} />
+                    <span>Spreadsheet Preview</span>
+                  </>
+                ) : (
+                  <>
+                    <FileType size={14} />
+                    <span>Document Preview</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className={`python-output-tab-btn ${activeTab === 'console' ? 'python-output-tab-btn--active' : ''}`}
+                onClick={() => setActiveTab('console')}
+              >
+                <Terminal size={14} />
+                <span>Console & Output</span>
+              </button>
             </div>
-            <span className="python-output-terminal-label">stdout</span>
-          </div>
-          <pre className="python-output-terminal-body">
-            <code>{result.stdout}</code>
-          </pre>
+          ) : (
+            <div className="python-output-terminal-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e4e4e7' }}>
+              <Terminal size={14} />
+              <span>Console & Output</span>
+            </div>
+          )}
+
+          {uniqueFiles.length > 0 && (
+            <div className="python-output-header-downloads">
+              {uniqueFiles.map((file) => (
+                <button
+                  key={file.name}
+                  type="button"
+                  className="python-output-header-download-btn"
+                  onClick={() => handleDownload(file)}
+                  title={`Download ${file.name}`}
+                >
+                  <Download size={12} />
+                  <span>{file.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {result.error && isLimitationError && (
-        <div className="python-output-limitation">
-          <div className="python-output-limitation-header">
-            <AlertTriangle size={14} />
-            <span>Cannot run in browser</span>
-          </div>
-          <p>
-            This script needs capabilities that are not available in the browser Python
-            environment (no network, disk access, databases, or system calls). Run the
-            code locally instead.
-          </p>
-          <pre>{result.error}</pre>
-        </div>
-      )}
+      {activeTab === 'preview' && hasPreview ? (
+        <DocumentPreview
+          xlsxSchema={result.xlsxSchema}
+          docxSchema={result.docxSchema}
+          hideDisclaimer={true}
+        />
+      ) : (
+        <div className="python-output-console-content">
+          {result.stdout && (
+            <div className="python-output-terminal">
+              {!showHeader && (
+                <div className="python-output-terminal-bar">
+                  <div className="python-output-terminal-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <span className="python-output-terminal-label">stdout</span>
+                </div>
+              )}
+              <pre className="python-output-terminal-body">
+                <code>{result.stdout}</code>
+              </pre>
+            </div>
+          )}
 
-      {result.error && !isLimitationError && (
-        <div className="python-output-error">
-          <div className="python-output-error-header">
-            <XCircle size={14} />
-            <span>Execution Error</span>
-          </div>
-          <pre>{result.error}</pre>
-        </div>
-      )}
+          {result.error && isLimitationError && (
+            <div className="python-output-limitation">
+              <div className="python-output-limitation-header">
+                <AlertTriangle size={14} />
+                <span>Cannot run in browser</span>
+              </div>
+              <p>
+                This script needs capabilities that are not available in the browser Python
+                environment (no network, disk access, databases, or system calls). Run the
+                code locally instead.
+              </p>
+              <pre>{result.error}</pre>
+            </div>
+          )}
 
-      {result.stderr && !result.error && (
-        <>
-          <button
-            type="button"
-            className="python-output-stderr-toggle"
-            onClick={() => setShowStderr(!showStderr)}
-          >
-            {showStderr ? 'Hide warnings' : `Show warnings (${stderrLineCount})`}
-          </button>
-          {showStderr && <div className="python-output-stderr-body">{result.stderr}</div>}
-        </>
-      )}
+          {result.error && !isLimitationError && (
+            <div className="python-output-error">
+              <div className="python-output-error-header">
+                <XCircle size={14} />
+                <span>Execution Error</span>
+              </div>
+              <pre>{result.error}</pre>
+            </div>
+          )}
 
-      {uniqueFiles.length > 0 && (
-        <>
-          <div className="python-output-files-heading">Generated Files</div>
+          {result.stderr && !result.error && (
+            <>
+              <button
+                type="button"
+                className="python-output-stderr-toggle"
+                onClick={() => setShowStderr(!showStderr)}
+              >
+                {showStderr ? 'Hide warnings' : `Show warnings (${stderrLineCount})`}
+              </button>
+              {showStderr && <div className="python-output-stderr-body">{result.stderr}</div>}
+            </>
+          )}
+
           {uniqueFiles.map((file) => {
             const isImage = file.mimeType.startsWith('image/');
             if (isImage) {
@@ -1153,51 +1213,16 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
                 </div>
               );
             }
-
-            const ext = file.name.split('.').pop()?.toLowerCase();
-            const { label, iconClass } = getFileTypeMeta(ext);
-            const isXlsx = ext === 'xlsx' || ext === 'xls';
-            const isDocx = ext === 'docx' || ext === 'doc';
-            return (
-              <div key={file.name} className="python-output-file">
-                <div className="python-output-file-info">
-                  <div className={`python-output-file-icon ${iconClass}`.trim()}>
-                    {isXlsx ? <TableProperties size={18} /> : isDocx ? <FileType size={18} /> : <FileText size={18} />}
-                  </div>
-                  <div>
-                    <div className="python-output-file-name" title={file.name}>
-                      {file.name}
-                    </div>
-                    <div className="python-output-file-type">{label}</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="python-output-download-btn"
-                  onClick={() => handleDownload(file)}
-                >
-                  <Download size={13} />
-                  Download
-                </button>
-              </div>
-            );
+            return null;
           })}
-        </>
-      )}
 
-      {!hasOutput && (
-        <div className="python-output-success">
-          <CheckCircle2 size={20} />
-          <span>Ran successfully</span>
+          {!hasOutput && (
+            <div className="python-output-success">
+              <CheckCircle2 size={20} />
+              <span>Ran successfully</span>
+            </div>
+          )}
         </div>
-      )}
-
-      {/* ── Live document preview (xlsx / docx) ─────────────────────── */}
-      {(result.xlsxSchema || result.docxSchema) && (
-        <DocumentPreview
-          xlsxSchema={result.xlsxSchema}
-          docxSchema={result.docxSchema}
-        />
       )}
     </div>
   );

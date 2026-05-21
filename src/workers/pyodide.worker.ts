@@ -256,6 +256,7 @@ def get_theme_colors(wb):
         for c in ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 
                   'accent3', 'accent4', 'accent5', 'accent6']:
             accent = color_scheme.find(QName(xlmns, c).text)
+            default_color = 'FFFFFF' if c.startswith('lt') else '000000'
             if accent is not None:
                 srgb = accent.find(QName(xlmns, 'srgbClr').text)
                 if srgb is not None:
@@ -263,9 +264,9 @@ def get_theme_colors(wb):
                     continue
                 sys = accent.find(QName(xlmns, 'sysClr').text)
                 if sys is not None:
-                    colors.append(sys.attrib.get('lastClr', '000000'))
+                    colors.append(sys.attrib.get('lastClr', default_color))
                     continue
-            colors.append('000000')
+            colors.append(default_color)
         return colors
     except Exception:
         # Fallback to standard Office theme palette
@@ -315,8 +316,10 @@ def _cell_color(cell, theme_colors):
                 theme_idx = c.theme
                 if 0 <= theme_idx < len(theme_colors):
                     return apply_excel_tint(theme_colors[theme_idx], c.tint or 0.0)
-            if c.type == 'indexed' and c.indexed not in (0, 64):
-                return None
+            if c.type == 'indexed' and c.indexed is not None:
+                from openpyxl.styles.colors import COLOR_INDEX
+                if 0 <= c.indexed < len(COLOR_INDEX):
+                    return _argb_to_hex(COLOR_INDEX[c.indexed])
     except Exception:
         pass
     return None
@@ -332,6 +335,10 @@ def _font_color(cell, theme_colors):
                 theme_idx = c.theme
                 if 0 <= theme_idx < len(theme_colors):
                     return apply_excel_tint(theme_colors[theme_idx], c.tint or 0.0)
+            if c.type == 'indexed' and c.indexed is not None:
+                from openpyxl.styles.colors import COLOR_INDEX
+                if 0 <= c.indexed < len(COLOR_INDEX):
+                    return _argb_to_hex(COLOR_INDEX[c.indexed])
     except Exception:
         pass
     return None

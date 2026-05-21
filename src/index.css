@@ -4277,6 +4277,84 @@ h4 {
 
 /* ─── Python (Pyodide) output ─── */
 
+.python-output-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #18181b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    gap: 12px;
+}
+
+.python-output-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.python-output-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #a1a1aa;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.python-output-tab-btn:hover {
+    color: #e4e4e7;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.python-output-tab-btn--active {
+    background: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+    font-weight: 600;
+}
+
+.python-output-header-downloads {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.python-output-header-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    background: #27272a;
+    color: #e4e4e7;
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.python-output-header-download-btn:hover {
+    background: #3f3f46;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.python-output-console-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
 .python-output {
     display: flex;
     flex-direction: column;
