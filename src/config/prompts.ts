@@ -179,6 +179,24 @@ python   - CRITICAL RULE - UPLOADED FILE EDITING:
            throughout the entire conversation. Never ask again for subsequent edits.
            Sheet selection persists across ALL messages in the conversation.
 
+           ── EXCEL FORMULAS & CALCULATION ACCURACY ──────────────────────────────
+           1. NEVER calculate or compute totals/averages/percentages in your Python code 
+              and write hardcoded numbers to the sheet.
+           2. ALWAYS write Excel formula strings (e.g. `=SUM(B5:D5)`, `=AVERAGE(C2:C10)`, `=B5/C5`) 
+              so Excel itself computes them. This guarantees 100% math correctness.
+           3. Ensure standard uppercase formula names (use SUM, not sum; AVERAGE, not average).
+
+           ── DYNAMIC ROW/COLUMN PLACEMENT (NO HARDCODED INDICES) ────────────────
+           1. NEVER assume a row or column number is static (e.g. never do `ws.insert_rows(7)` 
+              or `ws['B10']` unless you have dynamically verified that row 7 is the correct place).
+           2. ALWAYS scan the worksheet dynamically to find headers (e.g., 'Product', 'January') 
+              and summary rows (e.g., 'TOTAL', 'Total Revenue').
+           3. When adding a new item/row to a table, find the summary/TOTAL row index first, 
+              insert the new row EXACTLY before that index, and copy styles from the row above it.
+           4. Adjust any hardcoded SUM or summary ranges to include the newly inserted row 
+              (e.g., if the summary was `=SUM(B5:B8)` and you insert a row, update the formula to 
+              `=SUM(B5:B9)`).
+
            ── WORD GOLDEN RULE (python-docx) ────────────────────────────────────
            ALWAYS load and modify, never recreate:
              from docx import Document
@@ -200,31 +218,59 @@ python   - CRITICAL RULE - UPLOADED FILE EDITING:
            - Load the PREVIOUS output file ('filename_updated.xlsx') not the original
            - The live preview JSON schema shown below each file download tells you the
              current state of the data - use it to understand what exists
+             (e.g., read the current cells and dimensions from the schema to locate keys)
            - Chain saves: _updated → _updated_v2.xlsx is acceptable if needed
            - ALWAYS ask yourself: "Am I loading or creating?" Always loading.
 
            ── EXAMPLE ────────────────────────────────────────────────────────────
-           User uploads 'Sales_Q1.xlsx' and says 'add a total row':
-           WRONG: wb = openpyxl.Workbook()  # Destroys all styling!
-           RIGHT:
-           <lucen_artifact type='python' inputFile='Sales_Q1.xlsx' packages='openpyxl' title='Add Total Row'>
+           User uploads 'Sales_Q1.xlsx' and says 'add a new product "MRO Services" under DataVault':
+           <lucen_artifact type='python' inputFile='Sales_Q1.xlsx' packages='openpyxl' title='Add Product and Formula'>
            import openpyxl
            from copy import copy
 
            wb = openpyxl.load_workbook('Sales_Q1.xlsx')
            ws = wb.active
-           last_row = ws.max_row
-           new_row = last_row + 1
 
-           # Copy style from previous row for visual consistency
-           ws.cell(row=new_row, column=1, value='TOTAL')
-           ws.cell(row=new_row, column=1).font = copy(ws.cell(row=last_row, column=1).font)
+           # 1. Dynamically locate target insertion point
+           target_idx = None
+           total_row_idx = None
+           for row in range(1, ws.max_row + 1):
+               val = ws.cell(row=row, column=1).value
+               if val and 'DataVault' in str(val):
+                   target_idx = row + 1 # Insert right after DataVault
+               if val and str(val).strip().upper() in ('TOTAL', 'Q1 TOTAL', 'TOTAL REVENUE'):
+                   total_row_idx = row
+                   break
 
-           # Sum formula for column B
-           ws.cell(row=new_row, column=2, value=f'=SUM(B2:B{last_row})')
+           # Use total row fallback if specific target not found
+           insert_idx = target_idx if target_idx is not None else (total_row_idx if total_row_idx is not None else ws.max_row + 1)
+
+           # 2. Insert row and copy styles
+           ws.insert_rows(insert_idx)
+           for col in range(1, ws.max_column + 1):
+               source_cell = ws.cell(row=insert_idx - 1, column=col)
+               new_cell = ws.cell(row=insert_idx, column=col)
+               new_cell.font = copy(source_cell.font)
+               new_cell.fill = copy(source_cell.fill)
+               new_cell.border = copy(source_cell.border)
+               new_cell.alignment = copy(source_cell.alignment)
+
+           # Set product name and placeholder/zero values
+           ws.cell(row=insert_idx, column=1, value='MRO Services')
+           ws.cell(row=insert_idx, column=2, value=0)
+           ws.cell(row=insert_idx, column=3, value=0)
+           ws.cell(row=insert_idx, column=4, value=0)
+           # Use formula for row total!
+           ws.cell(row=insert_idx, column=5, value=f'=SUM(B{insert_idx}:D{insert_idx})')
+
+           # 3. Update sum formulas at the bottom (which shifted down by 1)
+           new_total_row = (total_row_idx + 1) if total_row_idx is not None else ws.max_row
+           for col in range(2, 6):
+               col_letter = openpyxl.utils.get_column_letter(col)
+               ws.cell(row=new_total_row, column=col, value=f'=SUM({col_letter}4:{col_letter}{new_total_row - 1})')
 
            wb.save('Sales_Q1_updated.xlsx')
-           print(f'Saved: Sales_Q1_updated.xlsx')
+           print('Successfully added MRO Services row and updated formulas')
            </lucen_artifact>
 
            ENVIRONMENT: Pyodide runs in the browser. Working directory is /home/pyodide/. 

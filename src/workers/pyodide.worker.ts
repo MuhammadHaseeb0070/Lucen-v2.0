@@ -223,7 +223,7 @@ async function installPackagesDynamic(
 // ── XLSX Schema Extraction ────────────────────────────────────────────────────
 
 const XLSX_EXTRACTOR_PYTHON = `
-import json, openpyxl
+import json, openpyxl, colorsys
 from openpyxl.utils import get_column_letter
 
 MAX_SHEETS = 5
@@ -243,24 +243,95 @@ def _argb_to_hex(argb):
         pass
     return None
 
-def _cell_color(cell):
+def get_theme_colors(wb):
+    # Try parsing XML from wb.loaded_theme
+    try:
+        from openpyxl.xml.functions import QName, fromstring
+        xlmns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+        root = fromstring(wb.loaded_theme)
+        theme_el = root.find(QName(xlmns, 'themeElements').text)
+        color_scheme = theme_el.find(QName(xlmns, 'clrScheme').text)
+        
+        colors = []
+        for c in ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 
+                  'accent3', 'accent4', 'accent5', 'accent6']:
+            accent = color_scheme.find(QName(xlmns, c).text)
+            if accent is not None:
+                srgb = accent.find(QName(xlmns, 'srgbClr').text)
+                if srgb is not None:
+                    colors.append(srgb.attrib['val'])
+                    continue
+                sys = accent.find(QName(xlmns, 'sysClr').text)
+                if sys is not None:
+                    colors.append(sys.attrib.get('lastClr', '000000'))
+                    continue
+            colors.append('000000')
+        return colors
+    except Exception:
+        # Fallback to standard Office theme palette
+        return [
+            "FFFFFF", # lt1
+            "000000", # dk1
+            "E7E6E6", # lt2
+            "44546A", # dk2
+            "5B9BD5", # accent1
+            "ED7D31", # accent2
+            "A5A5A5", # accent3
+            "FFC000", # accent4
+            "4472C4", # accent5
+            "70AD47", # accent6
+        ]
+
+def apply_excel_tint(base_hex, tint):
+    if not tint:
+        return '#' + base_hex
+    try:
+        r = int(base_hex[0:2], 16)
+        g = int(base_hex[2:4], 16)
+        b = int(base_hex[4:6], 16)
+        
+        h, l, s = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
+        if tint > 0:
+            l = l + (1.0 - l) * tint
+        else:
+            l = l * (1.0 + tint)
+        
+        r_new, g_new, b_new = colorsys.hls_to_rgb(h, l, s)
+        rn = max(0, min(255, int(round(r_new * 255))))
+        gn = max(0, min(255, int(round(g_new * 255))))
+        bn = max(0, min(255, int(round(b_new * 255))))
+        return f"#{rn:02x}{gn:02x}{bn:02x}"
+    except Exception:
+        return '#' + base_hex
+
+def _cell_color(cell, theme_colors):
     try:
         fill = cell.fill
         if fill and fill.fgColor and fill.patternType and fill.patternType != 'none':
             c = fill.fgColor
             if c.type == 'rgb':
                 return _argb_to_hex(c.rgb)
+            if c.type == 'theme' and c.theme is not None:
+                theme_idx = c.theme
+                if 0 <= theme_idx < len(theme_colors):
+                    return apply_excel_tint(theme_colors[theme_idx], c.tint or 0.0)
             if c.type == 'indexed' and c.indexed not in (0, 64):
                 return None
     except Exception:
         pass
     return None
 
-def _font_color(cell):
+def _font_color(cell, theme_colors):
     try:
         f = cell.font
-        if f and f.color and f.color.type == 'rgb':
-            return _argb_to_hex(f.color.rgb)
+        if f and f.color:
+            c = f.color
+            if c.type == 'rgb':
+                return _argb_to_hex(c.rgb)
+            if c.type == 'theme' and c.theme is not None:
+                theme_idx = c.theme
+                if 0 <= theme_idx < len(theme_colors):
+                    return apply_excel_tint(theme_colors[theme_idx], c.tint or 0.0)
     except Exception:
         pass
     return None
@@ -280,6 +351,7 @@ def extract_xlsx(path):
     except Exception as e:
         return json.dumps({'error': str(e)})
 
+    theme_colors = get_theme_colors(wb)
     all_sheets = wb.sheetnames
     total_sheets = len(all_sheets)
     sheets_to_extract = all_sheets[:MAX_SHEETS]
@@ -339,11 +411,11 @@ def extract_xlsx(path):
                         if f.italic: cell_data['italic'] = True
                         if f.underline: cell_data['underline'] = True
                         if f.size: cell_data['fontSize'] = f.size
-                        fc = _font_color(cell)
+                        fc = _font_color(cell, theme_colors)
                         if fc: cell_data['fg'] = fc
                 except Exception:
                     pass
-                bg = _cell_color(cell)
+                bg = _cell_color(cell, theme_colors)
                 if bg: cell_data['bg'] = bg
                 al = _align(cell)
                 if al: cell_data['align'] = al
