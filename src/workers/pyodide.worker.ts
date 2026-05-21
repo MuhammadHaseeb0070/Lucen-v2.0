@@ -277,6 +277,8 @@ sys.stderr = io.StringIO()
 try:
     import matplotlib
     matplotlib.use('Agg')
+    import matplotlib.pyplot as _plt
+    _plt.show = lambda *args, **kwargs: None
 except Exception:
     pass
         `);
