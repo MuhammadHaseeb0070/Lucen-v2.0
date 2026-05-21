@@ -472,6 +472,7 @@ function dbToMessage(row: DbMessage): Message {
             type: a.type as 'image' | 'pdf' | 'csv' | 'text',
             mimeType: a.mimeType as string,
             size: a.size as number,
+            rawBase64: a.rawBase64 as string | undefined,
         })),
     };
 }

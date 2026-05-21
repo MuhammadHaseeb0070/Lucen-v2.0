@@ -359,6 +359,28 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
         }
     }
 
+    // For documents with rawBase64 (e.g. .xlsx, .xls, .docx)
+    if (attachment.rawBase64 && !attachment.storagePath) {
+        try {
+            await ensureFreshSession();
+            const binary = atob(attachment.rawBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const path = `${Date.now()}-${attachment.name}`;
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('attachments')
+                .upload(path, bytes, { contentType: attachment.mimeType, cacheControl: '3600', upsert: false });
+
+            if (uploadError) {
+                console.error('[FileProcessor] Document Storage upload FAILED:', uploadError);
+            } else if (uploadData) {
+                attachment.storagePath = uploadData.path;
+            }
+        } catch (err) {
+            console.error('[FileProcessor] Document Storage exception:', err);
+        }
+    }
+
     // Rough token estimate for any extracted text we already have.
     const contentToCount = attachment.textContent || attachment.aiDescription || '';
     if (contentToCount) {

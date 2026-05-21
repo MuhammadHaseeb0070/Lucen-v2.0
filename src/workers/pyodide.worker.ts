@@ -14,13 +14,19 @@ function arrayBufferToBase64(bytes: Uint8Array): string {
 }
 
 function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  if (!base64) return new Uint8Array(0);
+  try {
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch (err) {
+    console.error('base64ToUint8Array conversion failed:', err);
+    return new Uint8Array(0);
   }
-  return bytes;
 }
 
 interface FileMeta {
@@ -113,6 +119,12 @@ async function initPyodide(artifactId: string) {
     message: 'Preparing package installer...'
   });
   await pyodide.loadPackage('micropip');
+
+  await pyodide.runPythonAsync(`
+import os
+os.makedirs('/home/pyodide', exist_ok=True)
+os.chdir('/home/pyodide')
+  `);
 
   ctx.postMessage({
     type: 'status',
@@ -224,11 +236,18 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
     if (d.inputFiles && Array.isArray(d.inputFiles)) {
       for (const file of d.inputFiles) {
         try {
-          const filePath = `/home/pyodide/${file.name}`;
-          const binaryData = base64ToUint8Array(file.data);
-          py.FS.writeFile(filePath, binaryData);
-        } catch (err) {
-          console.error(`Failed to write input file ${file.name} to Pyodide FS`, err);
+          const bytes = base64ToUint8Array(file.data || (file as any).base64);
+          py.FS.writeFile(`/home/pyodide/${file.name}`, bytes);
+          ctx.postMessage({
+            type: 'status',
+            artifactId,
+            status: 'loading_file',
+            message: `Loaded: ${file.name}`
+          });
+        } catch (err: any) {
+          throw new Error(
+            `Failed to load "${file.name}": ${err.message}`
+          );
         }
       }
     }
@@ -245,17 +264,23 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
 
     // 5. Redirect stdout/stderr & Inject Matplotlib backend
     await py.runPythonAsync(`
-import sys
-import io
+import sys, io
+sys._lucen_orig_stdout = sys.stdout
+sys._lucen_orig_stderr = sys.stderr
 sys.stdout = io.StringIO()
 sys.stderr = io.StringIO()
-`);
+    `);
 
     if (code.includes('matplotlib') || code.includes('plt.')) {
-      await py.runPythonAsync(`
-import matplotlib
-matplotlib.use('Agg')
-`);
+      try {
+        await py.runPythonAsync(`
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+except Exception:
+    pass
+        `);
+      } catch { /* ignore */ }
     }
 
     // 6. Run the code
@@ -267,42 +292,61 @@ matplotlib.use('Agg')
     }
 
     // 7. Get outputs and restore streams
-    const stdout = py.runPython('sys.stdout.getvalue()');
-    const stderr = py.runPython('sys.stderr.getvalue()');
-    py.runPython(`
-sys.stdout = sys.__stdout__
-sys.stderr = sys.__stderr__
-`);
+    let stdout = '';
+    let stderr = '';
+    try {
+      stdout = py.runPython('sys.stdout.getvalue()') ?? '';
+      stderr = py.runPython('sys.stderr.getvalue()') ?? '';
+    } catch {
+      stdout = '[output capture failed]';
+    }
+
+    try {
+      await py.runPythonAsync(`
+try:
+    import sys, io
+    sys.stdout = getattr(sys, '_lucen_orig_stdout', 
+                         sys.__stdout__ or io.StringIO())
+    sys.stderr = getattr(sys, '_lucen_orig_stderr', 
+                         sys.__stderr__ or io.StringIO())
+except Exception:
+    pass
+      `);
+    } catch { /* ignore */ }
 
     // 8. Scan FS for new/modified files
-    const afterMeta = getFilesMeta('/home/pyodide');
-    const outputFiles: Array<{ name: string; data: string; mimeType: string }> = [];
+    let outputFiles: Array<{ name: string; data: string; mimeType: string }> = [];
+    try {
+      const afterMeta = getFilesMeta('/home/pyodide');
 
-    for (const [p, meta] of afterMeta.entries()) {
-      const before = beforeMeta.get(p);
-      if (!before || before.size !== meta.size || before.mtime !== meta.mtime) {
-        const ext = p.split('.').pop()?.toLowerCase();
-        if (ext && OUTPUT_EXTENSIONS.includes(ext)) {
-          try {
-            const contentBytes = py.FS.readFile(p);
-            const base64Data = arrayBufferToBase64(contentBytes);
-            
-            let mimeType = 'text/plain';
-            if (ext === 'png') mimeType = 'image/png';
-            else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-            else if (ext === 'svg') mimeType = 'image/svg+xml';
-            else if (ext === 'csv') mimeType = 'text/csv';
-            else if (ext === 'xlsx') mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-            else if (ext === 'json') mimeType = 'application/json';
-            else if (ext === 'pdf') mimeType = 'application/pdf';
+      for (const [p, meta] of afterMeta.entries()) {
+        const before = beforeMeta.get(p);
+        if (!before || before.size !== meta.size || before.mtime !== meta.mtime) {
+          const ext = p.split('.').pop()?.toLowerCase();
+          if (ext && OUTPUT_EXTENSIONS.includes(ext)) {
+            try {
+              const contentBytes = py.FS.readFile(p);
+              const base64Data = arrayBufferToBase64(contentBytes);
+              
+              let mimeType = 'text/plain';
+              if (ext === 'png') mimeType = 'image/png';
+              else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+              else if (ext === 'svg') mimeType = 'image/svg+xml';
+              else if (ext === 'csv') mimeType = 'text/csv';
+              else if (ext === 'xlsx') mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+              else if (ext === 'json') mimeType = 'application/json';
+              else if (ext === 'pdf') mimeType = 'application/pdf';
 
-            const name = p.replace(/^\/home\/pyodide\//, '');
-            outputFiles.push({ name, data: base64Data, mimeType });
-          } catch (err) {
-            console.error(`Failed to read output file ${p}`, err);
+              const name = p.replace(/^\/home\/pyodide\//, '');
+              outputFiles.push({ name, data: base64Data, mimeType });
+            } catch (err) {
+              console.error(`Failed to read output file ${p}`, err);
+            }
           }
         }
       }
+    } catch (err) {
+      console.warn('FS scan failed:', err);
     }
 
     // 9. Post back results

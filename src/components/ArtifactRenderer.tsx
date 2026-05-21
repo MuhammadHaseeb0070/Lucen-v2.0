@@ -7,6 +7,7 @@ import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import { useChatStore } from '../store/chatStore';
+import { supabase } from '../lib/supabase';
 
 interface RendererProps {
   content: string;
@@ -717,6 +718,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const [showStderr, setShowStderr] = useState<boolean>(false);
   const [unsupportedFile, setUnsupportedFile] = useState<boolean>(false);
   const [fileNotFound, setFileNotFound] = useState<boolean>(false);
+  const [fileDataMissing, setFileDataMissing] = useState<boolean>(false);
 
   const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef<boolean>(false);
@@ -739,7 +741,9 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
 
     setUnsupportedFile(false);
     setFileNotFound(false);
+    setFileDataMissing(false);
 
+    // Step 1: Find attachment by filename
     if (inputFile) {
       if (!matchedAttachment) {
         setFileNotFound(true);
@@ -747,7 +751,11 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
         isRunningRef.current = false;
         return;
       }
-      if (!matchedAttachment.rawBase64) {
+
+      // Step 2: Check extension (.xlsx/.xls/.docx/.doc) — if NOT supported → show amber unsupported card
+      const ext = matchedAttachment.name.split('.').pop()?.toLowerCase() || '';
+      const isSupported = ['xlsx', 'xls', 'docx', 'doc'].includes(ext);
+      if (!isSupported) {
         setUnsupportedFile(true);
         setIsRunning(false);
         isRunningRef.current = false;
@@ -755,73 +763,148 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       }
     }
 
-    setIsRunning(true);
-    isRunningRef.current = true;
-    setProgress('Initializing Python worker...');
-    setResult(null);
+    // Step 4: Proceed to runPython once rawBase64 is verified/loaded
+    const executeWithData = (base64Content?: string) => {
+      if (!isStillActive()) return;
 
-    const inputFiles = matchedAttachment?.rawBase64
-      ? [{ name: matchedAttachment.name, data: matchedAttachment.rawBase64 }]
-      : undefined;
+      setIsRunning(true);
+      isRunningRef.current = true;
+      setProgress('Initializing Python worker...');
+      setResult(null);
 
-    runPython(
-      artifact.id,
-      artifact.content,
-      packages,
-      mode,
-      inputFiles,
-      (msg) => {
-        if (isStillActive()) {
-          setProgress(msg);
+      const inputFiles = base64Content
+        ? [{ name: matchedAttachment!.name, data: base64Content }]
+        : undefined;
+
+      runPython(
+        artifact.id,
+        artifact.content,
+        packages,
+        mode,
+        inputFiles,
+        (msg) => {
+          if (isStillActive()) {
+            setProgress(msg);
+          }
         }
-      }
-    )
-      .then((res) => {
-        if (!isStillActive()) return;
+      )
+        .then((res) => {
+          if (!isStillActive()) return;
 
-        pythonCache.set(cacheKey, res);
-        setResult(res);
-        setIsRunning(false);
-        isRunningRef.current = false;
-        ranRef.current = cacheKey;
+          pythonCache.set(cacheKey, res);
+          setResult(res);
+          setIsRunning(false);
+          isRunningRef.current = false;
+          ranRef.current = cacheKey;
 
-        const isLimitation =
-          !!res.error && /not supported|cannot run in browser/i.test(res.error);
+          const isLimitation =
+            !!res.error && /not supported|cannot run in browser/i.test(res.error);
 
-        if (res.error && !isLimitation) {
+          if (res.error && !isLimitation) {
+            setRuntimeError(artifact.id, {
+              message: res.error,
+              origin: 'python' as any,
+              capturedAt: Date.now(),
+            });
+          } else {
+            const currentErr = useArtifactStore.getState().runtimeErrors[artifact.id];
+            if (currentErr) {
+              setRuntimeError(artifact.id, null);
+            }
+          }
+        })
+        .catch((err) => {
+          if (!isStillActive()) return;
+
+          const errRes = {
+            stdout: '',
+            stderr: '',
+            files: [],
+            error: err.message || String(err),
+          };
+          pythonCache.set(cacheKey, errRes);
+          setResult(errRes);
+          setIsRunning(false);
+          isRunningRef.current = false;
+          ranRef.current = cacheKey;
+
           setRuntimeError(artifact.id, {
-            message: res.error,
+            message: errRes.error,
             origin: 'python' as any,
             capturedAt: Date.now(),
           });
-        } else {
-          const currentErr = useArtifactStore.getState().runtimeErrors[artifact.id];
-          if (currentErr) {
-            setRuntimeError(artifact.id, null);
-          }
-        }
-      })
-      .catch((err) => {
-        if (!isStillActive()) return;
+        });
+    };
 
-        const errRes = {
-          stdout: '',
-          stderr: '',
-          files: [],
-          error: err.message || String(err),
-        };
-        pythonCache.set(cacheKey, errRes);
-        setResult(errRes);
+    if (inputFile && matchedAttachment) {
+      if (matchedAttachment.rawBase64) {
+        // Step 4: rawBase64 present → proceed to runPython
+        executeWithData(matchedAttachment.rawBase64);
+      } else if (matchedAttachment.storagePath) {
+        // Step 3: If extension IS supported but rawBase64 missing, and storagePath exists → fetch from Supabase Storage
+        if (!supabase) {
+          setFileDataMissing(true);
+          setIsRunning(false);
+          isRunningRef.current = false;
+          return;
+        }
+        setIsRunning(true);
+        isRunningRef.current = true;
+        setProgress('Fetching file content from storage...');
+
+        supabase.storage
+          .from('attachments')
+          .download(matchedAttachment.storagePath)
+          .then(({ data, error }) => {
+            if (error || !data) {
+              console.error('Storage download failed:', error);
+              if (isStillActive()) {
+                setFileDataMissing(true);
+                setIsRunning(false);
+                isRunningRef.current = false;
+              }
+              return;
+            }
+            // convert blob to base64
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              if (!isStillActive()) return;
+              const resultStr = reader.result as string;
+              const commaIndex = resultStr.indexOf(',');
+              const base64 = commaIndex >= 0 ? resultStr.slice(commaIndex + 1) : resultStr;
+
+              // Cache it on the matchedAttachment object to avoid re-fetching
+              matchedAttachment.rawBase64 = base64;
+
+              // Proceed to runPython
+              executeWithData(base64);
+            };
+            reader.onerror = () => {
+              if (isStillActive()) {
+                setFileDataMissing(true);
+                setIsRunning(false);
+                isRunningRef.current = false;
+              }
+            };
+            reader.readAsDataURL(data);
+          })
+          .catch((err) => {
+            console.error('Storage download error:', err);
+            if (isStillActive()) {
+              setFileDataMissing(true);
+              setIsRunning(false);
+              isRunningRef.current = false;
+            }
+          });
+      } else {
+        // If no storagePath → show amber "Please re-upload the file"
+        setFileDataMissing(true);
         setIsRunning(false);
         isRunningRef.current = false;
-        ranRef.current = cacheKey;
-
-        setRuntimeError(artifact.id, {
-          message: errRes.error,
-          origin: 'python' as any,
-          capturedAt: Date.now(),
-        });
-      });
+      }
+    } else {
+      executeWithData();
+    }
 
     return () => {
       isMounted = false;
@@ -846,6 +929,41 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  if (fileDataMissing) {
+    return (
+      <div className="python-output">
+        <div className="python-output-unsupported-file">
+          <div className="python-output-unsupported-file-header">
+            <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+            <span>Please re-upload the file</span>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+            The file <strong>{inputFile}</strong> is supported, but its binary content was not found in storage.
+            Please re-upload the file to edit it dynamically.
+          </p>
+        </div>
+        <style>{`
+          .python-output-unsupported-file {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: var(--r-md);
+            padding: 16px;
+            margin: 16px;
+          }
+          .python-output-unsupported-file-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #d97706;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (unsupportedFile) {
     return (

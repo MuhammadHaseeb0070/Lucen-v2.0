@@ -62,6 +62,19 @@ function getWorker(): Worker {
         }
       }
     });
+    worker.addEventListener('error', (e: ErrorEvent) => {
+      for (const [id, handler] of pending.entries()) {
+        pending.delete(id);
+        handler.resolve({
+          stdout: '',
+          stderr: '',
+          files: [],
+          error: `Python worker crashed: ${e.message || 'Unknown error (possibly out of memory)'}`,
+        });
+      }
+      // Reset worker so next run spawns fresh
+      worker = undefined;
+    });
   }
   return worker;
 }
