@@ -527,12 +527,16 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
 
     clearWorkspace(py);
 
+    // Track input file names so we can exclude them from the output scan
+    const inputFileNames = new Set<string>();
+
     // Write input files
     if (d.inputFiles && Array.isArray(d.inputFiles)) {
       for (const file of d.inputFiles) {
         try {
           const bytes = base64ToUint8Array(file.data || (file as any).base64);
           py.FS.writeFile(`/home/pyodide/${file.name}`, bytes);
+          inputFileNames.add(file.name);
           ctx.postMessage({
             type: 'status',
             artifactId,
@@ -554,7 +558,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
       message: 'Executing script...'
     });
 
-    // 3. Snapshot FS before execution (empty workspace for this artifact only)
+    // 3. Snapshot FS before execution
     const beforeMeta = getFilesMeta('/home/pyodide');
 
     // 5. Redirect stdout/stderr & Inject Matplotlib backend
@@ -620,59 +624,64 @@ except Exception:
       const afterMeta = getFilesMeta('/home/pyodide');
 
       for (const [p, meta] of afterMeta.entries()) {
-        const before = beforeMeta.get(p);
-        if (!before || before.size !== meta.size || before.mtime !== meta.mtime) {
-          const ext = p.split('.').pop()?.toLowerCase();
-          if (ext && OUTPUT_EXTENSIONS.includes(ext)) {
-            try {
-              const contentBytes = py.FS.readFile(p);
-              const base64Data = arrayBufferToBase64(contentBytes);
-              
-              let mimeType = 'text/plain';
-              if (ext === 'png') mimeType = 'image/png';
-              else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-              else if (ext === 'svg') mimeType = 'image/svg+xml';
-              else if (ext === 'csv') mimeType = 'text/csv';
-              else if (ext === 'xlsx') {
-                mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-                if (!xlsxOutputPath) xlsxOutputPath = p;
-              } else if (ext === 'xls') {
-                mimeType = 'application/vnd.ms-excel';
-              } else if (ext === 'docx') {
-                mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-                if (!docxOutputPath) docxOutputPath = p;
-              } else if (ext === 'json') mimeType = 'application/json';
-              else if (ext === 'pdf') mimeType = 'application/pdf';
+        // Skip files that were written as inputs — they are not outputs
+        const shortName = p.replace(/^\/home\/pyodide\//, '');
+        if (inputFileNames.has(shortName)) continue;
 
-              const name = p.replace(/^\/home\/pyodide\//, '');
-              outputFiles.push({ name, data: base64Data, mimeType });
-            } catch (err) {
-              console.error(`Failed to read output file ${p}`, err);
-            }
-          }
+        const before = beforeMeta.get(p);
+        const isNewOrChanged = !before || before.size !== meta.size || before.mtime !== meta.mtime;
+        if (!isNewOrChanged) continue;
+
+        const ext = p.split('.').pop()?.toLowerCase();
+        if (!ext || !OUTPUT_EXTENSIONS.includes(ext)) continue;
+
+        try {
+          const contentBytes = py.FS.readFile(p);
+          const base64Data = arrayBufferToBase64(contentBytes);
+
+          let mimeType = 'text/plain';
+          if (ext === 'png') mimeType = 'image/png';
+          else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+          else if (ext === 'svg') mimeType = 'image/svg+xml';
+          else if (ext === 'csv') mimeType = 'text/csv';
+          else if (ext === 'xlsx') {
+            mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (!xlsxOutputPath) xlsxOutputPath = p;
+          } else if (ext === 'xls') {
+            mimeType = 'application/vnd.ms-excel';
+          } else if (ext === 'docx') {
+            mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            if (!docxOutputPath) docxOutputPath = p;
+          } else if (ext === 'json') mimeType = 'application/json';
+          else if (ext === 'pdf') mimeType = 'application/pdf';
+
+          outputFiles.push({ name: shortName, data: base64Data, mimeType });
+        } catch (err) {
+          console.error(`Failed to read output file ${p}`, err);
         }
       }
     } catch (err) {
       console.warn('FS scan failed:', err);
     }
 
-    // 9. Schema extraction for xlsx/docx output files (gives live preview)
+    // 9. Schema extraction — always attempt if file exists, even if script had an error
+    //    (the file may have been partially written and still readable)
     let xlsxSchema: object | null = null;
     let docxSchema: object | null = null;
 
-    if (!runError && xlsxOutputPath) {
+    if (xlsxOutputPath) {
       try {
         xlsxSchema = await extractXlsxSchema(py, xlsxOutputPath, artifactId);
       } catch (err) {
-        console.warn('[schema] xlsx extraction failed silently:', err);
+        console.debug('[schema] xlsx extraction failed silently:', err);
       }
     }
 
-    if (!runError && docxOutputPath) {
+    if (docxOutputPath) {
       try {
         docxSchema = await extractDocxSchema(py, docxOutputPath, artifactId);
       } catch (err) {
-        console.warn('[schema] docx extraction failed silently:', err);
+        console.debug('[schema] docx extraction failed silently:', err);
       }
     }
 

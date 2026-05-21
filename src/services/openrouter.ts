@@ -180,10 +180,9 @@ async function retrieveRelevantChunks(
     messages: Message[],
     conversationId: string | null
 ): Promise<string | null> {
-    console.log('[RAG Debug] Starting check. ConvID:', conversationId);
+    console.debug('[RAG] Starting check. ConvID:', conversationId);
 
     if (!conversationId) {
-        console.log('[RAG Debug] Aborted: No conversation ID provided by the UI.');
         return null;
     }
 
@@ -192,18 +191,16 @@ async function retrieveRelevantChunks(
         m.attachments?.some(a => a.type !== 'image')
     );
     if (!hasFiles) {
-        console.log('[RAG Debug] Aborted: No files found in this chat history.');
         return null;
     }
 
     // Use last user message as query (Lowered limit from 10 to 2)
     const lastUser = [...messages].reverse().find(m => m.role === 'user');
     if (!lastUser || !lastUser.content || lastUser.content.length < 2) {
-        console.log('[RAG Debug] Aborted: User message too short.');
         return null;
     }
 
-    console.log('[RAG Debug] Requirements met, calling Supabase...');
+    console.debug('[RAG] Requirements met, calling Supabase...');
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -211,7 +208,7 @@ async function retrieveRelevantChunks(
     try {
         const { data: { session } } = await supabase!.auth.getSession();
         if (!session?.access_token) {
-            console.log('[RAG Debug] Aborted: No active auth session.');
+            console.debug('[RAG] Aborted: No active auth session.');
             return null;
         }
 
@@ -243,7 +240,7 @@ async function retrieveRelevantChunks(
         if (!response.ok) {
             const t = await response.text().catch(() => '');
             finalizeRetrieve({ status: response.status, response: t.slice(0, 4000), error: `HTTP ${response.status}` });
-            console.log('[RAG Debug] Supabase error:', response.status);
+            console.debug('[RAG] Supabase error:', response.status);
             return null;
         }
         const data = await response.json();
@@ -251,14 +248,14 @@ async function retrieveRelevantChunks(
         const chunks = data.chunks as Array<{ file_name: string; content: string; similarity: number }>;
 
         if (!chunks || chunks.length === 0) {
-            console.log('[RAG Debug] No chunks returned from search.');
+            console.debug('[RAG] No chunks returned from search.');
             return null;
         }
 
         // Only use chunks with decent similarity
         const relevant = chunks.filter(c => c.similarity > 0.5);
         if (relevant.length === 0) {
-            console.log('[RAG Debug] No chunks met similarity threshold (> 0.5).');
+            console.debug('[RAG] No chunks met similarity threshold (> 0.5).');
             return null;
         }
 
@@ -266,11 +263,11 @@ async function retrieveRelevantChunks(
             `── From: ${c.file_name} (relevance: ${Math.round(c.similarity * 100)}%) ──\n${c.content}`
         );
 
-        console.log(`[RAG Debug] Success! Injected ${relevant.length} chunks.`);
+        console.debug(`[RAG] Success! Injected ${relevant.length} chunks.`);
         return `[Relevant file context retrieved for this query]\n${parts.join('\n\n')}`;
 
     } catch (err) {
-        console.error('[RAG Debug] Final Catch Error:', err);
+        console.error('[RAG] Final Catch Error:', err);
         return null;
     }
 }
@@ -1492,7 +1489,7 @@ async function streamViaEdgeFunction(
 
     // Debug: confirm this code path executed before we hit the Edge function.
     // eslint-disable-next-line no-console
-    console.log('[OpenRouterDebug] sendingRequest', {
+    console.debug('[OpenRouter] sendingRequest', {
         model: model.id,
         is_reasoning: isReasoning,
         template_mode: templateMode,
@@ -1500,7 +1497,7 @@ async function streamViaEdgeFunction(
 
     if (OPENROUTER_RAW_DEBUG) {
         // eslint-disable-next-line no-console
-        console.log('[OpenRouterDebug] requestHeadersRedacted', {
+        console.debug('[OpenRouter] requestHeadersRedacted', {
             'Content-Type': 'application/json',
             Authorization: 'Bearer [redacted]',
             apikey: anonKey ? '[present]' : '[missing]',
@@ -1532,7 +1529,7 @@ async function streamViaEdgeFunction(
         }
 
         // eslint-disable-next-line no-console
-        console.log('[OpenRouterDebug] requestPayloadFullRedacted', safePayload);
+        console.debug('[OpenRouter] requestPayloadFullRedacted', safePayload);
     }
 
     const chatEndpoint = `${supabaseUrl}/functions/v1/chat-proxy`;
@@ -1563,7 +1560,7 @@ async function streamViaEdgeFunction(
         const errBody = await response.text();
         finalizeChat({ status: response.status, response: errBody.slice(0, 8000), error: `HTTP ${response.status}` });
         // eslint-disable-next-line no-console
-        console.log('[OpenRouterDebug] edgeError', {
+        console.debug('[OpenRouter] edgeError', {
             status: response.status,
             statusText: response.statusText,
             bodyHead: errBody.slice(0, 500),
@@ -1670,7 +1667,7 @@ async function processStream(
 
     const logStreamSummary = (why: 'done' | 'eof' | 'abort' | 'error' | 'watchdog') => {
         // eslint-disable-next-line no-console
-        console.log('[OpenRouterDebug] streamSummary', {
+        console.debug('[OpenRouter] streamSummary', {
             why,
             truncated: wasTruncated,
             sawNaturalFinish,
@@ -1687,7 +1684,7 @@ async function processStream(
 
         if (OPENROUTER_RAW_DEBUG) {
             // eslint-disable-next-line no-console
-            console.log('[OpenRouterDebug] rawSseTail', rawSse);
+            console.debug('[OpenRouter] rawSseTail', rawSse);
         }
     };
 
@@ -1866,7 +1863,7 @@ async function processStream(
         const eofTruncated = wasTruncated || (!sawNaturalFinish && sawAnyUsefulOutput);
         if (!wasTruncated && eofTruncated) {
             // eslint-disable-next-line no-console
-            console.log('[OpenRouterDebug] eofWithoutFinishReason — treating as truncated', {
+            console.debug('[OpenRouter] eofWithoutFinishReason — treating as truncated', {
                 contentChunkCount,
                 reasoningChunkCount,
             });
@@ -1887,7 +1884,7 @@ async function processStream(
     } catch (err: unknown) {
         const userAborted = signal?.aborted === true && !watchdogFired;
         if (watchdogFired) {
-            console.log('[OpenRouterDebug] watchdog fired — treating as truncated', {
+            console.debug('[OpenRouter] watchdog fired — treating as truncated', {
                 contentChunkCount,
                 idleMs: Date.now() - lastDataAt,
             });
