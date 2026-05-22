@@ -9,6 +9,12 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+/** The Supabase project URL. Imported by other modules that need it for fetch headers. */
+export { supabaseUrl };
+/** The Supabase anon key. Public by design — required for authenticated fetch calls.
+ *  Import this instead of re-reading import.meta.env.VITE_SUPABASE_ANON_KEY everywhere. */
+export { supabaseAnonKey };
+
 if (!supabaseUrl || !supabaseAnonKey) {
     console.warn(
         '[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env. ' +

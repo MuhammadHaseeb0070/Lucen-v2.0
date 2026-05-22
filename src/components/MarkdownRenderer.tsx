@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import { highlightCode } from '../workers/highlighterWorkerClient';
 import { Copy, Check, Download, ExternalLink, TriangleAlert, CheckCircle, AlertOctagon, Terminal, Info } from 'lucide-react';
@@ -201,6 +202,27 @@ const BlockquoteTool = React.memo<{ children: React.ReactNode }>(({ children }) 
 BlockquoteTool.displayName = 'BlockquoteTool';
 
 
+// Allow class + style attributes for AI-generated rich formatting.
+// All event handlers (onclick, onerror, onload, …) remain blocked by
+// rehype-sanitize since they are not in this whitelist.
+const SANITIZE_SCHEMA = {
+    ...defaultSchema,
+    attributes: {
+        ...defaultSchema.attributes,
+        '*': [
+            ...(defaultSchema.attributes?.['*'] ?? []),
+            'style',
+            'class',
+        ],
+    },
+    tagNames: [
+        ...(defaultSchema.tagNames ?? []),
+        'details',
+        'summary',
+        'mark',
+    ],
+};
+
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ content, searchQuery }) => {
     const highlightComponents = useMemo(() => {
         if (!searchQuery) return undefined;
@@ -237,7 +259,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ content,
         <div className="markdown-body">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex, rehypeRaw]}
+                rehypePlugins={[rehypeKatex, rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA]]}
                 components={{
                     ...highlightComponents,
                     code({ className, children, ...props }) {

@@ -474,6 +474,10 @@ const ChatArea: React.FC = () => {
         opts?: { hideUserMessage?: boolean },
     ) => {
         if (!hasEnoughCredits()) return;
+        // Prevent stacking a new turn while the model is still streaming.
+        // The MessageInput button is already disabled via isStreaming prop,
+        // but programmatic calls (auto-heal, pendingAutoSend) bypass that.
+        if (isStreaming) return;
         let convId = activeConversationId;
         if (!convId) convId = createConversation();
 

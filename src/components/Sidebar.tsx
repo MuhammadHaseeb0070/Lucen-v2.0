@@ -25,6 +25,33 @@ import { SmoothScroll } from './SmoothScroll';
 // Sidebar-specific conversation metadata (no message bodies).
 interface ConvMeta { id: string; title: string; updatedAt: number; }
 
+/**
+ * Safely renders Postgres ts_headline output which contains only <b>…</b> tags.
+ * We parse those ourselves and emit React elements — no dangerouslySetInnerHTML.
+ */
+const SearchExcerpt: React.FC<{ text: string; style?: React.CSSProperties }> = ({ text, style }) => {
+    const parts: React.ReactNode[] = [];
+    let remaining = text;
+    let key = 0;
+    while (remaining.length > 0) {
+        const start = remaining.search(/<b>/i);
+        if (start === -1) {
+            parts.push(<span key={key++}>{remaining}</span>);
+            break;
+        }
+        if (start > 0) parts.push(<span key={key++}>{remaining.slice(0, start)}</span>);
+        const end = remaining.search(/<\/b>/i);
+        if (end === -1) {
+            // malformed — render rest as plain text
+            parts.push(<span key={key++}>{remaining.slice(start).replace(/<\/?b>/gi, '')}</span>);
+            break;
+        }
+        parts.push(<b key={key++} style={{ color: 'var(--text-primary)' }}>{remaining.slice(start + 3, end)}</b>);
+        remaining = remaining.slice(end + 4);
+    }
+    return <div style={style}>{parts}</div>;
+};
+
 const Sidebar: React.FC = () => {
     // Only subscribe to list metadata -- NOT message content.
     // This prevents Sidebar from re-rendering on every streaming token.
@@ -246,9 +273,9 @@ const Sidebar: React.FC = () => {
                                     <span className="chat-item-date" style={{ fontSize: '11px' }}>{formatDate(res.updatedAt)}</span>
                                 </div>
                                 {res.matchExcerpt && (
-                                    <div 
+                                    <SearchExcerpt
+                                        text={res.matchExcerpt}
                                         style={{ fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', width: '100%', lineHeight: 1.4 }}
-                                        dangerouslySetInnerHTML={{ __html: res.matchExcerpt.replace(/<b/g, '<b style="color:var(--text-primary)"') }} 
                                     />
                                 )}
                             </div>

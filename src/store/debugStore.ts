@@ -21,7 +21,11 @@ import { create } from 'zustand';
 
 const MAX_ENTRIES = 200;
 
-export const DEBUG_CAPTURE_ENABLED = (import.meta.env.VITE_DEV_PAYLOAD_CAPTURE as string | undefined) === 'true';
+// Never enable payload capture in production builds, even if the env flag
+// is accidentally set. import.meta.env.PROD is true in all `vite build` output.
+export const DEBUG_CAPTURE_ENABLED =
+    !import.meta.env.PROD &&
+    (import.meta.env.VITE_DEV_PAYLOAD_CAPTURE as string | undefined) === 'true';
 
 export type DebugEntryKind =
     | 'chat'
