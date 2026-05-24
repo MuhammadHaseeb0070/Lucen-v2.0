@@ -589,7 +589,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // ─── Stream mode ────────────────────────────────────────────────
-        const stream = new ReadableStream({
+        const responseStream = new ReadableStream({
             async start(controller) {
                 const encoder = new TextEncoder();
                 const decoder = new TextDecoder();
@@ -1045,7 +1045,7 @@ Deno.serve(async (req: Request) => {
             }
         });
 
-        return new Response(stream, {
+        return new Response(responseStream, {
             headers: {
                 ...cors,
                 ...configHeaders,
