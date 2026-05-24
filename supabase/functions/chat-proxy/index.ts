@@ -872,6 +872,15 @@ Deno.serve(async (req: Request) => {
                             rounds++;
                             continue;
                         } else {
+                            // Bug 1 fix: emit a content_start sentinel before forwarding the
+                            // final content stream. This tells the frontend that any delta.reasoning
+                            // chunks in this round are the model's actual answer, not internal thinking.
+                            // MiniMax Nitro (and similar models) put their post-tool-call answer in
+                            // delta.reasoning even though it's the response, not a thought.
+                            if (rounds > 0) {
+                                controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: true })}\n\n`));
+                            }
+
                             for (const chunk of firstChunks) {
                                 controller.enqueue(chunk);
                             }

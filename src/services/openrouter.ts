@@ -1344,6 +1344,20 @@ async function processStream(
         return t;
     }
 
+    // Bug 2 fix: currentEvent MUST live OUTSIDE the while(true) loop.
+    // SSE events use two lines: "event: foo\n" and "data: ...\n". When
+    // these arrive in separate TCP chunks (separate reader.read() calls),
+    // the event type must persist across iterations. Declaring it inside
+    // the loop resets it to null every chunk, so the data line never sees
+    // the event type and onToolActivity is never called.
+    let currentEvent: string | null = null;
+
+    // Bug 1 fix: when the model uses delta.reasoning for its final answer
+    // (MiniMax Nitro behavior after a tool-call round), we need to route
+    // those chunks to onChunk (main content) not onReasoning (thinking box).
+    // The backend signals this with a "content_start" SSE event.
+    let treatReasoningAsContent = false;
+
     try {
         while (true) {
             const { done, value } = await reader.read();
@@ -1358,7 +1372,6 @@ async function processStream(
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
-            let currentEvent: string | null = null;
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed || trimmed.startsWith(':')) continue;
@@ -1398,6 +1411,21 @@ async function processStream(
                     try {
                         const eventData = JSON.parse(data);
                         callbacks.onUsageReceipt?.(eventData);
+                    } catch { /* ignore */ }
+                    currentEvent = null;
+                    continue;
+                }
+                if (currentEvent === 'content_start') {
+                    // Bug 1 fix: backend signals that the next stream is the
+                    // final content response after tool calls. MiniMax Nitro
+                    // (and some other reasoning models) send the actual answer
+                    // in delta.reasoning even when it's not internal thinking.
+                    // Setting this flag reroutes those chunks to onChunk.
+                    try {
+                        const eventData = JSON.parse(data);
+                        if (eventData?.after_tool_calls) {
+                            treatReasoningAsContent = true;
+                        }
                     } catch { /* ignore */ }
                     currentEvent = null;
                     continue;
@@ -1443,9 +1471,20 @@ async function processStream(
                     // Handle reasoning content (DeepSeek R1, Grok reasoning, etc.)
                     if (delta.reasoning || delta.reasoning_content) {
                         const reasoningChunk = String(delta.reasoning || delta.reasoning_content || '');
-                        // Some providers may mistakenly emit artifact blocks in the reasoning channel.
-                        // Route those back to normal content so the artifact pipeline can handle them.
-                        if (reasoningChunk.includes('<lucen_artifact')) {
+                        // Bug 1 fix: after a tool-call round, some models (e.g. MiniMax Nitro)
+                        // put their final answer in delta.reasoning rather than delta.content.
+                        // When the backend sends content_start{after_tool_calls:true}, treat
+                        // all delta.reasoning as main content, not internal thinking.
+                        if (treatReasoningAsContent) {
+                            callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
+                            contentChunkCount++;
+                            lastContentTail = reasoningChunk.slice(-220);
+                            if (accContent.length < FINALIZE_CONTENT_CAP) {
+                                accContent += reasoningChunk;
+                            }
+                        } else if (reasoningChunk.includes('<lucen_artifact')) {
+                            // Some providers may mistakenly emit artifact blocks in the reasoning channel.
+                            // Route those back to normal content so the artifact pipeline can handle them.
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
                         } else {
                             callbacks.onReasoning(sanitizeAssistantOutput(reasoningChunk));
