@@ -172,7 +172,7 @@ export const SUBSCRIPTION_FAQ: FaqItem[] = [
   {
     question: 'How are LC deducted?',
     answer:
-      'LC are deducted automatically based on your actual usage. Text conversations cost 1 LC per 1,000 tokens processed. Image analysis costs 2 LC per image. Web searches cost 10 LC each. The deduction happens on the server in real-time — you always see your true balance.',
+      'LC are deducted automatically based on your actual usage. Text conversations cost 1 LC per 1,000 tokens processed. Image analysis costs 2 LC per image. Web searches cost 8 LC each. The deduction happens on the server in real-time — you always see your true balance.',
   },
   {
     question: 'What happens when I run out of LC?',

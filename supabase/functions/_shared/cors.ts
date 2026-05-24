@@ -19,7 +19,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     let allowOrigin = '*';
     if (APP_URLS.length > 0 && ALLOWED_ORIGINS.length > 0) {
         const isInAllowedList = originNorm && ALLOWED_ORIGINS.some(
-            (allowed) => originNorm === allowed || (allowed && originNorm.startsWith(allowed))
+            (allowed) => originNorm === allowed
         );
         const isVercelPreview = origin.startsWith('https://') && origin.endsWith('.vercel.app');
         const isAllowed = isInAllowedList || isVercelPreview || isLocalDevOrigin(originNorm);

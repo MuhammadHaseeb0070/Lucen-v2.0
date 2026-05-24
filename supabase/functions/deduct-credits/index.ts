@@ -66,19 +66,25 @@ Deno.serve(async (req: Request) => {
                     .single();
 
                 if (error && error.code === 'PGRST116') {
+                    // Use the ledger-aware RPC instead of raw INSERT to avoid
+                    // phantom credits that have no backing ledger entry.
+                    await supabaseAdmin.rpc('ensure_user_credits', {
+                        p_user_id: user.id,
+                        p_initial_credits: 100,
+                    });
                     const { data: newRow } = await supabaseAdmin
                         .from('user_credits')
-                        .insert({
-                            user_id: user.id,
-                            remaining_credits: 100,
-                            total_used: 0,
-                            subscription_status: 'free',
-                            subscription_plan: 'free',
-                        })
-                        .select()
+                        .select('remaining_credits, total_used, billing_cycle_usage, subscription_status, subscription_plan, lemon_squeezy_subscription_id, lemon_squeezy_customer_portal_url, subscription_renews_at')
+                        .eq('user_id', user.id)
                         .single();
+                    const { data: newLedgers } = await supabaseAdmin
+                        .from('credit_ledgers')
+                        .select('id, initial_amount, remaining_amount, valid_from, expires_at, subscription_id, plan_name')
+                        .eq('user_id', user.id)
+                        .gt('remaining_amount', 0)
+                        .gt('expires_at', new Date().toISOString());
                     return new Response(
-                        JSON.stringify(newRow),
+                        JSON.stringify({ ...newRow, ledgers: newLedgers || [] }),
                         { headers: { ...cors, 'Content-Type': 'application/json' } }
                     );
                 }
@@ -104,7 +110,7 @@ Deno.serve(async (req: Request) => {
             }
 
             case 'deduct': {
-                const cost = amount || 1;
+                const cost = (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) ? amount : 1;
 
                 const { data: newBalance, error: rpcError } = await supabaseAdmin.rpc('deduct_user_credits', {
                     p_user_id: user.id,

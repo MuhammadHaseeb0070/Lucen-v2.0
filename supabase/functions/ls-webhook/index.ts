@@ -123,11 +123,14 @@ function extractEventId(payload: any, req: Request): string {
   // Try webhook delivery ID from headers first (guaranteed unique)
   const deliveryId = getHeader(req, "X-Delivery-Id") ?? getHeader(req, "x-delivery-id");
   if (deliveryId) return deliveryId;
-  // Fallback: combine event name + subscription id + timestamp
+  // Fallback: combine event name + subscription id + timestamp.
+  // Use updated_at (changes per event) instead of created_at (same for all events on a sub).
   const eventName = payload?.meta?.event_name ?? "unknown";
   const subId = payload?.data?.id ?? "none";
-  const createdAt = payload?.data?.attributes?.created_at ?? Date.now();
-  return `${eventName}-${subId}-${createdAt}`;
+  const eventTimestamp = payload?.data?.attributes?.updated_at
+    ?? payload?.data?.attributes?.created_at
+    ?? new Date().toISOString();
+  return `${eventName}-${subId}-${eventTimestamp}`;
 }
 
 // ═══════════════════════════════════════════
@@ -173,33 +176,47 @@ function getSupabaseAdmin() {
   return createClient(supabaseUrl, serviceKey);
 }
 
-/** Check if this event was already processed (idempotency) */
-async function isEventProcessed(eventId: string): Promise<boolean> {
-  const supabaseAdmin = getSupabaseAdmin();
-  const { data } = await supabaseAdmin
-    .from("webhook_events")
-    .select("event_id")
-    .eq("event_id", eventId)
-    .maybeSingle();
-  return !!data;
-}
-
-/** Record that we processed this event */
-async function recordEvent(params: {
+/**
+ * Atomically claim an event for processing (idempotency).
+ * Uses INSERT with ON CONFLICT to eliminate the TOCTOU race between
+ * checking and recording. Returns true if the event was ALREADY processed.
+ */
+async function tryClaimEvent(params: {
   eventId: string;
   eventName: string;
   userId: string;
+  payload?: any;
+}): Promise<boolean> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { error } = await supabaseAdmin
+    .from("webhook_events")
+    .insert({
+      event_id: params.eventId,
+      event_name: params.eventName,
+      user_id: params.userId,
+      payload: params.payload ?? null,
+    });
+
+  if (error) {
+    // 23505 = unique_violation → already processed
+    if (error.code === "23505") return true;
+    // Any other DB error → throw so the caller returns 500 and LS retries
+    throw new Error(`Idempotency INSERT failed: ${error.message}`);
+  }
+  return false;
+}
+
+/** Update the already-claimed event row with grant details after processing */
+async function updateEventRecord(params: {
+  eventId: string;
   variantId?: string | null;
   creditsGranted?: number;
 }) {
   const supabaseAdmin = getSupabaseAdmin();
-  await supabaseAdmin.from("webhook_events").upsert({
-    event_id: params.eventId,
-    event_name: params.eventName,
-    user_id: params.userId,
+  await supabaseAdmin.from("webhook_events").update({
     variant_id: params.variantId ?? null,
     credits_granted: params.creditsGranted ?? 0,
-  }, { onConflict: "event_id" });
+  }).eq("event_id", params.eventId);
 }
 
 // ═══════════════════════════════════════════
@@ -440,6 +457,16 @@ serve(async (req: Request) => {
   // Diagnostic: log every webhook arrival so nothing is invisible.
   console.log(`ls-webhook: ▶ EVENT=${eventName} user=${userId} variant=${variantId ?? 'null'} sub=${subscriptionId ?? 'null'} eventId=${eventId}`);
 
+  // ── Test mode guard ──
+  // In production (LEMON_SQUEEZY_TEST_MODE=false), reject test-mode webhooks
+  // to prevent accidental credit grants from test data.
+  const envTestMode = Deno.env.get("LEMON_SQUEEZY_TEST_MODE");
+  const payloadTestMode = payload?.data?.attributes?.test_mode === true || payload?.meta?.test_mode === true;
+  if ((envTestMode === "false" || envTestMode === "0") && payloadTestMode) {
+    console.warn(`ls-webhook: rejecting test-mode webhook in production for user ${userId}`);
+    return jsonResponse({ received: true, rejected: "test_mode" }, { status: 200 });
+  }
+
   const VARIANT_REGULAR = Deno.env.get("LS_VARIANT_REGULAR");
   const VARIANT_PRO = Deno.env.get("LS_VARIANT_PRO");
 
@@ -448,15 +475,22 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Variant configuration missing" }, { status: 500 });
   }
 
-  // ── Idempotency check ──
+  // ── Atomic idempotency claim ──
+  // Uses INSERT with unique constraint instead of SELECT-then-INSERT to
+  // eliminate the TOCTOU race under concurrent webhook deliveries.
   try {
-    const alreadyProcessed = await isEventProcessed(eventId);
+    const alreadyProcessed = await tryClaimEvent({
+      eventId,
+      eventName,
+      userId,
+      payload,
+    });
     if (alreadyProcessed) {
       console.log(`ls-webhook: duplicate event ${eventId}, skipping`);
       return jsonResponse({ received: true, duplicate: true }, { status: 200 });
     }
   } catch (err) {
-    console.error("ls-webhook: idempotency check failed — returning 500 to force LS retry:", err);
+    console.error("ls-webhook: idempotency claim failed — returning 500 to force LS retry:", err);
     // SECURITY: Do NOT proceed if the idempotency check itself fails.
     // Returning 500 tells Lemon Squeezy to retry later when DB is stable.
     // Proceeding would risk a double-grant if LS retries concurrently.
@@ -485,7 +519,6 @@ serve(async (req: Request) => {
         await expireSubscriptionLedgers({ userId, subscriptionId });
       }
       await setFreeStatus({ userId, subscriptionId });
-      await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
     }
 
@@ -495,7 +528,6 @@ serve(async (req: Request) => {
     if (isPaymentFailedEvent(eventName)) {
       console.log(`ls-webhook: payment FAILED for user ${userId}. Setting past_due.`);
       await setPastDueStatus({ userId });
-      await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
     }
 
@@ -505,7 +537,6 @@ serve(async (req: Request) => {
     if (isCancellationEvent(eventName)) {
       console.log(`ls-webhook: subscription CANCELLED for user ${userId}. Credits remain until expiry.`);
       await setCancelledStatus({ userId });
-      await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
     }
 
@@ -518,7 +549,6 @@ serve(async (req: Request) => {
         await expireSubscriptionLedgers({ userId, subscriptionId });
       }
       await setFreeStatus({ userId, subscriptionId });
-      await recordEvent({ eventId, eventName, userId });
       return jsonResponse({ received: true }, { status: 200 });
     }
 
@@ -528,14 +558,12 @@ serve(async (req: Request) => {
     if (isResumedEvent(eventName)) {
       if (!variantId) {
         console.error("ls-webhook: subscription_resumed without variant_id");
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
       const variantInfo = getCreditsForVariant(variantId);
       if (!variantInfo) {
         console.log(`ls-webhook: ignoring resumed event with unknown variant_id=${variantId}`);
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
@@ -548,7 +576,7 @@ serve(async (req: Request) => {
         renewsAt,
       });
 
-      await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
+      await updateEventRecord({ eventId, variantId, creditsGranted: variantInfo.credits });
       console.log(`ls-webhook: RESUMED granted ${variantInfo.credits} LC. Plan: ${variantInfo.plan}. Balance: ${newBalance}`);
       return jsonResponse({ received: true }, { status: 200 });
     }
@@ -559,7 +587,6 @@ serve(async (req: Request) => {
     if (eventName.toLowerCase() === "subscription_created") {
       if (!variantId) {
         console.error("ls-webhook: subscription_created without variant_id");
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
@@ -568,8 +595,28 @@ serve(async (req: Request) => {
         // ALERT: This fires when LS_VARIANT_REGULAR/LS_VARIANT_PRO secrets don't
         // match the variant in the payload. User paid but gets NO credits!
         console.error(`[ALERT] ls-webhook: UNKNOWN variant_id=${variantId} for user=${userId}. Verify LS_VARIANT_* secrets match your Lemon Squeezy variant IDs!`);
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
+      }
+
+      // Guard: If credits already exist for this exact subscription_id, skip
+      // the grant. This prevents duplicate subscription_created events (e.g.
+      // LS test mode rapid-fire or retries with different event IDs) from
+      // stacking credits.
+      if (subscriptionId) {
+        const { data: existingGrant } = await supabaseAdmin
+          .from("credit_ledgers")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("subscription_id", subscriptionId)
+          .gt("remaining_amount", 0)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingGrant) {
+          console.log(`ls-webhook: subscription_created SKIPPED — active credits already exist for sub ${subscriptionId}. Syncing metadata only.`);
+          await updateSubscriptionStatus({ userId, variantId, subscriptionId, plan: variantInfo.plan, customerPortalUrl, renewsAt });
+          return jsonResponse({ received: true, already_granted: true }, { status: 200 });
+        }
       }
 
       const newBalance = await grantPaymentCredits({
@@ -581,7 +628,7 @@ serve(async (req: Request) => {
         renewsAt,
       });
 
-      await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
+      await updateEventRecord({ eventId, variantId, creditsGranted: variantInfo.credits });
       console.log(`ls-webhook: CREATED granted ${variantInfo.credits} LC. Plan: ${variantInfo.plan}. Balance: ${newBalance}`);
       return jsonResponse({ received: true }, { status: 200 });
     }
@@ -596,21 +643,19 @@ serve(async (req: Request) => {
         if (subscriptionId) {
           await expireSubscriptionLedgers({ userId, subscriptionId });
         }
-        await recordEvent({ eventId, eventName, userId });
+        await setFreeStatus({ userId, subscriptionId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
       if (shouldSetPastDueForUpdate(payload)) {
         console.log(`ls-webhook: subscription_updated → past_due/paused for user ${userId}.`);
         await setPastDueStatus({ userId });
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
       if (shouldSetCancelledForUpdate(payload)) {
         console.log(`ls-webhook: subscription_updated → cancelled for user ${userId}. Credits remain.`);
         await setCancelledStatus({ userId });
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
@@ -628,7 +673,6 @@ serve(async (req: Request) => {
         console.error(`ls-webhook: subscription_updated meta-sync failed for ${userId}: ${metaErr.message}`);
       }
 
-      await recordEvent({ eventId, eventName, userId });
       console.log(`ls-webhook: subscription_updated — synced metadata for user ${userId}. No credit changes applied.`);
       return jsonResponse({ received: true }, { status: 200 });
     }
@@ -665,11 +709,33 @@ serve(async (req: Request) => {
 
       if (isInitialPayment) {
         console.log(`ls-webhook: ignoring INITIAL payment success (billing_reason=${billingReason ?? "unset"}, sub=${subscriptionId}) — credits already granted on subscription_created`);
-        await recordEvent({ eventId, eventName, userId });
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      // This is a RENEWAL — grant new cycle of credits
+      // ── RENEWAL FREQUENCY GUARD ──
+      // Prevent renewals from stacking credits if the previous grant for this
+      // subscription was less than 25 days ago. This stops LS test-mode
+      // rapid-fire renewals AND protects against LS API glitches in production.
+      if (subscriptionId) {
+        const { data: recentGrant } = await supabaseAdmin
+          .from("credit_ledgers")
+          .select("id, valid_from")
+          .eq("user_id", userId)
+          .eq("subscription_id", subscriptionId)
+          .gt("valid_from", new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString())
+          .order("valid_from", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (recentGrant) {
+          console.log(`ls-webhook: RENEWAL THROTTLED — credits already granted for sub ${subscriptionId} on ${recentGrant.valid_from}. Skipping credit grant.`);
+          // Still sync metadata (renews_at, portal URL) so the UI stays accurate
+          await updateSubscriptionStatus({ userId, variantId: variantId!, subscriptionId, plan: (variantId ? getCreditsForVariant(variantId)?.plan : null) ?? currentDbPlan, customerPortalUrl, renewsAt });
+          return jsonResponse({ received: true, throttled: true }, { status: 200 });
+        }
+      }
+
+      // This is a legitimate RENEWAL — grant new cycle of credits
       const variantInfo = variantId ? getCreditsForVariant(variantId) : null;
       if (variantInfo) {
         const newBalance = await grantPaymentCredits({
@@ -681,11 +747,10 @@ serve(async (req: Request) => {
           renewsAt: renewsAt,
         });
 
-        await recordEvent({ eventId, eventName, userId, variantId, creditsGranted: variantInfo.credits });
+        await updateEventRecord({ eventId, variantId, creditsGranted: variantInfo.credits });
         console.log(`ls-webhook: RENEWAL granted ${variantInfo.credits} LC. Plan: ${variantInfo.plan}. Balance: ${newBalance}`);
       } else {
         console.error(`[ALERT] ls-webhook: missing or invalid variant_id on RENEWAL for user ${userId}. Verify LS_VARIANT_* secrets!`);
-        await recordEvent({ eventId, eventName, userId });
       }
 
       return jsonResponse({ received: true }, { status: 200 });
@@ -693,7 +758,6 @@ serve(async (req: Request) => {
 
     // ── Unhandled event types (acknowledge to prevent retries) ──
     console.log(`ls-webhook: unhandled or standard-ignore event ${eventName} for user ${userId}`);
-    await recordEvent({ eventId, eventName, userId });
     return jsonResponse({ received: true }, { status: 200 });
   } catch (err) {
     console.error("ls-webhook handler error:", err);
