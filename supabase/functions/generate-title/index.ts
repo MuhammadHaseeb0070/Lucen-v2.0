@@ -16,6 +16,8 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const startedAt = Date.now();
+
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -36,20 +38,32 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { user_message, assistant_message, conversation_id } = body;
+    const { user_message, assistant_message, conversation_id, mode, text_to_summarize } = body;
 
-    if (!user_message && !assistant_message) {
+    if (mode !== 'summary' && !user_message && !assistant_message) {
       return new Response(JSON.stringify({ title: null }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const prompt = [
-      'Generate a short, descriptive title (3-6 words) for a chat conversation. Return ONLY the title text, nothing else.',
-      '',
-      `User: ${(user_message || '').slice(0, 500)}`,
-      assistant_message ? `Assistant: ${assistant_message.slice(0, 500)}` : '',
-    ].filter(Boolean).join('\n');
+    let prompt = '';
+    if (mode === 'summary') {
+      prompt = [
+        'Write a concise summary (1-2 paragraphs) capturing the key points, decisions, and context of the following conversation segment.',
+        'Ensure you retain important technical details, file names, or code paths mentioned.',
+        '',
+        text_to_summarize || '',
+      ].filter(Boolean).join('\n');
+    } else {
+      prompt = [
+        'Generate a short, descriptive title (3-6 words) for a chat conversation. Return ONLY the title text, nothing else.',
+        '',
+        `User: ${(user_message || '').slice(0, 500)}`,
+        assistant_message ? `Assistant: ${assistant_message.slice(0, 500)}` : '',
+      ].filter(Boolean).join('\n');
+    }
+
+    const titleModel = Deno.env.get('SIDE_CHAT_MODEL') || 'openai/gpt-4o-mini';
 
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -58,9 +72,9 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: titleModel,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 30,
+        max_tokens: mode === 'summary' ? 300 : 30,
         temperature: 0.7,
       }),
     });
@@ -68,7 +82,7 @@ serve(async (req) => {
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       console.error('[generate-title] upstream error:', res.status, errText);
-      return new Response(JSON.stringify({ title: null }), {
+      return new Response(JSON.stringify({ title: null, summary: null }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -77,19 +91,23 @@ serve(async (req) => {
     const usage = data?.usage;
     let title = data?.choices?.[0]?.message?.content?.trim() ?? null;
 
-    await recordUsage(supabase, {
+    await recordUsage({
       userId: user.id,
       conversationId: conversation_id || null,
       requestId: body.request_id || null,
-      callKind: 'title_gen',
-      modelId: 'openai/gpt-4o-mini',
+      callKind: mode === 'summary' ? 'summary_gen' as any : 'title_gen',
+      modelId: titleModel,
       promptTokens: usage?.prompt_tokens ?? 0,
       completionTokens: usage?.completion_tokens ?? 0,
       status: title ? 'completed' : 'upstream_error',
-      provider: 'openai',
-      durationMs: 0,
-      usdCost: 0,
+      durationMs: Date.now() - startedAt,
     });
+
+    if (mode === 'summary') {
+      return new Response(JSON.stringify({ summary: title }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (title) {
       title = title.replace(/^["']|["']$/g, '').trim();

@@ -9342,3 +9342,269 @@ mark.search-highlight.is-active {
 .patch-report-card-open-btn:hover {
     background: var(--bg-surface-hover);
 }
+
+/* ─── Tool Steps and Cost Receipt Styling ─── */
+
+.tool-steps-block {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--divider);
+}
+
+.tool-steps-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 0.78rem;
+    font-weight: 550;
+    cursor: pointer;
+    padding: 6px 0;
+    font-family: var(--font);
+    transition: color var(--dur-fast) var(--ease);
+}
+
+.tool-steps-toggle:hover {
+    color: var(--text-secondary);
+}
+
+.tool-steps-toggle-label {
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.tool-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    background: var(--bg-muted);
+    padding: 10px 14px;
+    border-radius: var(--r-sm);
+    border-left: 3px solid var(--text-tertiary);
+    animation: msgIn var(--dur) var(--ease);
+}
+
+.tool-step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.82rem;
+}
+
+.tool-step-icon-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: var(--r-sm);
+    background: var(--bg-surface);
+    border: 1px solid var(--divider);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.tool-step-icon {
+    opacity: 0.85;
+}
+
+.tool-step-spinner {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--r-sm);
+    color: var(--accent);
+    animation: artifact-spin 1.2s linear infinite;
+}
+
+.tool-step-status-icon {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    font-size: 0.55rem;
+    font-weight: 800;
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.tool-step-status-icon--completed {
+    background: var(--success, #10b981);
+}
+
+.tool-step-status-icon--failed {
+    background: var(--danger, #ef4444);
+}
+
+.tool-step-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.tool-step-label {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.tool-step-duration {
+    margin-left: 6px;
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+}
+
+.tool-step-args {
+    margin-top: 3px;
+    font-size: 0.7rem;
+    font-family: var(--font-mono, monospace);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.85;
+}
+
+/* --- Usage Receipt Popover --- */
+.usage-receipt-popover {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 8px;
+    z-index: 100;
+    width: 290px;
+    background: var(--bg-surface);
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    padding: 14px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    animation: msgIn var(--dur-fast) var(--ease);
+}
+
+.usage-receipt-popover-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.usage-receipt-header-icon {
+    color: var(--accent);
+}
+
+.usage-receipt-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px 0;
+    color: var(--text-secondary);
+}
+
+.usage-receipt-spinner {
+    animation: artifact-spin 0.9s linear infinite;
+    color: var(--accent);
+}
+
+.usage-receipt-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.usage-receipt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 550;
+    margin-bottom: 2px;
+}
+
+.usage-receipt-label {
+    color: var(--text-primary);
+}
+
+.usage-receipt-value {
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+}
+
+.usage-receipt-subrow {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+}
+
+.usage-receipt-divider {
+    height: 1px;
+    background: var(--divider);
+    margin: 8px 0;
+}
+
+.usage-receipt-divider--thick {
+    height: 2px;
+    margin-top: 10px;
+}
+
+.usage-receipt-section-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+}
+
+.usage-receipt-tool-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.76rem;
+    margin-bottom: 4px;
+}
+
+.usage-receipt-tool-name {
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px;
+}
+
+.usage-receipt-tool-value {
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+.usage-receipt-row--total {
+    margin-top: 4px;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.usage-receipt-total-label {
+    color: var(--text-primary);
+}
+
+.usage-receipt-total-value {
+    color: var(--accent);
+    font-family: var(--font-mono, monospace);
+}
+
+.usage-receipt-empty {
+    text-align: center;
+    color: var(--text-tertiary);
+    padding: 12px 0;
+}

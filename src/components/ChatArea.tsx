@@ -413,6 +413,22 @@ const ChatArea: React.FC = () => {
             },
             onWebSearchUsed: (urls) =>
                 updateMessage(convId, assistantMsgId, { webSearchUsed: true, webSearchUrls: urls }),
+            onToolActivity: (event) => {
+                const activeConv = useChatStore.getState().getActiveConversation();
+                const msg = activeConv?.messages.find(m => m.id === assistantMsgId);
+                const currentSteps = msg?.toolSteps || [];
+                const existingIndex = currentSteps.findIndex(s => s.id === event.id);
+                let nextSteps = [...currentSteps];
+                if (existingIndex !== -1) {
+                    nextSteps[existingIndex] = { ...nextSteps[existingIndex], ...event };
+                } else {
+                    nextSteps.push(event);
+                }
+                updateMessage(convId, assistantMsgId, { toolSteps: nextSteps });
+            },
+            onUsageReceipt: (receipt) => {
+                updateMessage(convId, assistantMsgId, { usageReceipt: receipt });
+            },
             onClarificationNeeded: (question) => {
                 flushAllPending();
                 updateMessage(convId, assistantMsgId, {

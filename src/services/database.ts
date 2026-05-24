@@ -108,6 +108,7 @@ export interface DbMessage {
     is_pinned: boolean;
     attachments?: Record<string, unknown>[];
     created_at: string;
+    tools_used?: any[];
 }
 
 /** Fetch all messages for a conversation, ordered by creation time */
@@ -213,6 +214,7 @@ export async function saveMessage(
             is_streaming: message.isStreaming || false,
             // Save attachment metadata only (no file content)
             attachments: message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) || null,
+            tools_used: message.toolSteps || null,
         });
 
     if (error) {
@@ -259,7 +261,7 @@ export async function saveMessage(
 /** Update an existing message (e.g., after streaming completes) */
 export async function updateMessageInDb(
     messageId: string,
-    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming'>>
+    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming' | 'toolSteps'>>
 ): Promise<boolean> {
     if (!hasActiveSessionSync() || !supabase) return false;
 
@@ -268,6 +270,7 @@ export async function updateMessageInDb(
     if (updates.reasoning !== undefined) dbUpdates.reasoning = updates.reasoning;
     if (updates.isTruncated !== undefined) dbUpdates.is_truncated = updates.isTruncated;
     if (updates.isStreaming !== undefined) dbUpdates.is_streaming = updates.isStreaming;
+    if (updates.toolSteps !== undefined) dbUpdates.tools_used = updates.toolSteps;
 
     const { error } = await supabase
         .from('messages')
@@ -310,6 +313,7 @@ export async function upsertStreamingMessage(
                 attachments:
                     message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) ||
                     null,
+                tools_used: message.toolSteps || null,
             },
             { onConflict: 'id' },
         );
@@ -465,6 +469,7 @@ function dbToMessage(row: DbMessage): Message {
         timestamp: new Date(row.created_at).getTime(),
         isTruncated: row.is_truncated,
         isPinned: row.is_pinned,
+        toolSteps: row.tools_used || undefined,
         // Restore attachment metadata (no file content — that's transient)
         attachments: row.attachments?.map((a: Record<string, unknown>) => ({
             id: a.id as string,
@@ -512,6 +517,28 @@ export async function searchConversations(query: string): Promise<SearchResult[]
         }));
     } catch (err) {
         console.error('[DB] searchConversations exception:', err);
+        return null;
+    }
+}
+
+/** Fetch detailed usage logs associated with a message */
+export async function fetchUsageReceipt(messageId: string): Promise<any[] | null> {
+    if (!hasActiveSessionSync() || !supabase) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('usage_logs')
+            .select('*')
+            .eq('message_id', messageId)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[DB] fetchUsageReceipt error:', error);
+            return null;
+        }
+        return data;
+    } catch (err) {
+        console.error('[DB] fetchUsageReceipt exception:', err);
         return null;
     }
 }

@@ -6,6 +6,7 @@ import { useChatStore } from './chatStore';
 import { useCreditsStore } from './creditsStore';
 import { useThemeStore } from './themeStore';
 import { fetchUserSettingsRow } from '../services/userSettings';
+import { initializeModelConfig } from '../config/models';
 
 let initPromise: Promise<void> | null = null;
 
@@ -327,6 +328,7 @@ function syncDataOnLogin() {
     // Small delay to ensure auth state is propagated to session cache
     setTimeout(async () => {
         useChatStore.getState().loadFromSupabase();
+        initializeModelConfig();
 
         const row = await fetchUserSettingsRow();
         if (row) {

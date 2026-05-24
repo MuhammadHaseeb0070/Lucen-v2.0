@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, Globe, Split, Loader2 } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, Globe, Split, Loader2, Image, FileText, Coins, Receipt, Settings } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
@@ -7,6 +7,7 @@ import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
+import { fetchUsageReceipt } from '../services/database';
 
 interface MessageBubbleProps {
     message: Message;
@@ -58,6 +59,130 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [searchSourcesOpen, setSearchSourcesOpen] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [stepsOpen, setStepsOpen] = useState(false);
+    const [receiptOpen, setReceiptOpen] = useState(false);
+    const [usageLogs, setUsageLogs] = useState<any[] | null>(null);
+    const [loadingReceipt, setLoadingReceipt] = useState(false);
+
+    const hasRunningTools = useMemo(() => {
+        return message.toolSteps?.some(s => s.status === 'running') ?? false;
+    }, [message.toolSteps]);
+
+    const completedTools = useMemo(() => {
+        return message.toolSteps?.filter(s => s.status !== 'running') ?? [];
+    }, [message.toolSteps]);
+
+    useEffect(() => {
+        if (hasRunningTools) {
+            setStepsOpen(true);
+        }
+    }, [hasRunningTools]);
+
+    const handleToggleReceipt = async () => {
+        if (receiptOpen) {
+            setReceiptOpen(false);
+            return;
+        }
+
+        setReceiptOpen(true);
+
+        if (message.usageReceipt || usageLogs) return;
+
+        setLoadingReceipt(true);
+        try {
+            const logs = await fetchUsageReceipt(message.id);
+            setUsageLogs(logs);
+        } catch (err) {
+            console.error('Failed to fetch usage logs:', err);
+        } finally {
+            setLoadingReceipt(false);
+        }
+    };
+
+    const receiptData = useMemo(() => {
+        if (message.usageReceipt) {
+            const prompt_tokens = message.usageReceipt.prompt_tokens;
+            const completion_tokens = message.usageReceipt.completion_tokens;
+            const reasoning_tokens = message.usageReceipt.reasoning_tokens;
+            const total_credits = message.usageReceipt.total_credits;
+            const search_credits = message.usageReceipt.search_credits;
+            const text_credits = Math.max(0, total_credits - search_credits);
+
+            return {
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                total_credits,
+                search_credits,
+                text_credits,
+                tools: message.usageReceipt.tools_used || []
+            };
+        }
+
+        if (usageLogs && usageLogs.length > 0) {
+            let prompt_tokens = 0;
+            let completion_tokens = 0;
+            let reasoning_tokens = 0;
+            let total_credits = 0;
+            let search_credits = 0;
+            const tools: any[] = [];
+
+            for (const log of usageLogs) {
+                if (log.call_kind === 'chat' || log.call_kind === 'chat_continuation') {
+                    prompt_tokens += log.prompt_tokens || 0;
+                    completion_tokens += log.completion_tokens || 0;
+                    reasoning_tokens += log.reasoning_tokens || 0;
+                }
+                total_credits += log.total_credits_deducted || 0;
+                if (log.call_kind === 'web_search' || log.web_search_credits) {
+                    search_credits += log.web_search_credits || 0;
+                }
+                if (log.call_kind === 'describe_image') {
+                    tools.push({
+                        name: 'analyze_image',
+                        durationMs: log.duration_ms,
+                        status: log.status === 'completed' ? 'completed' : 'failed',
+                        credits: log.total_credits_deducted || 0,
+                    });
+                }
+                if (log.call_kind === 'web_search') {
+                    tools.push({
+                        name: 'web_search',
+                        durationMs: log.duration_ms,
+                        status: log.status === 'completed' ? 'completed' : 'failed',
+                        credits: log.total_credits_deducted || 0,
+                    });
+                }
+            }
+
+            if (message.toolSteps) {
+                for (const step of message.toolSteps) {
+                    if (step.tool === 'process_file') {
+                        tools.push({
+                            name: 'process_file',
+                            durationMs: step.durationMs,
+                            status: step.status,
+                            credits: 0
+                        });
+                    }
+                }
+            }
+
+            const text_credits = Math.max(0, total_credits - search_credits);
+
+            return {
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                total_credits,
+                search_credits,
+                text_credits,
+                tools
+            };
+        }
+
+        return null;
+    }, [message.usageReceipt, usageLogs, message.toolSteps]);
 
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
     const storeUpdateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
@@ -303,6 +428,57 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     <span>Pinned Message</span>
                 </div>
             )}
+            {/* Tool Steps Block */}
+            {message.toolSteps && message.toolSteps.length > 0 && (
+                <div className="tool-steps-block">
+                    {completedTools.length > 0 && (
+                        <button className="tool-steps-toggle" onClick={() => setStepsOpen(!stepsOpen)}>
+                            {stepsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            <span className="tool-steps-toggle-label">Steps taken ({completedTools.length})</span>
+                        </button>
+                    )}
+                    {stepsOpen && (
+                        <div className="tool-steps-list">
+                            {message.toolSteps.map((step) => {
+                                const isRunning = step.status === 'running';
+                                const isFailed = step.status === 'failed';
+
+                                let IconComponent = Settings;
+                                if (step.tool === 'analyze_image') IconComponent = Image;
+                                else if (step.tool === 'web_search') IconComponent = Globe;
+                                else if (step.tool === 'process_file') IconComponent = FileText;
+
+                                return (
+                                    <div key={step.id} className={`tool-step-item tool-step-item--${step.status}`}>
+                                        <div className="tool-step-icon-wrapper">
+                                            {isRunning ? (
+                                                <Loader2 size={13} className="tool-step-spinner" />
+                                            ) : isFailed ? (
+                                                <span className="tool-step-status-icon tool-step-status-icon--failed">✕</span>
+                                            ) : (
+                                                <span className="tool-step-status-icon tool-step-status-icon--completed">✓</span>
+                                            )}
+                                            <IconComponent size={13} className="tool-step-icon" />
+                                        </div>
+                                        <div className="tool-step-content">
+                                            <span className="tool-step-label">{step.label}</span>
+                                            {step.durationMs !== undefined && (
+                                                <span className="tool-step-duration">({(step.durationMs / 1000).toFixed(1)}s)</span>
+                                            )}
+                                            {step.args && Object.keys(step.args).length > 0 && (
+                                                <div className="tool-step-args" title={JSON.stringify(step.args, null, 2)}>
+                                                    {Object.entries(step.args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {!disableReasoning && normalizedReasoning && (
                         <div className="reasoning-block">
                             <button className="reasoning-toggle" onClick={() => setReasoningOpen(!reasoningOpen)}>
@@ -443,6 +619,76 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         <button className="msg-action-btn" onClick={() => onFork(message.id)} title="Fork chat from here">
                             <Split size={13} />
                         </button>
+                    )}
+                    {message.role === 'assistant' && (
+                        <div className="msg-usage-receipt-wrapper" style={{ position: 'relative', display: 'inline-block' }}>
+                            <button
+                                className={`msg-action-btn ${receiptOpen ? 'msg-action-btn--active' : ''}`}
+                                onClick={handleToggleReceipt}
+                                title="Show cost breakdown"
+                            >
+                                <Receipt size={13} />
+                            </button>
+                            {receiptOpen && (
+                                <div className="usage-receipt-popover">
+                                    <div className="usage-receipt-popover-header">
+                                        <Coins size={13} className="usage-receipt-header-icon" />
+                                        <span>Usage & Cost Receipt</span>
+                                    </div>
+                                    {loadingReceipt ? (
+                                        <div className="usage-receipt-loading">
+                                            <Loader2 size={13} className="usage-receipt-spinner" />
+                                            <span>Loading cost breakdown...</span>
+                                        </div>
+                                    ) : receiptData ? (
+                                        <div className="usage-receipt-content">
+                                            <div className="usage-receipt-row">
+                                                <span className="usage-receipt-label">Text Completion</span>
+                                                <span className="usage-receipt-value">
+                                                    {receiptData.total_credits > 0 ? `-${receiptData.text_credits.toFixed(4)} credits` : 'Free'}
+                                                </span>
+                                            </div>
+                                            <div className="usage-receipt-subrow">
+                                                Tokens: {receiptData.prompt_tokens.toLocaleString()} in / {receiptData.completion_tokens.toLocaleString()} out
+                                                {receiptData.reasoning_tokens > 0 && ` (${receiptData.reasoning_tokens.toLocaleString()} thinking)`}
+                                            </div>
+
+                                            {receiptData.tools && receiptData.tools.length > 0 && (
+                                                <>
+                                                    <div className="usage-receipt-divider" />
+                                                    <div className="usage-receipt-section-title">Executed Tools</div>
+                                                    {receiptData.tools.map((tool: any, idx: number) => (
+                                                        <div key={idx} className="usage-receipt-tool-row">
+                                                            <span className="usage-receipt-tool-name">
+                                                                {tool.name === 'analyze_image' ? 'analyze_image (Vision)' :
+                                                                 tool.name === 'web_search' ? 'web_search (Tavily)' :
+                                                                 tool.name === 'process_file' ? 'process_file (Reader)' : tool.name}
+                                                            </span>
+                                                            <span className="usage-receipt-tool-value">
+                                                                {tool.credits > 0 ? `-${tool.credits.toFixed(4)} credits` : 'Free'}
+                                                                {tool.durationMs !== undefined && ` (${(tool.durationMs / 1000).toFixed(1)}s)`}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+
+                                            <div className="usage-receipt-divider usage-receipt-divider--thick" />
+                                            <div className="usage-receipt-row usage-receipt-row--total">
+                                                <span className="usage-receipt-total-label">Total Cost</span>
+                                                <span className="usage-receipt-total-value">
+                                                    -{receiptData.total_credits.toFixed(4)} credits
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="usage-receipt-empty">
+                                            No billing logs found for this message.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
                     {showRetry && onRetry && (
                         <button className="msg-action-btn" onClick={() => onRetry(message.id)} title="Regenerate response">

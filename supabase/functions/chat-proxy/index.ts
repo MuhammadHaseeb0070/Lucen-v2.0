@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus, type UsageCallKind } from '../_shared/usage.ts';
+import { TOOLS, getOpenRouterTools } from '../_shared/toolRegistry.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const WEB_PLUGIN_ID = 'web';
@@ -120,6 +121,28 @@ function sanitizeWebPlugins(plugins: unknown): Array<Record<string, unknown>> | 
 function computeWebSearchCredits(maxResults: number): number {
     const usd = (Math.max(0, maxResults) / 1000) * WEBSEARCH_USD_PER_1K_RESULTS;
     return usd * LC_PER_USD;
+}
+
+function detectAttachments(messages: any[]): { hasImage: boolean; hasFile: boolean } {
+    let hasImage = false;
+    let hasFile = false;
+    for (const msg of messages) {
+        if (!msg || typeof msg !== 'object') continue;
+        const content = msg.content;
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+        if (
+            contentStr.includes('[Attached Image:') || 
+            contentStr.includes('image: ') || 
+            contentStr.includes('type: "image_url"') || 
+            contentStr.includes('image_url')
+        ) {
+            hasImage = true;
+        }
+        if (contentStr.includes('[Attached File:') || contentStr.includes('file: ')) {
+            hasFile = true;
+        }
+    }
+    return { hasImage, hasFile };
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────
@@ -293,7 +316,30 @@ Deno.serve(async (req: Request) => {
             return await fail('client_error', 400, 'model is required');
         }
 
-        accounting.modelId = model;
+        let effectiveModel = model as string;
+        if (model === 'main-chat-model') {
+            effectiveModel = Deno.env.get('MAIN_CHAT_MODEL') ?? 'minimax/minimax-01';
+        } else if (model === 'side-chat-model') {
+            effectiveModel = Deno.env.get('SIDE_CHAT_MODEL') ?? 'openai/gpt-4o-mini';
+        }
+        accounting.modelId = effectiveModel;
+
+        const isSideChat = model === 'side-chat-model';
+        const modelPrefix = isSideChat ? 'SIDE_CHAT_' : 'MAIN_CHAT_';
+        const defaultName = isSideChat ? 'GPT-4o mini' : 'Lucen M2.7';
+        const defaultReasoning = isSideChat ? 'false' : 'true';
+        const defaultContext = isSideChat ? '128000' : '131072';
+        const defaultMaxOutput = isSideChat ? '16384' : '32768';
+        const defaultTps = isSideChat ? '60' : '40';
+
+        const configHeaders: Record<string, string> = {
+            'x-model-name': Deno.env.get(`${modelPrefix}MODEL_NAME`) ?? defaultName,
+            'x-supports-reasoning': Deno.env.get(`${modelPrefix}SUPPORTS_REASONING`) ?? defaultReasoning,
+            'x-context-window': Deno.env.get(`${modelPrefix}CONTEXT_WINDOW`) ?? defaultContext,
+            'x-max-output': Deno.env.get(`${modelPrefix}MAX_OUTPUT`) ?? defaultMaxOutput,
+            'x-tokens-per-second': Deno.env.get(isSideChat ? 'SIDE_CHAT_TOKENS_PER_SECOND' : 'VITE_MAIN_CHAT_TOKENS_PER_SECOND') ?? Deno.env.get(`${modelPrefix}TOKENS_PER_SECOND`) ?? defaultTps,
+            'Access-Control-Expose-Headers': 'x-model-name, x-supports-reasoning, x-context-window, x-max-output, x-tokens-per-second',
+        };
 
         const imageCount = countImagesInMessages(messages);
         accounting.imageTokens = imageCount;
@@ -335,12 +381,23 @@ Deno.serve(async (req: Request) => {
             }
         }
 
+        const { hasImage, hasFile } = detectAttachments(messages);
+        const toolsToPass: any[] = [];
+        if (webSearchRequested) {
+            toolsToPass.push(TOOLS.web_search);
+        }
+        if (hasImage) {
+            toolsToPass.push(TOOLS.analyze_image);
+        }
+        if (hasFile) {
+            toolsToPass.push(TOOLS.process_file);
+        }
+
         // Decide the effective upstream model.
-        // Default: use the client-requested model (MAIN chat model).
+        // Default: use the resolved effectiveModel.
         // Only swap when we're in explicit fallback mode AND the env var is
         // configured — otherwise stay on the main model so the user gets a
         // consistent voice regardless of whether web search kicked in.
-        let effectiveModel = model as string;
         if (webSearchFallback) {
             const onlineModel = Deno.env.get('OPENROUTER_ONLINE_MODEL');
             if (onlineModel) {
@@ -527,179 +584,471 @@ Deno.serve(async (req: Request) => {
             });
 
             return new Response(JSON.stringify(json), {
-                headers: { ...cors, 'Content-Type': 'application/json' },
+                headers: { ...cors, ...configHeaders, 'Content-Type': 'application/json' },
             });
         }
 
         // ─── Stream mode ────────────────────────────────────────────────
-        const { readable, writable } = new TransformStream();
-        const writer = writable.getWriter();
-        const reader = openrouterResponse.body!.getReader();
-        const decoder = new TextDecoder();
+        const stream = new ReadableStream({
+            async start(controller) {
+                const encoder = new TextEncoder();
+                const decoder = new TextDecoder();
+                
+                let currentMessages = [...messages];
+                let rounds = 0;
+                const maxRounds = 4;
+                
+                // Track total accumulated metrics across all rounds
+                let totalPromptTokens = 0;
+                let totalCompletionTokens = 0;
+                let totalReasoningTokens = 0;
+                let totalSearchCost = 0;
+                let finalStatus: UsageStatus = 'completed';
+                let finalStatusReason: string | null = null;
+                let finalStreamError: string | null = null;
+                let finalSawDone = false;
+                let finishReason: string | null = null;
+                
+                // Tools executed history for logging and client receipt
+                const toolsExecuted: Array<{
+                    id: string;
+                    name: string;
+                    arguments: string;
+                    status: 'completed' | 'failed';
+                    durationMs: number;
+                }> = [];
 
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let reasoningTokens = 0;
-        let totalTokensNum = 0;
-        let finishReason: string | null = null;
-        let sawDone = false;
-        let streamError: string | null = null;
-
-        (async () => {
-            let lastChunkTime = Date.now();
-            const keepaliveInterval = setInterval(async () => {
-                try {
-                    if (Date.now() - lastChunkTime > 8000) {
-                        const keepalive = new TextEncoder().encode(': keepalive\n\n');
-                        await writer.write(keepalive);
+                const callSiblingFunction = async (name: string, payload: any) => {
+                    const endpoint = `${supabaseUrl}/functions/v1/${name}`;
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': authHeader,
+                            'apikey': supabaseServiceKey,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) {
+                        const errText = await res.text().catch(() => '');
+                        throw new Error(`Status ${res.status}: ${errText}`);
                     }
-                } catch {
-                    clearInterval(keepaliveInterval);
-                }
-            }, 8000);
-
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    lastChunkTime = Date.now();
-                    await writer.write(value);
-
-                    const text = decoder.decode(value, { stream: true });
-                    const lines = text.split('\n');
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (!trimmed.startsWith('data: ')) continue;
-                        const dataStr = trimmed.slice(6);
-                        if (dataStr === '[DONE]') {
-                            sawDone = true;
-                            continue;
-                        }
-                        try {
-                            const parsed = JSON.parse(dataStr);
-                            if (parsed.usage) {
-                                totalTokensNum = parsed.usage.total_tokens || totalTokensNum;
-                                promptTokens = parsed.usage.prompt_tokens || promptTokens;
-                                completionTokens = parsed.usage.completion_tokens || completionTokens;
-                                reasoningTokens = getReasoningTokens(parsed.usage) || reasoningTokens;
-                            }
-                            const choice = parsed?.choices?.[0];
-                            if (choice?.finish_reason) {
-                                finishReason = String(choice.finish_reason);
-                            }
-                            if (parsed?.error) {
-                                streamError = typeof parsed.error === 'string'
-                                    ? parsed.error
-                                    : (parsed.error?.message ?? 'stream error');
-                            }
-                        } catch {
-                            // Non-JSON SSE line — skip.
-                        }
-                    }
-                }
-            } catch (e) {
-                streamError = e instanceof Error ? e.message : 'stream pump failed';
-            } finally {
-                clearInterval(keepaliveInterval);
-                try { await writer.close(); } catch { /* already closed */ }
-
-                totalTokensNum = totalTokensNum > 0 ? totalTokensNum : (promptTokens + completionTokens);
-
-                // Derive status from stream end state.
-                let status: UsageStatus;
-                let statusReason: string | null = null;
-                if (streamError) {
-                    status = 'upstream_error';
-                    statusReason = streamError.slice(0, 500);
-                } else if (finishReason === 'length') {
-                    status = 'truncated';
-                    statusReason = 'finish_reason=length';
-                } else if (finishReason === 'stop' && sawDone) {
-                    status = 'completed';
-                } else if (finishReason) {
-                    status = 'completed';
-                    statusReason = `finish_reason=${finishReason}`;
-                } else if (!sawDone) {
-                    // Stream ended without [DONE] — treat as aborted (client cut
-                    // or upstream hung up).
-                    status = 'aborted';
-                    statusReason = 'eof_without_done';
-                } else {
-                    status = 'completed';
-                }
-
-                const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
-                const imageCost = imageCount * CREDITS_PER_IMAGE;
-                const actualWebSearchHappened = webSearchUsed || webSearchFallback;
-                const searchCost = actualWebSearchHappened ? computeWebSearchCredits(webSearchMaxResults) : 0;
-                const shouldCharge =
-                    status === 'completed' || status === 'truncated' || (promptTokens + completionTokens) > 0;
-                const totalCost = shouldCharge ? (textCost + imageCost + searchCost) : 0;
+                    return await res.json();
+                };
 
                 try {
-                    if (shouldCharge && totalCost > 0) {
-                        await supabaseAdmin.rpc('deduct_user_credits', {
-                            p_user_id: user.id,
-                            p_amount: totalCost,
+                    while (rounds < maxRounds) {
+                        const requestBody: any = {
+                            model: effectiveModel,
+                            messages: currentMessages,
+                            stream: true,
+                            max_tokens: resolvedMaxTokens,
+                            max_completion_tokens: resolvedMaxTokens,
+                            include_usage: true,
+                            ...(response_format ? { response_format } : {}),
+                            ...(provider ? { provider } : {}),
+                            ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
+                        };
+
+                        if (toolsToPass.length > 0 && rounds < maxRounds - 1) {
+                            requestBody.tools = toolsToPass;
+                        } else {
+                            requestBody.tool_choice = 'none';
+                        }
+
+                        const openrouterResponse = await fetch(OPENROUTER_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${openrouterApiKey}`,
+                                'HTTP-Referer': supabaseUrl,
+                                'X-Title': 'Lucen',
+                            },
+                            body: JSON.stringify(requestBody),
                         });
+
+                        if (!openrouterResponse.ok) {
+                            const errBody = await openrouterResponse.text().catch(() => '');
+                            throw new Error(`OpenRouter upstream error ${openrouterResponse.status}: ${errBody}`);
+                        }
+
+                        const reader = openrouterResponse.body!.getReader();
+                        
+                        let isToolCall = false;
+                        const firstChunks: Uint8Array[] = [];
+                        let accumulatedText = '';
+                        let checkRounds = 0;
+
+                        while (checkRounds < 10) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            if (value) {
+                                firstChunks.push(value);
+                                const text = decoder.decode(value, { stream: true });
+                                accumulatedText += text;
+                                if (text.includes('"tool_calls"')) {
+                                    isToolCall = true;
+                                    break;
+                                }
+                                if (text.includes('"content"') || text.includes('"reasoning"')) {
+                                    isToolCall = false;
+                                    break;
+                                }
+                            }
+                            checkRounds++;
+                        }
+
+                        if (isToolCall) {
+                            const toolCallsMap = new Map<number, {
+                                id?: string;
+                                name?: string;
+                                arguments: string;
+                            }>();
+
+                            const parseText = (txt: string) => {
+                                const lines = txt.split('\n');
+                                for (const line of lines) {
+                                    const trimmed = line.trim();
+                                    if (!trimmed.startsWith('data: ')) continue;
+                                    const dataStr = trimmed.slice(6);
+                                    if (dataStr === '[DONE]') continue;
+                                    try {
+                                        const parsed = JSON.parse(dataStr);
+                                        if (parsed.usage) {
+                                            totalPromptTokens += parsed.usage.prompt_tokens || 0;
+                                            totalCompletionTokens += parsed.usage.completion_tokens || 0;
+                                            totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
+                                        }
+                                        const delta = parsed.choices?.[0]?.delta;
+                                        if (delta?.tool_calls) {
+                                            for (const tc of delta.tool_calls) {
+                                                const index = tc.index;
+                                                if (!toolCallsMap.has(index)) {
+                                                    toolCallsMap.set(index, { id: tc.id, name: tc.function?.name, arguments: '' });
+                                                }
+                                                const existing = toolCallsMap.get(index)!;
+                                                if (tc.id) existing.id = tc.id;
+                                                if (tc.function?.name) existing.name = tc.function?.name;
+                                                if (tc.function?.arguments) existing.arguments += tc.function?.arguments;
+                                            }
+                                        }
+                                    } catch { /* skip */ }
+                                }
+                            };
+
+                            parseText(accumulatedText);
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                if (value) {
+                                    const text = decoder.decode(value, { stream: true });
+                                    parseText(text);
+                                }
+                            }
+
+                            const toolCalls = Array.from(toolCallsMap.values());
+
+                            if (toolCalls.length > 0) {
+                                for (const tc of toolCalls) {
+                                    let parsedArgs: any = {};
+                                    try { parsedArgs = JSON.parse(tc.arguments); } catch { /* ignore */ }
+
+                                    let label = '';
+                                    if (tc.name === 'analyze_image') {
+                                        label = parsedArgs.analysis_title || 'Analyzing image';
+                                    } else if (tc.name === 'process_file') {
+                                        label = parsedArgs.extraction_title || 'Reading file';
+                                    } else if (tc.name === 'web_search') {
+                                        label = parsedArgs.search_title || 'Searching the web';
+                                    } else {
+                                        const def = TOOLS[tc.name ?? ''];
+                                        label = def?.userFacingLabel ?? `Running ${tc.name}`;
+                                    }
+
+                                    const eventPayload = {
+                                        id: tc.id,
+                                        tool: tc.name,
+                                        status: 'running',
+                                        label,
+                                        args: parsedArgs
+                                    };
+                                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                }
+
+                                const parallelCalls = toolCalls.filter(tc => TOOLS[tc.name ?? '']?.parallelizable);
+                                const sequentialCalls = toolCalls.filter(tc => !TOOLS[tc.name ?? '']?.parallelizable);
+
+                                const toolResults: any[] = [];
+
+                                const runTool = async (tc: any) => {
+                                    const start = Date.now();
+                                    let output = '';
+                                    let success = true;
+                                    let parsedArgs: any = {};
+                                    try { parsedArgs = JSON.parse(tc.arguments); } catch { /* ignore */ }
+
+                                    try {
+                                        let siblingName = tc.name;
+                                        if (tc.name === 'analyze_image') siblingName = 'describe-image';
+                                        if (tc.name === 'process_file') siblingName = 'get-file-content';
+                                        if (tc.name === 'web_search') siblingName = 'web-search';
+
+                                        const res = await callSiblingFunction(siblingName, parsedArgs);
+                                        output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
+                                    } catch (err: any) {
+                                        success = false;
+                                        output = `Error executing tool ${tc.name}: ${err.message}`;
+                                    }
+
+                                    const durationMs = Date.now() - start;
+                                    toolsExecuted.push({
+                                        id: tc.id!,
+                                        name: tc.name!,
+                                        arguments: tc.arguments,
+                                        status: success ? 'completed' : 'failed',
+                                        durationMs
+                                    });
+
+                                    if (tc.name === 'web_search') {
+                                        const maxResults = Number(parsedArgs.max_results ?? WEBSEARCH_DEFAULT_MAX_RESULTS);
+                                        totalSearchCost += computeWebSearchCredits(maxResults);
+                                    }
+
+                                    let label = '';
+                                    if (tc.name === 'analyze_image') {
+                                        label = parsedArgs.analysis_title || 'Analyzing image';
+                                    } else if (tc.name === 'process_file') {
+                                        label = parsedArgs.extraction_title || 'Reading file';
+                                    } else if (tc.name === 'web_search') {
+                                        label = parsedArgs.search_title || 'Searching the web';
+                                    } else {
+                                        const def = TOOLS[tc.name ?? ''];
+                                        label = def?.userFacingLabel ?? `Running ${tc.name}`;
+                                    }
+
+                                    const eventPayload = {
+                                        id: tc.id,
+                                        tool: tc.name,
+                                        status: success ? 'completed' : 'failed',
+                                        label,
+                                        args: parsedArgs,
+                                        durationMs,
+                                        output: output.slice(0, 400)
+                                    };
+                                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+
+                                    return {
+                                        tool_call_id: tc.id,
+                                        role: 'tool',
+                                        name: tc.name,
+                                        content: output
+                                    };
+                                };
+
+                                const parallelResults = await Promise.all(parallelCalls.map(runTool));
+                                toolResults.push(...parallelResults);
+
+                                for (const tc of sequentialCalls) {
+                                    const res = await runTool(tc);
+                                    toolResults.push(res);
+                                }
+
+                                currentMessages.push({
+                                    role: 'assistant',
+                                    content: null,
+                                    tool_calls: toolCalls.map(tc => ({
+                                        id: tc.id,
+                                        type: 'function',
+                                        function: {
+                                            name: tc.name,
+                                            arguments: tc.arguments
+                                        }
+                                    }))
+                                });
+                                currentMessages.push(...toolResults);
+                            }
+                            rounds++;
+                            continue;
+                        } else {
+                            for (const chunk of firstChunks) {
+                                controller.enqueue(chunk);
+                            }
+
+                            const parseUsageAndStream = (chunkVal: Uint8Array) => {
+                                controller.enqueue(chunkVal);
+                                const text = decoder.decode(chunkVal, { stream: true });
+                                const lines = text.split('\n');
+                                for (const line of lines) {
+                                    const trimmed = line.trim();
+                                    if (!trimmed.startsWith('data: ')) continue;
+                                    const dataStr = trimmed.slice(6);
+                                    if (dataStr === '[DONE]') {
+                                        finalSawDone = true;
+                                        continue;
+                                    }
+                                    try {
+                                        const parsed = JSON.parse(dataStr);
+                                        if (parsed.usage) {
+                                            totalPromptTokens += parsed.usage.prompt_tokens || 0;
+                                            totalCompletionTokens += parsed.usage.completion_tokens || 0;
+                                            totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
+                                        }
+                                        const choice = parsed.choices?.[0];
+                                        if (choice?.finish_reason) {
+                                            finishReason = choice.finish_reason;
+                                        }
+                                        if (parsed?.error) {
+                                            finalStreamError = typeof parsed.error === 'string'
+                                                ? parsed.error
+                                                : (parsed.error?.message ?? 'stream error');
+                                        }
+                                    } catch { /* skip */ }
+                                }
+                            };
+
+                            const lines = accumulatedText.split('\n');
+                            for (const line of lines) {
+                                const trimmed = line.trim();
+                                if (!trimmed.startsWith('data: ')) continue;
+                                const dataStr = trimmed.slice(6);
+                                if (dataStr === '[DONE]') {
+                                    finalSawDone = true;
+                                    continue;
+                                }
+                                try {
+                                    const parsed = JSON.parse(dataStr);
+                                    if (parsed.usage) {
+                                        totalPromptTokens += parsed.usage.prompt_tokens || 0;
+                                        totalCompletionTokens += parsed.usage.completion_tokens || 0;
+                                        totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
+                                    }
+                                } catch { /* skip */ }
+                            }
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                if (value) {
+                                    parseUsageAndStream(value);
+                                }
+                            }
+
+                            break;
+                        }
                     }
 
-                    if (shouldCharge && subscriptionStatus === 'free' && actualWebSearchHappened) {
-                        await supabaseAdmin
-                            .from('user_credits')
-                            .update({ free_searches_used: freeSearchesUsed + 1 })
-                            .eq('user_id', user.id);
+                    if (finalStreamError) {
+                        finalStatus = 'upstream_error';
+                        finalStatusReason = finalStreamError.slice(0, 500);
+                    } else if (finishReason === 'length') {
+                        finalStatus = 'truncated';
+                        finalStatusReason = 'finish_reason=length';
+                    } else if (finishReason === 'stop' && finalSawDone) {
+                        finalStatus = 'completed';
+                    } else if (finishReason) {
+                        finalStatus = 'completed';
+                        finalStatusReason = `finish_reason=${finishReason}`;
+                    } else if (!finalSawDone) {
+                        finalStatus = 'aborted';
+                        finalStatusReason = 'eof_without_done';
+                    } else {
+                        finalStatus = 'completed';
                     }
-                } catch (dbErr) {
-                    console.error('Failed to deduct stream credits:', dbErr);
+
+                    const totalTokensNum = totalPromptTokens + totalCompletionTokens;
+                    const textCost = (totalTokensNum / 1000) * CREDITS_PER_1K_TOKENS;
+                    const actualWebSearchHappened = totalSearchCost > 0;
+                    const shouldCharge =
+                        finalStatus === 'completed' || finalStatus === 'truncated' || totalTokensNum > 0;
+                    const totalCost = shouldCharge ? (textCost + totalSearchCost) : 0;
+
+                    try {
+                        if (shouldCharge && totalCost > 0) {
+                            await supabaseAdmin.rpc('deduct_user_credits', {
+                                p_user_id: user.id,
+                                p_amount: totalCost,
+                            });
+                        }
+
+                        if (shouldCharge && subscriptionStatus === 'free' && actualWebSearchHappened) {
+                            await supabaseAdmin
+                                .from('user_credits')
+                                .update({ free_searches_used: freeSearchesUsed + 1 })
+                                .eq('user_id', user.id);
+                        }
+                    } catch (dbErr) {
+                        console.error('Failed to deduct stream credits:', dbErr);
+                    }
+
+                    const receiptPayload = {
+                        tools_used: toolsExecuted,
+                        prompt_tokens: totalPromptTokens,
+                        completion_tokens: totalCompletionTokens,
+                        reasoning_tokens: totalReasoningTokens,
+                        total_credits: totalCost,
+                        search_credits: totalSearchCost
+                    };
+                    controller.enqueue(encoder.encode(`event: usage_receipt\ndata: ${JSON.stringify(receiptPayload)}\n\n`));
+
+                    accounting.finalized = true;
+                    accounting.status = finalStatus;
+                    accounting.statusReason = finalStatusReason;
+                    accounting.errorMessage = finalStreamError;
+                    accounting.promptTokens = totalPromptTokens;
+                    accounting.completionTokens = totalCompletionTokens;
+                    accounting.reasoningTokens = totalReasoningTokens;
+                    accounting.textCredits = textCost;
+                    accounting.imageCredits = 0;
+                    accounting.webSearchCredits = totalSearchCost;
+                    accounting.totalCredits = totalCost;
+                    accounting.webSearchResultsBilled = actualWebSearchHappened ? (totalSearchCost / (LC_PER_USD * (WEBSEARCH_USD_PER_1K_RESULTS / 1000))) : null;
+
+                    await recordUsage({
+                        userId: user.id,
+                        conversationId: accounting.conversationId,
+                        messageId: accounting.messageId,
+                        callKind: accounting.callKind,
+                        status: finalStatus,
+                        statusReason: finalStatusReason,
+                        errorMessage: finalStreamError,
+                        requestId: accounting.requestId,
+                        parentRequestId: accounting.parentRequestId,
+                        modelId: accounting.modelId,
+                        durationMs: Date.now() - startedAt,
+                        promptTokens: totalPromptTokens,
+                        completionTokens: totalCompletionTokens,
+                        reasoningTokens: totalReasoningTokens,
+                        imageTokens: 0,
+                        textCredits: textCost,
+                        imageCredits: 0,
+                        webSearchCredits: totalSearchCost,
+                        totalCreditsDeducted: totalCost,
+                        inputCostPer1M: accounting.inputCostPer1M,
+                        outputCostPer1M: accounting.outputCostPer1M,
+                        webSearchEnabled: webSearchRequested,
+                        webSearchEngine: accounting.webSearchEngine,
+                        webSearchMaxResults: accounting.webSearchMaxResults,
+                        webSearchResultsBilled: accounting.webSearchResultsBilled,
+                    });
+
+                } catch (e: any) {
+                    console.error('[chat-proxy] Stream internal execution error:', e);
+                    try {
+                        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: e.message })}\n\n`));
+                    } catch { /* skip */ }
+                } finally {
+                    try {
+                        controller.close();
+                    } catch { /* ignore */ }
                 }
-
-                accounting.finalized = true;
-                accounting.status = status;
-                accounting.statusReason = statusReason;
-                accounting.errorMessage = streamError;
-                accounting.promptTokens = promptTokens;
-                accounting.completionTokens = completionTokens;
-                accounting.reasoningTokens = reasoningTokens;
-                accounting.textCredits = textCost;
-                accounting.imageCredits = imageCost;
-                accounting.webSearchCredits = searchCost;
-                accounting.totalCredits = totalCost;
-                accounting.webSearchResultsBilled = actualWebSearchHappened ? webSearchMaxResults : null;
-
-                await recordUsage({
-                    userId: user.id,
-                    conversationId: accounting.conversationId,
-                    messageId: accounting.messageId,
-                    callKind: accounting.callKind,
-                    status,
-                    statusReason,
-                    errorMessage: streamError,
-                    requestId: accounting.requestId,
-                    parentRequestId: accounting.parentRequestId,
-                    modelId: accounting.modelId,
-                    durationMs: Date.now() - startedAt,
-                    promptTokens,
-                    completionTokens,
-                    reasoningTokens,
-                    imageTokens: imageCount,
-                    textCredits: textCost,
-                    imageCredits: imageCost,
-                    webSearchCredits: searchCost,
-                    totalCreditsDeducted: totalCost,
-                    inputCostPer1M: accounting.inputCostPer1M,
-                    outputCostPer1M: accounting.outputCostPer1M,
-                    webSearchEnabled: webSearchRequested,
-                    webSearchEngine: accounting.webSearchEngine,
-                    webSearchMaxResults: accounting.webSearchMaxResults,
-                    webSearchResultsBilled: accounting.webSearchResultsBilled,
-                });
             }
-        })();
+        });
 
-        return new Response(readable, {
+        return new Response(stream, {
             headers: {
                 ...cors,
+                ...configHeaders,
                 'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',

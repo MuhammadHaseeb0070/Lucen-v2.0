@@ -66,6 +66,23 @@ export interface Message {
   }>;
   /** The original user prompt that triggered an artifact suggestion response, for re-queueing. */
   artifactSuggestionOriginalPrompt?: string;
+  toolSteps?: Array<{
+    id: string;
+    tool: string;
+    status: 'running' | 'completed' | 'failed';
+    label: string;
+    args?: any;
+    durationMs?: number;
+    output?: string;
+  }>;
+  usageReceipt?: {
+    tools_used: any[];
+    prompt_tokens: number;
+    completion_tokens: number;
+    reasoning_tokens: number;
+    total_credits: number;
+    search_credits: number;
+  };
 }
 
 export interface Conversation {

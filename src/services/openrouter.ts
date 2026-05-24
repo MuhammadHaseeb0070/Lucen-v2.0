@@ -6,12 +6,10 @@ import {
     CONTINUATION_MAX_CHUNKS_CHAT,
     ABSOLUTE_OUTPUT_CEILING,
 } from '../config/models';
-import { formatFileSize } from './fileProcessor';
 import { TEMPLATES, BASE_SYSTEM_PROMPT } from '../config/prompts';
 import { useUIStore } from '../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import { useTokenStore } from '../store/tokenStore';
-import { useChatStore } from '../store/chatStore';
 import {
     detectResponseMode,
     getPerCallOutput,
@@ -41,6 +39,8 @@ interface StreamCallbacks {
     onError: (error: string) => void;
     onWebSearchUsed?: (urls?: string[]) => void;
     onClarificationNeeded?: (question: string) => void;
+    onToolActivity?: (event: { id: string; tool: string; status: 'running' | 'completed' | 'failed'; label: string; args?: any; durationMs?: number }) => void;
+    onUsageReceipt?: (receipt: { tools_used: any[]; prompt_tokens: number; completion_tokens: number; reasoning_tokens: number; total_credits: number; search_credits: number }) => void;
 }
 
 interface StreamOptions {
@@ -89,91 +89,14 @@ interface CallAccounting {
  */
 function buildMessageContent(
     msg: Message,
-    includeImages: boolean = true,
-    includeFileText: boolean = true,
-    supportsVision: boolean = true,
-): string | Array<Record<string, unknown>> {
+): string {
     if (!msg.attachments || msg.attachments.length === 0) {
         return msg.content;
     }
-
-    const parts: Array<Record<string, unknown>> = [];
-    const textAttachments = msg.attachments.filter((a) => a.textContent);
-    const imageAttachments = msg.attachments.filter((a) => a.type === 'image' && (a.dataUrl || a.aiDescription));
-
-    // 1. Attachment summary — so the model knows exactly what files are present
-    const summary = msg.attachments
-        .map((a) => (a.type === 'image' ? `image: ${a.name}` : `file: ${a.name}`))
-        .join(', ');
-    const summaryBlock = `[Attachments: ${summary}]\n`;
-    parts.push({ type: 'text', text: summaryBlock });
-
-    // 2. Text file contents
-    if (textAttachments.length > 0) {
-        const contextBlock = includeFileText
-            ? textAttachments
-                .map((a) => `── File: ${a.name} (${formatFileSize(a.size)}) ──\n${a.textContent}`)
-                .join('\n\n')
-            : textAttachments
-                .map((a) => `[File: ${a.name} — content was provided earlier in this conversation]`)
-                .join('\n');
-        parts.push({ type: 'text', text: contextBlock + '\n\n' });
-    }
-
-    // 3. User's message text (or fallback for image-only messages)
-    const userText = msg.content.trim() || (imageAttachments.length > 0
-        ? 'The user shared the image(s) above.'
-        : '');
-    if (userText) {
-        parts.push({ type: 'text', text: userText });
-    }
-
-    // 4. Image content
-    //   - If the main model supports vision AND this is a recent enough message,
-    //     emit native image_url parts (raw base64) for direct perception.
-    //   - Otherwise emit first-person description text so the main model can
-    //     respond as if it personally saw the image.
-    if (imageAttachments.length > 0) {
-        const canSendRawImages = includeImages && supportsVision;
-
-        if (canSendRawImages) {
-            for (const img of imageAttachments) {
-                if (img.dataUrl) {
-                    parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
-                } else if (img.aiDescription) {
-                    parts.push({ type: 'text', text: `[Image: ${img.name}]\nI see: ${img.aiDescription}` });
-                }
-            }
-        } else {
-            // Text-fallback path (used always for text-only main models).
-            // If all images share the exact same aiDescription (batched vision
-            // call), emit it once to avoid duplicating hundreds of tokens.
-            const distinct = Array.from(new Set(
-                imageAttachments.map((a) => a.aiDescription || '').filter(Boolean),
-            ));
-
-            if (distinct.length === 1 && imageAttachments.length > 1) {
-                const names = imageAttachments.map((a) => a.name).join(', ');
-                parts.push({
-                    type: 'text',
-                    text: `[Images: ${names}]\nI see: ${distinct[0]}`,
-                });
-            } else {
-                for (const img of imageAttachments) {
-                    if (img.aiDescription) {
-                        parts.push({ type: 'text', text: `[Image: ${img.name}]\nI see: ${img.aiDescription}` });
-                    } else {
-                        parts.push({
-                            type: 'text',
-                            text: `[Image: ${img.name}]\n(I wasn't able to get a clear look at this image right now.)`,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    return parts;
+    const markers = msg.attachments.map((a) => {
+        return a.type === 'image' ? `[Attached Image: ${a.id}]` : `[Attached File: ${a.id}]`;
+    }).join('\n');
+    return `${markers}\n\n${msg.content}`;
 }
 
 async function retrieveRelevantChunks(
@@ -312,6 +235,13 @@ function messageCostApprox(m: Message): number {
             if (a.aiDescription) total += approxTokens(a.aiDescription);
         }
     }
+    if (m.toolSteps) {
+        for (const step of m.toolSteps) {
+            if (step.output) {
+                total += approxTokens(step.output.slice(0, 300));
+            }
+        }
+    }
     // Per-message framing overhead (role tags, delimiters)
     total += 8;
     return total;
@@ -390,6 +320,7 @@ function buildApiMessages(
     opts: {
         supportsVision?: boolean;
         omittedTurnsCount?: number;
+        segmentSummary?: string | null;
     } = {},
 ): Array<Record<string, unknown>> {
     const templateMode = useUIStore.getState().templateMode;
@@ -444,31 +375,57 @@ function buildApiMessages(
 
     // Earlier-conversation omission note (context pruning signal)
     if (omittedTurnsCount > 0) {
+        const summaryText = opts.segmentSummary
+            ? `Summary of omitted turns:\n${opts.segmentSummary}`
+            : `${omittedTurnsCount} older turn${omittedTurnsCount === 1 ? '' : 's'} were omitted to fit the context window.`;
         systemMessages.push({
             role: 'system',
-            content: `[Earlier conversation summary: ${omittedTurnsCount} older turn${omittedTurnsCount === 1 ? '' : 's'} were omitted to fit the context window. Pinned messages and the most recent turns are preserved below. Do NOT mention this omission to the user.]`,
+            content: `[Earlier conversation summary: ${summaryText} Pinned messages and the most recent turns are preserved below. Do NOT mention this omission to the user.]`,
         });
     }
 
-    // Assemble the API payload: System messages MUST come before the conversation history
+function buildToolContextSummary(toolSteps: NonNullable<Message['toolSteps']>): string {
+    const lines: string[] = [];
+    for (const step of toolSteps) {
+        if (step.status === 'completed' && step.output) {
+            let toolName = step.tool;
+            if (step.tool === 'analyze_image') toolName = 'Image analysis';
+            else if (step.tool === 'process_file') toolName = 'File extraction';
+            else if (step.tool === 'web_search') toolName = 'Web search';
+
+            const sliced = step.output.slice(0, 300);
+            const ellipsis = step.output.length > 300 ? '...' : '';
+            lines.push(`${toolName}: ${sliced}${ellipsis}`);
+        }
+    }
+    return lines.join('\n');
+}
+
+// Assemble the API payload: System messages MUST come before the conversation history
+    const apiHistory: Array<Record<string, unknown>> = [];
+    for (const m of recentMessages) {
+        if (m.role !== 'user' && m.role !== 'assistant') continue;
+
+        apiHistory.push({
+            role: m.role,
+            content: buildMessageContent(m),
+        });
+
+        if (m.role === 'assistant' && m.toolSteps && m.toolSteps.length > 0) {
+            const summary = buildToolContextSummary(m.toolSteps);
+            if (summary) {
+                apiHistory.push({
+                    role: 'system',
+                    content: `[Tool context from this turn:\n${summary}]`,
+                });
+            }
+        }
+    }
+
     return [
         ...systemMessages,
         ...ragMessages,
-        ...recentMessages
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m, index) => ({
-                role: m.role,
-                // OPTIMIZATION: For vision-capable main models, only include raw
-                // image base64 for the last 2 messages. Older messages rely on
-                // the stored first-person description. For text-only main
-                // models, raw images are never emitted (see buildMessageContent).
-                content: buildMessageContent(
-                    m,
-                    index >= recentMessages.length - 2,
-                    index >= recentMessages.length - 3,
-                    supportsVision,
-                ),
-            })),
+        ...apiHistory,
     ];
 }
 
@@ -522,127 +479,7 @@ async function computeOutputBudget(
 }
 
 // ─── Vision context orchestration ────────────────────────────────────────────
-// When the main model can't natively see images, run the vision helper once
-// per turn that contains NEW images. Descriptions are written back to the
-// attachments so they persist in message history and are reused on follow-ups
-// without any extra API calls.
-//
-// Staleness policy: if an image is still referenced in the active window
-// (last 3 user turns) but its description was generated more than 3 user turns
-// ago, we re-describe it with the current context so the assistant stays
-// accurate. Otherwise cached descriptions are reused.
-const MAX_VISION_CONTEXT_EXCHANGES = 10; // last 5 user/assistant exchanges
-const STALE_AFTER_USER_TURNS = 3;
 
-function countUserMessagesAfter(messages: Message[], timestamp: number): number {
-    let count = 0;
-    for (const m of messages) {
-        if (m.role === 'user' && m.timestamp > timestamp) count++;
-    }
-    return count;
-}
-
-async function ensureImageContext(messages: Message[]): Promise<void> {
-    // Find the current (most recent) user message — this is the turn being sent.
-    let currentIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') { currentIdx = i; break; }
-    }
-    if (currentIdx === -1) return;
-
-    const currentMsg = messages[currentIdx];
-    const currentImages = (currentMsg.attachments || []).filter(
-        (a) => a.type === 'image' && a.dataUrl,
-    );
-    if (currentImages.length === 0) return;
-
-    // Decide which of the current turn's images actually need a (re)description.
-    //   • No aiDescription at all         → needs description.
-    //   • Has description but it's stale  → refresh with current context.
-    const needsDescribe = currentImages.filter((att) => {
-        if (!att.aiDescription) return true;
-        const stamp = att.descriptionGeneratedAt;
-        if (!stamp) return true;
-        const turnsSince = countUserMessagesAfter(messages, stamp);
-        return turnsSince > STALE_AFTER_USER_TURNS;
-    });
-
-    if (needsDescribe.length === 0) return; // All fresh — reuse silently.
-
-    if (!isSupabaseEnabled() || !supabase) return;
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-
-    // Build recent conversation context (excluding the current turn). Include
-    // prior images' descriptions as plain text so the vision helper can
-    // understand references like "the second chart we looked at".
-    const priorMessages = messages.slice(Math.max(0, currentIdx - MAX_VISION_CONTEXT_EXCHANGES), currentIdx);
-    const recent_messages = priorMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => {
-            const imageHints = (m.attachments || [])
-                .filter((a) => a.type === 'image')
-                .map((a) => a.aiDescription ? `[Image ${a.name}] ${a.aiDescription}` : `[Image ${a.name}]`)
-                .join(' ');
-            const content = [m.content, imageHints].filter(Boolean).join('\n');
-            return { role: m.role, content };
-        });
-
-    const describeRequestId = newRequestId();
-    const describeEndpoint = `${supabaseUrl}/functions/v1/describe-image`;
-    const describeBody = {
-        images: needsDescribe.map((a) => ({ dataUrl: a.dataUrl, name: a.name })),
-        recent_messages,
-        user_text: currentMsg.content,
-        request_id: describeRequestId,
-    };
-    const finalizeDescribe = captureCall({
-        id: describeRequestId,
-        kind: 'describe_image',
-        endpoint: describeEndpoint,
-        request: describeBody,
-    });
-
-    try {
-        const response = await fetch(describeEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
-                'apikey': anonKey || '',
-            },
-            body: JSON.stringify(describeBody),
-        });
-
-        if (!response.ok) {
-            const errText = await response.text().catch(() => '');
-            finalizeDescribe({ status: response.status, response: errText.slice(0, 4000), error: `HTTP ${response.status}` });
-            console.warn('[ensureImageContext] describe-image failed:', response.status);
-            return;
-        }
-
-        const data = await response.json();
-        finalizeDescribe({ status: response.status, response: data });
-        const description: string = typeof data?.description === 'string' ? data.description.trim() : '';
-        if (!description) return;
-
-        // Persist the same batched description on every image that was part of
-        // this call so buildMessageContent can emit it exactly once.
-        const now = Date.now();
-        const { updateAttachmentDescription } = useChatStore.getState();
-        for (const att of needsDescribe) {
-            if (!att.dataUrl) continue;
-            // Optimistic local update with a generated-at timestamp.
-            updateAttachmentDescription(att.dataUrl, description, now);
-        }
-    } catch (err) {
-        console.warn('[ensureImageContext] exception:', err);
-        finalizeDescribe({ error: err instanceof Error ? err.message : 'unknown' });
-    }
-}
 
 /**
  * Stream chat via Edge Function proxy (secure — API key stays server-side).
@@ -660,21 +497,7 @@ export async function streamChat(
         options.conversationId || null
     );
 
-    // If the main model can't see images directly, run the silent vision helper
-    // once for any images in the current turn (batched). No effect on turns
-    // without new images.
-    if (!model.supportsVision) {
-        await ensureImageContext(messages);
-        // Refresh messages from the store so the freshly-written aiDescription
-        // is picked up by buildApiMessages.
-        if (options.conversationId) {
-            const conv = useChatStore.getState().conversations.find((c) => c.id === options.conversationId);
-            if (conv) {
-                const refreshed = conv.messages.filter((m) => !m.isStreaming);
-                messages = refreshed as Message[];
-            }
-        }
-    }
+    // Vision processing is now handled autonomously server-side via tools
 
     if (!isSupabaseEnabled() || !supabase) {
         callbacks.onError('Please sign in to use chat.');
@@ -719,9 +542,29 @@ export async function streamChat(
     );
     const { pruned: prunedMessages, droppedCount } = pruneMessagesForContext(messages, conversationBudget);
 
+    let segmentSummary: string | null = null;
+    if (droppedCount > 5) {
+        try {
+            const dropped = messages.filter(m => !prunedMessages.some(pm => pm.id === m.id));
+            const droppedText = dropped.map(m => `${m.role}: ${m.content}`).join('\n');
+            const { data } = await supabase.functions.invoke('generate-title', {
+                body: {
+                    mode: 'summary',
+                    text_to_summarize: droppedText
+                }
+            });
+            if (data?.summary) {
+                segmentSummary = data.summary;
+            }
+        } catch (err) {
+            console.warn('[streamChat] failed to generate segment summary:', err);
+        }
+    }
+
     const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
         supportsVision: model.supportsVision,
         omittedTurnsCount: droppedCount,
+        segmentSummary,
     });
 
     const outputBudget = await computeOutputBudget(
@@ -1192,170 +1035,7 @@ async function streamViaEdgeFunctionWithInnerCallbacks(
     }
 }
 
-/**
- * Stream via Supabase Edge Function (chat-proxy).
- */
-async function resolveWebSearchContext(
-    apiMessages: Array<Record<string, unknown>>,
-    parentRequestId?: string,
-): Promise<{ shouldSearch: boolean; searchHint: string | null; urls: string[]; clarificationNeeded?: string | null; searchResults?: string | null; searchUrls?: string[] }> {
-    const noSearch = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null, searchUrls: [] };
 
-    const contextMessages = apiMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(-6);
-
-    if (contextMessages.length === 0) return noSearch;
-
-    const extractText = (content: unknown): string => {
-        if (typeof content === 'string') return content;
-        if (Array.isArray(content)) return (content as Array<Record<string, unknown>>).filter((p) => p.type === 'text').map((p) => p.text as string).join(' ');
-        return '';
-    };
-
-    const lastUser = [...contextMessages].reverse().find((m) => m.role === 'user');
-    if (!lastUser) return noSearch;
-    const lastUserText = extractText(lastUser.content).trim();
-
-    if (lastUserText.length < 3) return noSearch;
-    const trivial = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|great|cool|perfect|lol|haha|done|stop|wait|go ahead|continue|agreed|nice|awesome)[\s!.?]*$/i;
-    if (trivial.test(lastUserText)) return noSearch;
-
-    const urlRegex = /https?:\/\/[^\s"'<>]+/g;
-    const urls = lastUserText.match(urlRegex) || [];
-
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const { data: { session } } = await supabase!.auth.getSession();
-    if (!session?.access_token) return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
-
-    const intentRequestId = newRequestId();
-    const searchRequestId = newRequestId();
-    const intentEndpoint = `${supabaseUrl}/functions/v1/classify-intent`;
-    const intentBody = {
-        messages: contextMessages,
-        request_id: intentRequestId,
-        search_request_id: searchRequestId,
-        parent_request_id: parentRequestId ?? null,
-    };
-    const finalizeIntent = captureCall({
-        id: intentRequestId,
-        parentId: parentRequestId,
-        kind: 'classify_intent',
-        endpoint: intentEndpoint,
-        request: intentBody,
-    });
-
-    try {
-        const intentResponse = await fetch(intentEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
-                'apikey': anonKey || '',
-            },
-            body: JSON.stringify(intentBody),
-        });
-
-        if (!intentResponse.ok) {
-            const text = await intentResponse.text().catch(() => '');
-            finalizeIntent({ status: intentResponse.status, response: text, error: `HTTP ${intentResponse.status}` });
-            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
-        }
-
-        const result = await intentResponse.json();
-        
-        const intentLog = { ...result };
-        delete intentLog._debug;
-        finalizeIntent({ status: intentResponse.status, response: intentLog });
-        console.log('[classify-intent] result:', JSON.stringify(intentLog));
-
-        if (result._debug) {
-            const finalizeWebSearch = captureCall({
-                id: result._debug.searchRequestId,
-                parentId: intentRequestId,
-                kind: 'web_search',
-                endpoint: 'https://api.tavily.com/search',
-                request: result._debug.tavilyPayload || { error: result._debug.error },
-            });
-            finalizeWebSearch({ 
-                status: result._debug.error ? 500 : 200, 
-                response: result._debug.tavilyResponse || { error: result._debug.error } 
-            });
-        }
-
-        if (result.state === 'skip') return noSearch;
-
-        if (result.state === 'clarify' && result.question) {
-            return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: result.question, searchResults: null, searchUrls: [] };
-        }
-
-        if (result.state === 'search') {
-            // Format search results into clean context block. If Tavily gave us
-            // nothing usable (no answerBox, no knowledge graph, no organic
-            // results) we still inject a short note so the main model knows a
-            // search was attempted and can respond honestly instead of
-            // hallucinating.
-            let searchResultsText: string | null = null;
-            const clean = (v: unknown, max: number): string => {
-                const s = String(v ?? '').replace(/\s+/g, ' ').trim();
-                if (!s) return '';
-                return s.length > max ? `${s.slice(0, max)}...` : s;
-            };
-
-            const hasAnswer = !!result.results?.answerBox;
-            const hasKnowledge = !!result.results?.knowledgeGraph?.description;
-            const organicCount = Array.isArray(result.results?.organic) ? result.results.organic.length : 0;
-            const anyResults = hasAnswer || hasKnowledge || organicCount > 0;
-
-            if (result.results && anyResults) {
-                const parts: string[] = [`Web search results for: "${result.query}"\n`];
-
-                if (result.results.answerBox) {
-                    const ab = result.results.answerBox;
-                    parts.push(`DIRECT ANSWER: ${clean(ab.answer || ab.snippet || '', 420)}`);
-                }
-                if (result.results.knowledgeGraph?.description) {
-                    parts.push(`KNOWLEDGE: ${clean(result.results.knowledgeGraph.description, 420)}`);
-                }
-                if (organicCount > 0) {
-                    parts.push('SEARCH RESULTS:');
-                    // Keep only top few concise hits to avoid flooding the main
-                    // model with noisy listicle HTML/alt-text that can derail
-                    // style and cause meta/planning leakage.
-                    for (const r of result.results.organic.slice(0, 3)) {
-                        const title = clean(r.title, 160);
-                        const snippet = clean(r.snippet, 360);
-                        const link = clean(r.link, 220);
-                        parts.push(`- ${title}\n  ${snippet}\n  ${link}`);
-                    }
-                }
-                searchResultsText = parts.join('\n');
-            } else if (result.results) {
-                // Search ran but produced no usable results.
-                searchResultsText =
-                    `Web search was performed for "${result.query}" but returned no usable results. ` +
-                    `Answer the user honestly from your training knowledge, and mention that the live search came back empty if relevance of real-time data matters.`;
-            }
-
-            return {
-                shouldSearch: true,
-                searchHint: result.query || lastUserText,
-                urls,
-                clarificationNeeded: null,
-                searchResults: searchResultsText,
-                searchUrls: Array.isArray(result.results?.organic) ? result.results.organic.map((r: any) => r.link).filter(Boolean) : [],
-            };
-        }
-
-        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
-
-    } catch (err) {
-        console.error('[classify-intent] FAILED:', err);
-        finalizeIntent({ error: err instanceof Error ? err.message : 'unknown' });
-        return { shouldSearch: false, searchHint: null, urls, clarificationNeeded: null, searchResults: null, searchUrls: [] };
-    }
-}
 
 /**
  * Stream via Supabase Edge Function (chat-proxy).
@@ -1402,90 +1082,10 @@ async function streamViaEdgeFunction(
         output_cost_per_1m: accounting?.outputCostPer1M ?? model.outputCostPer1m,
     };
 
-    // ── Web search (Tavily via classify-intent) ─────────────────────────
-    // Flow:
-    //   1. classify-intent (cheap model) decides search vs skip vs clarify.
-    //   2. If search: classify-intent runs Tavily and returns results.
-    //   3. We inject those results as a system message and the MAIN model
-    //      (MiniMax / whatever is in VITE_MAIN_CHAT_MODEL) answers.
-    //
-    // We NEVER forward OpenRouter's `plugins` to chat-proxy; that would
-    // swap the model to OPENROUTER_ONLINE_MODEL and run Tavily a second
-    // time. The server-side fallback to the online model only kicks in
-    // when we signal `web_search_fallback_requested=true`, which happens
-    // only if classify-intent itself crashed while the user was asking
-    // for a search.
-    let webSearchFallbackRequested = false;
-    let webSearchUsed = false;
-    if (webSearchEnabled) {
-        let ctx: Awaited<ReturnType<typeof resolveWebSearchContext>>;
-        try {
-            ctx = await resolveWebSearchContext(apiMessages, perCallRequestId);
-        } catch (err) {
-            console.warn('[webSearch] classify-intent threw, will request server-side fallback:', err);
-            ctx = { shouldSearch: false, searchHint: null, urls: [], clarificationNeeded: null, searchResults: null, searchUrls: [] };
-            webSearchFallbackRequested = true;
-        }
-
-        const { shouldSearch, urls, clarificationNeeded, searchResults, searchUrls } = ctx;
-
-        if (clarificationNeeded) {
-            callbacks.onClarificationNeeded?.(clarificationNeeded);
-            return;
-        }
-
-        if (shouldSearch && searchResults) {
-            // Extract links from organic results to display in the UI
-            callbacks.onWebSearchUsed?.(searchUrls);
-            webSearchUsed = true;
-            // Inject real search results directly — NO `plugins` field.
-            // By appending directly to the user's message, we ensure the model sees
-            // the results BEFORE it decides to trigger its own internal search tool.
-            const msgs = requestPayload.messages as Array<Record<string, unknown>>;
-            let lastUserIdx = -1;
-            for (let i = msgs.length - 1; i >= 0; i--) {
-                if (msgs[i].role === 'user') {
-                    lastUserIdx = i;
-                    break;
-                }
-            }
-
-            const searchInjection = `\n\n--- Web Search Context ---\n${searchResults}\n--- End of Web Search Context ---\n\nUsing the web search results above, answer the user's question directly and in full detail. Do not ask the user to search elsewhere or tell them you cannot access real-time data — the live results are already included above. Synthesize a complete, helpful response.`;
-            const urlInjection = urls.length > 0 ? `\n\n[User referenced these URLs: ${urls.join(', ')}. Retrieve and use their content.]` : '';
-            const finalInjection = searchInjection + urlInjection;
-
-            if (lastUserIdx !== -1) {
-                const currentContent = msgs[lastUserIdx].content;
-                if (typeof currentContent === 'string') {
-                    msgs[lastUserIdx].content = currentContent + finalInjection;
-                } else if (Array.isArray(currentContent)) {
-                    currentContent.push({ type: 'text', text: finalInjection });
-                }
-            } else {
-                msgs.push({
-                    role: 'system',
-                    content: finalInjection.trim()
-                });
-            }
-        } else if (webSearchEnabled && !clarificationNeeded && !webSearchUsed) {
-            // Classify-intent did not produce usable results (either skip or
-            // search-failure). If the user explicitly asked for search AND
-            // classify-intent crashed, fall back to the server-side online
-            // model as a last resort.
-            if (webSearchFallbackRequested) {
-                console.warn('[webSearch] falling back to server-side online model');
-            }
-        }
-    }
-
-    // Signal to chat-proxy what actually happened client-side:
-    //   web_search_enabled   — user turned the toggle on
-    //   web_search_used      — classify-intent ran Tavily successfully
-    //   web_search_fallback  — classify-intent failed; server may swap to
-    //                          OPENROUTER_ONLINE_MODEL as last-resort
+    // Web search and processing is now handled autonomously server-side via tools
     (requestPayload as any).web_search_enabled = !!webSearchEnabled;
-    (requestPayload as any).web_search_used = webSearchUsed;
-    (requestPayload as any).web_search_fallback_requested = webSearchFallbackRequested;
+    (requestPayload as any).web_search_used = false;
+    (requestPayload as any).web_search_fallback_requested = false;
 
     // Debug: confirm this code path executed before we hit the Edge function.
     // eslint-disable-next-line no-console
@@ -1758,9 +1358,14 @@ async function processStream(
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
+            let currentEvent: string | null = null;
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed || trimmed.startsWith(':')) continue;
+                if (trimmed.startsWith('event: ')) {
+                    currentEvent = trimmed.slice(7).trim();
+                    continue;
+                }
                 if (!trimmed.startsWith('data: ')) continue;
 
                 const data = trimmed.slice(6);
@@ -1780,6 +1385,24 @@ async function processStream(
                     });
                     return;
                 }
+
+                if (currentEvent === 'tool_activity') {
+                    try {
+                        const eventData = JSON.parse(data);
+                        callbacks.onToolActivity?.(eventData);
+                    } catch { /* ignore */ }
+                    currentEvent = null;
+                    continue;
+                }
+                if (currentEvent === 'usage_receipt') {
+                    try {
+                        const eventData = JSON.parse(data);
+                        callbacks.onUsageReceipt?.(eventData);
+                    } catch { /* ignore */ }
+                    currentEvent = null;
+                    continue;
+                }
+                currentEvent = null;
 
                 try {
                     if (OPENROUTER_RAW_DEBUG) {

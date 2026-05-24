@@ -45,6 +45,25 @@ Do NOT:
 - Address "the user" or "the assistant" by name — just describe.
 - Use markdown headers or preamble. Return plain descriptive text only.`;
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    const chunk = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunk) {
+        const sub = bytes.subarray(i, i + chunk);
+        binary += String.fromCharCode.apply(null, sub as any);
+    }
+    return btoa(binary);
+}
+
+async function computeSha256(text: string): Promise<string> {
+    const data = new TextEncoder().encode(text);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hash))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> {
     const base64 = token.split('.')[1];
     const json = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
@@ -175,22 +194,78 @@ Deno.serve(async (req: Request) => {
 
         // ─── Parse body ──────────────────────────────────────────────────────
         const body = await req.json();
-        const rawImages: IncomingImage[] = Array.isArray(body?.images) ? body.images : [];
-        const rawRecent: IncomingMessage[] = Array.isArray(body?.recent_messages) ? body.recent_messages : [];
-        const userText: string = typeof body?.user_text === 'string' ? body.user_text : '';
-
-        if (typeof body?.request_id === 'string') accounting.requestId = body.request_id;
-        if (typeof body?.parent_request_id === 'string') accounting.parentRequestId = body.parent_request_id;
-        if (typeof body?.conversation_id === 'string') accounting.conversationId = body.conversation_id;
-        if (typeof body?.message_id === 'string') accounting.messageId = body.message_id;
-
-        const images = rawImages
-            .filter((img) => img && typeof img.dataUrl === 'string' && img.dataUrl.startsWith('data:'))
-            .slice(0, MAX_IMAGES_PER_CALL);
-
-        if (images.length === 0) {
-            return await fail('client_error', 400, 'No valid images provided');
+        let imageIds = body?.image_ids;
+        let filePath = body?.file_path;
+        let question = body?.question;
+        
+        let isLegacy = false;
+        let images: IncomingImage[] = [];
+        
+        if (!filePath && Array.isArray(imageIds) && imageIds.length > 0) {
+            // Retrieve storage_path from file_attachments table
+            const { data: attachRecord, error: attachErr } = await supabaseAdmin
+                .from('file_attachments')
+                .select('storage_path')
+                .eq('id', imageIds[0])
+                .single();
+                
+            if (attachErr || !attachRecord?.storage_path) {
+                return await fail('client_error', 404, `Image attachment with ID ${imageIds[0]} not found in database: ${attachErr?.message ?? ''}`);
+            }
+            filePath = attachRecord.storage_path;
         }
+        
+        if (!filePath) {
+            const rawImages: IncomingImage[] = Array.isArray(body?.images) ? body.images : [];
+            images = rawImages
+                .filter((img) => img && typeof img.dataUrl === 'string' && img.dataUrl.startsWith('data:'))
+                .slice(0, MAX_IMAGES_PER_CALL);
+            if (images.length > 0) {
+                isLegacy = true;
+            } else {
+                return await fail('client_error', 400, 'image_ids or file_path or images array is required');
+            }
+        }
+
+        const qHash = await computeSha256(question || 'general_description');
+
+        if (!isLegacy) {
+            const { data: cached, error: cacheErr } = await supabaseAdmin
+                .from('file_attachments')
+                .select('ai_description')
+                .eq('storage_path', filePath)
+                .eq('question_hash', qHash)
+                .maybeSingle();
+
+            if (cached?.ai_description) {
+                accounting.finalized = true;
+                return new Response(
+                    JSON.stringify({
+                        description: cached.ai_description,
+                        cached: true,
+                        credits_used: 0
+                    }),
+                    { headers: { ...cors, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const { data: fileData, error: downloadErr } = await supabaseAdmin
+                .storage
+                .from('attachments')
+                .download(filePath);
+            
+            if (downloadErr || !fileData) {
+                return await fail('client_error', 404, `Failed to download file from storage: ${downloadErr?.message ?? 'Not found'}`);
+            }
+
+            const buffer = await fileData.arrayBuffer();
+            const base64Str = arrayBufferToBase64(buffer);
+            const contentType = fileData.type || 'image/png';
+            const dataUrl = `data:${contentType};base64,${base64Str}`;
+
+            images = [{ dataUrl, name: filePath.split('/').pop() }];
+        }
+
         accounting.imageTokens = images.length;
 
         // ─── Credit gate ─────────────────────────────────────────────────────
@@ -211,25 +286,20 @@ Deno.serve(async (req: Request) => {
         }
 
         // ─── Build prompt for vision model ───────────────────────────────────
-        const trimmedRecent = rawRecent
-            .filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
-            .slice(-MAX_RECENT_MESSAGES)
-            .map((m) => {
-                const text = extractText(m.content).slice(0, MAX_RECENT_CHARS_PER_MSG).trim();
-                return text ? `${m.role === 'user' ? 'User' : 'Assistant'}: ${text}` : '';
-            })
-            .filter(Boolean)
-            .join('\n');
+        const rawRecent: IncomingMessage[] = Array.isArray(body?.recent_messages) ? body.recent_messages : [];
+        const userText: string = typeof body?.user_text === 'string' ? body.user_text : '';
 
-        const labelLines = images.map((img, i) => `- Image ${i + 1}${img.name ? `: ${img.name}` : ''}`).join('\n');
-        const textPreamble =
-            (trimmedRecent
-                ? `Recent conversation (for context only):\n${trimmedRecent}\n\n`
-                : '') +
-            (userText
-                ? `User's current message accompanying the image(s):\n${userText}\n\n`
-                : '') +
-            `Images to describe:\n${labelLines}\n\nReturn ONLY the description.`;
+        const systemPrompt = question
+            ? `You are a vision-perception helper. You will receive an image and a specific question about it. Your job is to analyze the image and answer the question in concise, rich, factual detail. Write in first-person perception ("I see...", "The image shows..."). Do not mention that you are a helper or tool. Return ONLY the direct answer/description.`
+            : VISION_SYSTEM_PROMPT;
+
+        const textPreamble = question
+            ? `Specific question to answer: ${question}\n\nImage filename: ${filePath.split('/').pop()}\n\nReturn ONLY the answer.`
+            : (rawRecent.length > 0 || userText
+                ? (rawRecent.length > 0 ? `Recent conversation (for context only):\n${rawRecent.map(m => `${m.role}: ${extractText(m.content)}`).join('\n')}\n\n` : '') +
+                  (userText ? `User's current message accompanying the image(s):\n${userText}\n\n` : '') +
+                  `Images to describe:\n${images.map((img, i) => `- Image ${i + 1}${img.name ? `: ${img.name}` : ''}`).join('\n')}\n\nReturn ONLY the description.`
+                : `Describe this image in detail. Filename: ${images[0].name || 'image.png'}`);
 
         const userContent: Array<Record<string, unknown>> = [
             { type: 'text', text: textPreamble },
@@ -250,7 +320,7 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({
                 model: visionModel,
                 messages: [
-                    { role: 'system', content: VISION_SYSTEM_PROMPT },
+                    { role: 'system', content: systemPrompt },
                     { role: 'user', content: userContent },
                 ],
                 stream: false,
@@ -304,6 +374,19 @@ Deno.serve(async (req: Request) => {
             });
         } catch (dbErr) {
             console.error('[describe-image] credit deduction failed:', dbErr);
+        }
+
+        if (!isLegacy) {
+            await supabaseAdmin
+                .from('file_attachments')
+                .insert({
+                    storage_path: filePath,
+                    ai_description: description,
+                    question_hash: qHash,
+                    file_type: 'image',
+                    file_name: filePath.split('/').pop() || 'image.png',
+                    token_estimate: Math.ceil(description.length / 4)
+                });
         }
 
         accounting.finalized = true;
