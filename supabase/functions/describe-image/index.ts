@@ -293,8 +293,11 @@ Deno.serve(async (req: Request) => {
             ? `You are a vision-perception helper. You will receive an image and a specific question about it. Your job is to analyze the image and answer the question in concise, rich, factual detail. Write in first-person perception ("I see...", "The image shows..."). Do not mention that you are a helper or tool. Return ONLY the direct answer/description.`
             : VISION_SYSTEM_PROMPT;
 
+        // Bug 2b fix: when a specific question is provided (the normal tool-call path),
+        // do NOT include recent conversation history. The vision model only needs
+        // the question + image. History was unnecessarily inflating input tokens.
         const textPreamble = question
-            ? `Specific question to answer: ${question}\n\nImage filename: ${filePath.split('/').pop()}\n\nReturn ONLY the answer.`
+            ? `Answer this question about the image: ${question}\n\nImage filename: ${filePath ? filePath.split('/').pop() : (images[0]?.name || 'image')}\n\nReturn ONLY the direct answer/description.`
             : (rawRecent.length > 0 || userText
                 ? (rawRecent.length > 0 ? `Recent conversation (for context only):\n${rawRecent.map(m => `${m.role}: ${extractText(m.content)}`).join('\n')}\n\n` : '') +
                   (userText ? `User's current message accompanying the image(s):\n${userText}\n\n` : '') +
@@ -305,7 +308,9 @@ Deno.serve(async (req: Request) => {
             { type: 'text', text: textPreamble },
             ...images.map((img) => ({
                 type: 'image_url',
-                image_url: { url: img.dataUrl as string },
+                // Always force low detail: fixed 85 tokens per image vs up to
+                // 1,700+ tokens with high/auto detail. Sufficient for description.
+                image_url: { url: img.dataUrl as string, detail: 'low' },
             })),
         ];
 
@@ -377,16 +382,30 @@ Deno.serve(async (req: Request) => {
         }
 
         if (!isLegacy) {
-            await supabaseAdmin
-                .from('file_attachments')
-                .insert({
-                    storage_path: filePath,
-                    ai_description: description,
-                    question_hash: qHash,
-                    file_type: 'image',
-                    file_name: filePath.split('/').pop() || 'image.png',
-                    token_estimate: Math.ceil(description.length / 4)
-                });
+            // Bug 2c fix: update the EXISTING attachment row (by UUID when available,
+            // storage_path otherwise) instead of inserting a new duplicate row.
+            // INSERT was creating orphan rows that broke the cache lookup on next call.
+            if (Array.isArray(imageIds) && imageIds.length > 0 && imageIds[0]) {
+                await supabaseAdmin
+                    .from('file_attachments')
+                    .update({
+                        ai_description: description,
+                        question_hash: qHash,
+                        token_estimate: Math.ceil(description.length / 4)
+                    })
+                    .eq('id', imageIds[0]);
+            } else {
+                await supabaseAdmin
+                    .from('file_attachments')
+                    .upsert({
+                        storage_path: filePath,
+                        ai_description: description,
+                        question_hash: qHash,
+                        file_type: 'image',
+                        file_name: (filePath as string).split('/').pop() || 'image.png',
+                        token_estimate: Math.ceil(description.length / 4)
+                    }, { onConflict: 'storage_path,question_hash' });
+            }
         }
 
         accounting.finalized = true;

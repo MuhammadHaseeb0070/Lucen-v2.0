@@ -470,45 +470,43 @@ Deno.serve(async (req: Request) => {
 
         const shouldStream = stream !== false;
 
-        // ─── Dispatch to OpenRouter ─────────────────────────────────────
-        const openrouterResponse = await fetch(OPENROUTER_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openrouterApiKey}`,
-                'HTTP-Referer': supabaseUrl,
-                'X-Title': 'Lucen',
-            },
-            body: JSON.stringify({
-                model: effectiveModel,
-                messages,
-                stream: shouldStream,
-                max_tokens: resolvedMaxTokens,
-                max_completion_tokens: resolvedMaxTokens,
-                include_usage: true,
-                ...(response_format ? { response_format } : {}),
-                ...(provider ? { provider } : {}),
-                // Only forward plugins when we're in the explicit fallback
-                // path. In the normal path the main model reads the injected
-                // search results as plain system context.
-                ...(webSearchFallback && effectivePlugins ? { plugins: effectivePlugins } : {}),
-                ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
-            }),
-        });
-
-        if (!openrouterResponse.ok) {
-            const errBody = await openrouterResponse.text();
-            console.error(`[OpenRouter Error] ${openrouterResponse.status}:`, errBody);
-            return await fail(
-                'upstream_error',
-                openrouterResponse.status,
-                `OpenRouter API Error ${openrouterResponse.status}`,
-                errBody.slice(0, 500),
-            );
-        }
-
-        // ─── Non-stream mode ─────────────────────────────────────────────
+        // ─── Non-stream mode (generate-title, bg calls, etc.) ───────────
+        // Only fires for explicit stream:false requests. All normal chat
+        // requests use the streaming agentic loop below.
         if (!shouldStream) {
+            const openrouterResponse = await fetch(OPENROUTER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openrouterApiKey}`,
+                    'HTTP-Referer': supabaseUrl,
+                    'X-Title': 'Lucen',
+                },
+                body: JSON.stringify({
+                    model: effectiveModel,
+                    messages,
+                    stream: false,
+                    max_tokens: resolvedMaxTokens,
+                    max_completion_tokens: resolvedMaxTokens,
+                    include_usage: true,
+                    ...(response_format ? { response_format } : {}),
+                    ...(provider ? { provider } : {}),
+                    ...(webSearchFallback && effectivePlugins ? { plugins: effectivePlugins } : {}),
+                    ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
+                }),
+            });
+
+            if (!openrouterResponse.ok) {
+                const errBody = await openrouterResponse.text();
+                console.error(`[OpenRouter Error] ${openrouterResponse.status}:`, errBody);
+                return await fail(
+                    'upstream_error',
+                    openrouterResponse.status,
+                    `OpenRouter API Error ${openrouterResponse.status}`,
+                    errBody.slice(0, 500),
+                );
+            }
+
             const json = await openrouterResponse.json();
             const finishReason = json?.choices?.[0]?.finish_reason
                 ? String(json.choices[0].finish_reason)
@@ -856,7 +854,10 @@ Deno.serve(async (req: Request) => {
 
                                 currentMessages.push({
                                     role: 'assistant',
-                                    content: null,
+                                    // Bug 3 fix: use "" not null — many models (MiniMax, etc.)
+                                    // reject null content in the assistant tool_calls turn and
+                                    // return an empty response on the next round.
+                                    content: '',
                                     tool_calls: toolCalls.map(tc => ({
                                         id: tc.id,
                                         type: 'function',

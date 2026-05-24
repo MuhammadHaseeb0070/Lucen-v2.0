@@ -35,6 +35,7 @@ const ChatArea: React.FC = () => {
 
     const {
         createConversation,
+        addMessage,
         addMessageLocal,
         addMessageRemote,
         updateMessage,
@@ -48,6 +49,7 @@ const ChatArea: React.FC = () => {
     } = useChatStore(
         useShallow((s) => ({
             createConversation: s.createConversation,
+            addMessage: s.addMessage,
             addMessageLocal: s.addMessageLocal,
             addMessageRemote: s.addMessageRemote,
             updateMessage: s.updateMessage,
@@ -523,19 +525,20 @@ const ChatArea: React.FC = () => {
         const isFirst2 = addMessageLocal(convId, assistantMsg);
         if (isFirst2) isFirstMessage = true;
 
-        // Fire DB persistence in background (fire-and-forget). The user
-        // message is persisted first; the assistant row is delayed by a
-        // single tick so its server-side created_at is always later,
-        // preserving correct bubble order on page refresh.
+        // Bug 4 fix: AWAIT the user message persistence before starting the stream.
+        // This guarantees the user row hits the DB with an earlier created_at than
+        // the assistant row, so message order is correct after page refresh.
+        // addMessage() awaits db.saveMessage() internally — it blocks until committed.
         if (!opts?.hideUserMessage) {
-            addMessageRemote(convId, userMsg, isFirstMessage);
-            // Delay assistant row so user row commits with an earlier created_at.
+            await addMessage(convId, userMsg);
+            // Assistant placeholder: fire-and-forget, deferred by one tick so its
+            // server-side created_at is always later than the user row.
             setTimeout(() => addMessageRemote(convId, assistantMsg, false), 0);
         } else {
             addMessageRemote(convId, assistantMsg, isFirstMessage);
         }
 
-        // Start streaming immediately — no await on DB.
+        // Start streaming — user message is already in DB.
         await doStreamResponse(convId, assistantMsgId);
     };
 
