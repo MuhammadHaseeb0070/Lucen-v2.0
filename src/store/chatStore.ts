@@ -211,7 +211,7 @@ interface ChatStore {
     /** Synchronously adds a message to local state only (no DB). Returns true if this was the first message in the conversation. */
     addMessageLocal: (convId: string, message: Message) => boolean;
     /** Persists a message to DB in the background. Fire-and-forget with error logging. */
-    addMessageRemote: (convId: string, message: Message, isFirstMessage: boolean) => void;
+    addMessageRemote: (convId: string, message: Message, isFirstMessage: boolean) => Promise<void>;
     updateMessage: (convId: string, msgId: string, updates: Partial<Message>) => void;
     deleteMessagePair: (convId: string, userMsgId: string) => void;
     getActiveConversation: () => Conversation | undefined;
@@ -403,11 +403,10 @@ export const useChatStore = create<ChatStore>()(
 
             // addMessageRemote persists to Supabase in the background.
             // Fire-and-forget: errors are logged but never block the UI.
-            addMessageRemote: (convId, message, isFirstMessage) => {
+            addMessageRemote: async (convId, message, isFirstMessage) => {
                 if (!hasActiveSessionSync()) return;
-                (async () => {
-                    try {
-                        if (isFirstMessage) {
+                try {
+                    if (isFirstMessage) {
                             const conv = get().conversations.find((c) => c.id === convId);
                             const currentTitle = conv?.title || 'New Chat';
                             await db.createConversation(convId, currentTitle);
@@ -475,7 +474,6 @@ export const useChatStore = create<ChatStore>()(
                     } catch (err) {
                         console.error('[Sync] Error saving message to Supabase:', err);
                     }
-                })();
             },
 
             // Original addMessage kept for backward compatibility (calls both).

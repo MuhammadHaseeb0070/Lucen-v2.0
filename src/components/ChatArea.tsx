@@ -35,7 +35,6 @@ const ChatArea: React.FC = () => {
 
     const {
         createConversation,
-        addMessage,
         addMessageLocal,
         addMessageRemote,
         updateMessage,
@@ -49,7 +48,6 @@ const ChatArea: React.FC = () => {
     } = useChatStore(
         useShallow((s) => ({
             createConversation: s.createConversation,
-            addMessage: s.addMessage,
             addMessageLocal: s.addMessageLocal,
             addMessageRemote: s.addMessageRemote,
             updateMessage: s.updateMessage,
@@ -528,14 +526,14 @@ const ChatArea: React.FC = () => {
         // Bug 4 fix: AWAIT the user message persistence before starting the stream.
         // This guarantees the user row hits the DB with an earlier created_at than
         // the assistant row, so message order is correct after page refresh.
-        // addMessage() awaits db.saveMessage() internally — it blocks until committed.
+        // addMessageRemote() awaits db.saveMessage() internally — it blocks until committed.
         if (!opts?.hideUserMessage) {
-            await addMessage(convId, userMsg);
+            await addMessageRemote(convId, userMsg, isFirstMessage);
             // Assistant placeholder: fire-and-forget, deferred by one tick so its
             // server-side created_at is always later than the user row.
-            setTimeout(() => addMessageRemote(convId, assistantMsg, false), 0);
+            setTimeout(() => { void addMessageRemote(convId, assistantMsg, false); }, 0);
         } else {
-            addMessageRemote(convId, assistantMsg, isFirstMessage);
+            void addMessageRemote(convId, assistantMsg, isFirstMessage);
         }
 
         // Start streaming — user message is already in DB.
