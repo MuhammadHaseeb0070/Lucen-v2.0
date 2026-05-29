@@ -201,21 +201,11 @@ Deno.serve(async (req: Request) => {
         let isLegacy = false;
         let images: IncomingImage[] = [];
         
-        if (!filePath && Array.isArray(imageIds) && imageIds.length > 0) {
-            // Retrieve storage_path from file_attachments table for the first image to check cache
-            const { data: attachRecord, error: attachErr } = await supabaseAdmin
-                .from('file_attachments')
-                .select('storage_path')
-                .eq('id', imageIds[0])
-                .single();
-                
-            if (attachErr || !attachRecord?.storage_path) {
-                return await fail('client_error', 404, `First image attachment with ID ${imageIds[0]} not found in database: ${attachErr?.message ?? ''}`);
-            }
-            filePath = attachRecord.storage_path;
-        }
-        
-        if (!filePath) {
+        if (filePath) {
+            isLegacy = false;
+        } else if (Array.isArray(imageIds) && imageIds.length > 0) {
+            isLegacy = false;
+        } else {
             const rawImages: IncomingImage[] = Array.isArray(body?.images) ? body.images : [];
             images = rawImages
                 .filter((img) => img && typeof img.dataUrl === 'string' && img.dataUrl.startsWith('data:'))
@@ -230,23 +220,25 @@ Deno.serve(async (req: Request) => {
         const qHash = await computeSha256(question || 'general_description');
 
         if (!isLegacy) {
-            const { data: cached, error: cacheErr } = await supabaseAdmin
-                .from('file_attachments')
-                .select('ai_description')
-                .eq('storage_path', filePath)
-                .eq('question_hash', qHash)
-                .maybeSingle();
+            if (filePath) {
+                const { data: cached, error: cacheErr } = await supabaseAdmin
+                    .from('file_attachments')
+                    .select('ai_description')
+                    .eq('storage_path', filePath)
+                    .eq('question_hash', qHash)
+                    .maybeSingle();
 
-            if (cached?.ai_description) {
-                accounting.finalized = true;
-                return new Response(
-                    JSON.stringify({
-                        description: cached.ai_description,
-                        cached: true,
-                        credits_used: 0
-                    }),
-                    { headers: { ...cors, 'Content-Type': 'application/json' } }
-                );
+                if (cached?.ai_description) {
+                    accounting.finalized = true;
+                    return new Response(
+                        JSON.stringify({
+                            description: cached.ai_description,
+                            cached: true,
+                            credits_used: 0
+                        }),
+                        { headers: { ...cors, 'Content-Type': 'application/json' } }
+                    );
+                }
             }
 
             // If not cached, download all images

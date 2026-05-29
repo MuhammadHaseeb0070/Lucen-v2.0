@@ -78,6 +78,32 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         }
     }, [hasRunningTools]);
 
+    const prevIdRef = useRef(message.id);
+    const prevIsStreamingRef = useRef(message.isStreaming);
+    const prevHasReasoningRef = useRef(!!message.reasoning);
+
+    useEffect(() => {
+        // Reset if message ID changes (component reuse)
+        if (message.id !== prevIdRef.current) {
+            setReasoningOpen(false);
+        }
+        
+        // Transition from streaming to not streaming (streaming completes)
+        if (prevIsStreamingRef.current && !message.isStreaming) {
+            setReasoningOpen(false);
+        }
+
+        // When reasoning first starts arriving (goes from empty/falsy to having content)
+        const hasReasoningNow = !!message.reasoning;
+        if (!prevHasReasoningRef.current && hasReasoningNow) {
+            setReasoningOpen(false);
+        }
+
+        prevIdRef.current = message.id;
+        prevIsStreamingRef.current = message.isStreaming;
+        prevHasReasoningRef.current = hasReasoningNow;
+    }, [message.id, message.isStreaming, message.reasoning]);
+
     const handleToggleReceipt = async () => {
         if (receiptOpen) {
             setReceiptOpen(false);
