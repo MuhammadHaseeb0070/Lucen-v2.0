@@ -191,7 +191,7 @@ const PricingModal: React.FC = () => {
         const plan = PLAN_LIST.find((p) => p.id === tier);
 
         if (!plan?.variantId) {
-            setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
+            setError(`Missing configuration: LS_VARIANT_${tier.toUpperCase()} must be set in your Supabase secrets.`);
             return;
         }
 

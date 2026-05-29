@@ -172,7 +172,7 @@ serve(async (req: Request) => {
     const variantIdRaw = asStringId(body.variantId);
     if (!variantIdRaw) {
       return jsonResponse(
-        { error: "Missing variantId. Set VITE_LS_VARIANT_REGULAR / VITE_LS_VARIANT_PRO in Vercel." },
+        { error: "Missing variantId. Ensure LS_VARIANT_REGULAR and LS_VARIANT_PRO are set in Supabase Secrets." },
         { status: 400, headers: cors },
       );
     }
