@@ -62,21 +62,46 @@ Deno.serve(async (req: Request) => {
         }
 
         // Safe model configuration payload
-        const modelDisplayName = Deno.env.get('MAIN_CHAT_MODEL_NAME') ?? 'Lucen M2.7';
-        const supportsReasoning = Deno.env.get('MAIN_CHAT_SUPPORTS_REASONING') === 'true';
-        const contextWindowTokens = Number(Deno.env.get('MAIN_CHAT_CONTEXT_WINDOW') ?? '131072');
-        const maxOutputTokens = Number(Deno.env.get('MAIN_CHAT_MAX_OUTPUT') ?? '32768');
-        const tokensPerSecond = Number(Deno.env.get('VITE_MAIN_CHAT_TOKENS_PER_SECOND') ?? '40');
-        const platformMaxStreamSeconds = Number(Deno.env.get('VITE_PLATFORM_MAX_STREAM_SECONDS') ?? '140');
+        const mainDisplayName = Deno.env.get('MAIN_CHAT_MODEL_NAME') ?? 'Lucen M2.7';
+        const mainSupportsReasoning = Deno.env.get('MAIN_CHAT_SUPPORTS_REASONING') === 'true';
+        const mainContextWindow = Number(Deno.env.get('MAIN_CHAT_CONTEXT_WINDOW') ?? '131072');
+        const mainMaxOutput = Number(Deno.env.get('MAIN_CHAT_MAX_OUTPUT') ?? '32768');
+        const mainTokensPerSecond = Number(Deno.env.get('MAIN_CHAT_TOKENS_PER_SECOND') ?? Deno.env.get('VITE_MAIN_CHAT_TOKENS_PER_SECOND') ?? '40');
+        const platformMaxStreamSeconds = Number(Deno.env.get('PLATFORM_MAX_STREAM_SECONDS') ?? Deno.env.get('VITE_PLATFORM_MAX_STREAM_SECONDS') ?? '140');
+
+        const sideDisplayName = Deno.env.get('SIDE_CHAT_MODEL_NAME') ?? 'Lucen Helper';
+        const sideSupportsReasoning = Deno.env.get('SIDE_CHAT_SUPPORTS_REASONING') === 'true';
+        const sideContextWindow = Number(Deno.env.get('SIDE_CHAT_CONTEXT_WINDOW') ?? '128000');
+        const sideMaxOutput = Number(Deno.env.get('SIDE_CHAT_MAX_OUTPUT') ?? '16384');
+        const sideTokensPerSecond = Number(Deno.env.get('SIDE_CHAT_TOKENS_PER_SECOND') ?? '60');
+
+        const lsVariantRegular = Deno.env.get('LS_VARIANT_REGULAR') ?? '';
+        const lsVariantPro = Deno.env.get('LS_VARIANT_PRO') ?? '';
+
+        const adminEmailsRaw = Deno.env.get('ADMIN_EMAILS') ?? '';
+        const adminEmails = adminEmailsRaw.split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
 
         return new Response(
             JSON.stringify({
-                modelDisplayName,
-                supportsReasoning,
-                contextWindowTokens,
-                maxOutputTokens,
-                tokensPerSecond,
-                platformMaxStreamSeconds,
+                mainConfig: {
+                    modelDisplayName: mainDisplayName,
+                    supportsReasoning: mainSupportsReasoning,
+                    contextWindowTokens: mainContextWindow,
+                    maxOutputTokens: mainMaxOutput,
+                    tokensPerSecond: mainTokensPerSecond,
+                    platformMaxStreamSeconds: platformMaxStreamSeconds,
+                },
+                sideConfig: {
+                    modelDisplayName: sideDisplayName,
+                    supportsReasoning: sideSupportsReasoning,
+                    contextWindowTokens: sideContextWindow,
+                    maxOutputTokens: sideMaxOutput,
+                    tokensPerSecond: sideTokensPerSecond,
+                    platformMaxStreamSeconds: platformMaxStreamSeconds,
+                },
+                lsVariantRegular,
+                lsVariantPro,
+                adminEmails,
             }),
             {
                 headers: { ...cors, 'Content-Type': 'application/json' },
