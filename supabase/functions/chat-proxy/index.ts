@@ -675,46 +675,47 @@ Deno.serve(async (req: Request) => {
                         let isToolCall = false;
                         const firstChunks: Uint8Array[] = [];
                         let accumulatedText = '';
+                        let chunkCount = 0;
 
-                        while (true) {
+                        outerLoop: while (true) {
+                            if (chunkCount >= 200) {
+                                isToolCall = false;
+                                break;
+                            }
+
                             const { done, value } = await reader.read();
                             if (done) break;
                             if (value) {
+                                chunkCount++;
                                 firstChunks.push(value);
                                 const text = decoder.decode(value, { stream: true });
                                 accumulatedText += text;
 
-                                if (text.includes('"tool_calls"')) {
-                                    isToolCall = true;
-                                    break;
-                                }
-
-                                if (text.includes('"content"')) {
-                                    let hasActualContent = false;
-                                    const lines = text.split('\n');
-                                    for (const line of lines) {
-                                        const trimmed = line.trim();
-                                        if (!trimmed.startsWith('data: ')) continue;
-                                        const dataStr = trimmed.slice(6);
-                                        if (dataStr === '[DONE]') continue;
-                                        try {
-                                            const parsed = JSON.parse(dataStr);
-                                            const content = parsed.choices?.[0]?.delta?.content;
-                                            if (typeof content === 'string' && content.length > 0) {
-                                                hasActualContent = true;
-                                                break;
+                                const lines = text.split('\n');
+                                for (const line of lines) {
+                                    const trimmed = line.trim();
+                                    if (!trimmed.startsWith('data: ')) continue;
+                                    const dataStr = trimmed.slice(6);
+                                    if (dataStr === '[DONE]') continue;
+                                    try {
+                                        const parsed = JSON.parse(dataStr);
+                                        const choice = parsed.choices?.[0];
+                                        if (choice) {
+                                            if (choice.delta?.tool_calls && Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length > 0) {
+                                                isToolCall = true;
+                                                break outerLoop;
                                             }
-                                        } catch { /* skip */ }
-                                    }
-                                    if (hasActualContent) {
-                                        isToolCall = false;
-                                        break;
-                                    }
-                                }
-
-                                if (text.includes('"finish_reason"')) {
-                                    isToolCall = false;
-                                    break;
+                                            if (typeof choice.delta?.content === 'string' && choice.delta.content.length > 0) {
+                                                isToolCall = false;
+                                                break outerLoop;
+                                            }
+                                            const fr = choice.finish_reason;
+                                            if (fr !== null && fr !== undefined) {
+                                                isToolCall = (fr === 'tool_calls');
+                                                break outerLoop;
+                                            }
+                                        }
+                                    } catch { /* skip */ }
                                 }
                             }
                         }
@@ -887,7 +888,7 @@ Deno.serve(async (req: Request) => {
                                         tool_call_id: tc.id,
                                         role: 'tool',
                                         name: tc.name,
-                                        content: output
+                                        content: finalOutput
                                     };
                                 };
 
