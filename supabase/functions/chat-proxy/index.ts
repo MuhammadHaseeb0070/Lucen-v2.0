@@ -675,28 +675,56 @@ Deno.serve(async (req: Request) => {
                         let isToolCall = false;
                         const firstChunks: Uint8Array[] = [];
                         let accumulatedText = '';
-                        let checkRounds = 0;
 
-                        while (checkRounds < 10) {
+                        while (true) {
                             const { done, value } = await reader.read();
                             if (done) break;
                             if (value) {
                                 firstChunks.push(value);
                                 const text = decoder.decode(value, { stream: true });
                                 accumulatedText += text;
+
                                 if (text.includes('"tool_calls"')) {
                                     isToolCall = true;
                                     break;
                                 }
-                                if (text.includes('"content"') || text.includes('"reasoning"')) {
+
+                                if (text.includes('"content"')) {
+                                    let hasActualContent = false;
+                                    const lines = text.split('\n');
+                                    for (const line of lines) {
+                                        const trimmed = line.trim();
+                                        if (!trimmed.startsWith('data: ')) continue;
+                                        const dataStr = trimmed.slice(6);
+                                        if (dataStr === '[DONE]') continue;
+                                        try {
+                                            const parsed = JSON.parse(dataStr);
+                                            const content = parsed.choices?.[0]?.delta?.content;
+                                            if (typeof content === 'string' && content.length > 0) {
+                                                hasActualContent = true;
+                                                break;
+                                            }
+                                        } catch { /* skip */ }
+                                    }
+                                    if (hasActualContent) {
+                                        isToolCall = false;
+                                        break;
+                                    }
+                                }
+
+                                if (text.includes('"finish_reason"')) {
                                     isToolCall = false;
                                     break;
                                 }
                             }
-                            checkRounds++;
                         }
 
                         if (isToolCall) {
+                            // Fix 2: Flush all buffered reasoning chunks to the client via SSE
+                            for (const chunk of firstChunks) {
+                                controller.enqueue(chunk);
+                            }
+
                             const toolCallsMap = new Map<number, {
                                 id?: string;
                                 name?: string;
@@ -786,17 +814,29 @@ Deno.serve(async (req: Request) => {
                                     let parsedArgs: any = {};
                                     try { parsedArgs = JSON.parse(tc.arguments); } catch { /* ignore */ }
 
+                                    let timerId: any;
                                     try {
                                         let siblingName = tc.name;
                                         if (tc.name === 'analyze_image') siblingName = 'describe-image';
                                         if (tc.name === 'process_file') siblingName = 'get-file-content';
                                         if (tc.name === 'web_search') siblingName = 'web-search';
 
-                                        const res = await callSiblingFunction(siblingName, parsedArgs);
+                                        const executionPromise = callSiblingFunction(siblingName, parsedArgs);
+                                        const timeoutPromise = new Promise<never>((_, reject) => {
+                                            timerId = setTimeout(() => reject(new Error('timeout')), 12000);
+                                        });
+
+                                        const res = await Promise.race([executionPromise, timeoutPromise]);
                                         output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
                                     } catch (err: any) {
                                         success = false;
-                                        output = `Error executing tool ${tc.name}: ${err.message}`;
+                                        if (err.message === 'timeout') {
+                                            output = 'Tool execution timed out. Please try again.';
+                                        } else {
+                                            output = `Error executing tool ${tc.name}: ${err.message}`;
+                                        }
+                                    } finally {
+                                        if (timerId) clearTimeout(timerId);
                                     }
 
                                     const durationMs = Date.now() - start;
@@ -835,6 +875,13 @@ Deno.serve(async (req: Request) => {
                                         output: output.slice(0, 400)
                                     };
                                     controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+
+                                    // Fix 4: Truncate oversized tool results before returning
+                                    let finalOutput = output;
+                                    if (output.length > 3000) {
+                                        console.warn(`[chat-proxy] Tool result for ${tc.name} truncated from ${output.length} characters.`);
+                                        finalOutput = output.slice(0, 3000) + '\n\n[Result truncated for length]';
+                                    }
 
                                     return {
                                         tool_call_id: tc.id,
