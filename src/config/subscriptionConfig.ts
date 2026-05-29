@@ -64,7 +64,7 @@ export const PLANS: Record<Uppercase<PlanId>, PlanDefinition> = {
   REGULAR: {
     id: 'regular',
     name: 'Regular',
-    variantId: import.meta.env.VITE_LS_VARIANT_REGULAR,
+    variantId: undefined,
     priceUsd: 10,
     creditsProvided: 4_000,
     tagline: 'For daily power users who need consistent capacity.',
@@ -81,7 +81,7 @@ export const PLANS: Record<Uppercase<PlanId>, PlanDefinition> = {
   PRO: {
     id: 'pro',
     name: 'Pro',
-    variantId: import.meta.env.VITE_LS_VARIANT_PRO,
+    variantId: undefined,
     priceUsd: 20,
     creditsProvided: 10_000,
     tagline: 'Maximum capacity for professionals and heavy workflows.',
@@ -234,4 +234,10 @@ export function formatLC(credits: number): string {
 /** Get plan definition by id */
 export function getPlanById(id: PlanId): PlanDefinition {
   return PLAN_LIST.find((p) => p.id === id) ?? PLANS.FREE;
+}
+
+/** Update variant IDs dynamically from the backend config */
+export function updateVariantIds(regularId?: string, proId?: string) {
+  if (regularId) (PLANS.REGULAR as any).variantId = regularId;
+  if (proId) (PLANS.PRO as any).variantId = proId;
 }

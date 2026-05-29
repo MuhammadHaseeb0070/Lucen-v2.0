@@ -191,7 +191,7 @@ const PricingModal: React.FC = () => {
         const plan = PLAN_LIST.find((p) => p.id === tier);
 
         if (!plan?.variantId) {
-            setError(`Missing environment variable: VITE_LS_VARIANT_${tier.toUpperCase()}`);
+            setError('This plan is temporarily unavailable. Please try again later or contact support.');
             return;
         }
 

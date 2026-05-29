@@ -538,7 +538,7 @@ const PayloadModal: React.FC<{
                         <p>
                             Payloads are kept only in memory for the current browser session
                             (last 200 calls). Reloading the page clears them. Make sure
-                            <code>VITE_DEV_PAYLOAD_CAPTURE=true</code> is set, then reproduce
+                            you are running in development mode, then reproduce
                             the call to inspect it here.
                         </p>
                     </div>

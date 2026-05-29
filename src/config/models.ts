@@ -1,5 +1,7 @@
 import type { ModelInfo } from '../types';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
+import { updateVariantIds } from './subscriptionConfig';
+import { setAdminEmails } from './admin';
 
 export interface ModelConfig {
     modelDisplayName: string;
@@ -12,8 +14,8 @@ export interface ModelConfig {
 
 // Default display-safe fallbacks. Will be updated dynamically via initializeModelConfig.
 let mainConfig: ModelConfig = {
-    modelDisplayName: import.meta.env.VITE_MAIN_CHAT_MODEL_NAME || 'Lucen M2.7',
-    supportsReasoning: import.meta.env.VITE_MAIN_CHAT_SUPPORTS_REASONING === 'true',
+    modelDisplayName: 'Lucen M2.7',
+    supportsReasoning: true,
     contextWindowTokens: 131072,
     maxOutputTokens: 32768,
     tokensPerSecond: 40,
@@ -21,7 +23,7 @@ let mainConfig: ModelConfig = {
 };
 
 let sideConfig: ModelConfig = {
-    modelDisplayName: import.meta.env.VITE_SIDE_CHAT_MODEL_NAME || 'Lucen Helper',
+    modelDisplayName: 'Lucen Helper',
     supportsReasoning: false,
     contextWindowTokens: 131072,
     maxOutputTokens: 32768,
@@ -48,16 +50,46 @@ export async function initializeModelConfig() {
             console.warn('[ModelConfig] failed to fetch from backend:', error);
             return;
         }
-        if (data) {
-            mainConfig = {
-                modelDisplayName: data.modelDisplayName ?? mainConfig.modelDisplayName,
-                supportsReasoning: !!data.supportsReasoning,
-                contextWindowTokens: Number(data.contextWindowTokens) || mainConfig.contextWindowTokens,
-                maxOutputTokens: Number(data.maxOutputTokens) || mainConfig.maxOutputTokens,
-                tokensPerSecond: Number(data.tokensPerSecond) || mainConfig.tokensPerSecond,
-                platformMaxStreamSeconds: Number(data.platformMaxStreamSeconds) || mainConfig.platformMaxStreamSeconds,
-            };
-            console.debug('[ModelConfig] Loaded securely from backend:', mainConfig);
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            if (data.mainConfig && typeof data.mainConfig === 'object') {
+                mainConfig = {
+                    modelDisplayName: data.mainConfig.modelDisplayName ?? mainConfig.modelDisplayName,
+                    supportsReasoning: !!data.mainConfig.supportsReasoning,
+                    contextWindowTokens: Number(data.mainConfig.contextWindowTokens) || mainConfig.contextWindowTokens,
+                    maxOutputTokens: Number(data.mainConfig.maxOutputTokens) || mainConfig.maxOutputTokens,
+                    tokensPerSecond: Number(data.mainConfig.tokensPerSecond) || mainConfig.tokensPerSecond,
+                    platformMaxStreamSeconds: Number(data.mainConfig.platformMaxStreamSeconds) || mainConfig.platformMaxStreamSeconds,
+                };
+            }
+            if (data.sideConfig && typeof data.sideConfig === 'object') {
+                sideConfig = {
+                    modelDisplayName: data.sideConfig.modelDisplayName ?? sideConfig.modelDisplayName,
+                    supportsReasoning: !!data.sideConfig.supportsReasoning,
+                    contextWindowTokens: Number(data.sideConfig.contextWindowTokens) || sideConfig.contextWindowTokens,
+                    maxOutputTokens: Number(data.sideConfig.maxOutputTokens) || sideConfig.maxOutputTokens,
+                    tokensPerSecond: Number(data.sideConfig.tokensPerSecond) || sideConfig.tokensPerSecond,
+                    platformMaxStreamSeconds: Number(data.sideConfig.platformMaxStreamSeconds) || sideConfig.platformMaxStreamSeconds,
+                };
+            }
+            
+            if (data.lsVariantRegular) {
+                updateVariantIds(data.lsVariantRegular, undefined);
+            } else {
+                console.warn('[ModelConfig] lsVariantRegular is missing or empty in backend response');
+            }
+
+            if (data.lsVariantPro) {
+                updateVariantIds(undefined, data.lsVariantPro);
+            } else {
+                console.warn('[ModelConfig] lsVariantPro is missing or empty in backend response');
+            }
+
+            if (Array.isArray(data.adminEmails)) {
+                setAdminEmails(data.adminEmails);
+            }
+            console.debug('[ModelConfig] Loaded securely from backend:', { mainConfig, sideConfig });
+        } else {
+            console.warn('[ModelConfig] received null or malformed data payload from backend:', data);
         }
     } catch (err) {
         console.warn('[ModelConfig] Fetch exception:', err);
