@@ -834,7 +834,7 @@ Deno.serve(async (req: Request) => {
                                         if (err.message === 'timeout') {
                                             output = 'Tool execution timed out. Please try again.';
                                         } else {
-                                            output = `Error executing tool ${tc.name}: ${err.message}`;
+                                            output = 'The requested information could not be retrieved. Please continue without it.';
                                         }
                                     } finally {
                                         if (timerId) clearTimeout(timerId);

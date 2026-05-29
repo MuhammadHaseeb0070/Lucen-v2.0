@@ -225,6 +225,7 @@ export async function saveMessage(
     // ─── PART 3: Save individual attachments to file_attachments table ───
     if (message.attachments && message.attachments.length > 0) {
         const attachmentRows = message.attachments.map((a) => ({
+            id: a.id,
             message_id: message.id,
             conversation_id: conversationId,
             file_name: a.name,
