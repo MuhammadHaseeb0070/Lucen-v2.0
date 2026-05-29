@@ -591,6 +591,7 @@ Deno.serve(async (req: Request) => {
             async start(controller) {
                 const encoder = new TextEncoder();
                 const decoder = new TextDecoder();
+                let keepaliveTimer: any = null;
                 
                 let currentMessages = [...messages];
                 let rounds = 0;
@@ -726,6 +727,13 @@ Deno.serve(async (req: Request) => {
                                 controller.enqueue(chunk);
                             }
 
+                            // Start keepalive interval to prevent watchdog timeout during tool execution
+                            keepaliveTimer = setInterval(() => {
+                                try {
+                                    controller.enqueue(encoder.encode(": keepalive\n\n"));
+                                } catch { /* ignore */ }
+                            }, 5000);
+
                             const toolCallsMap = new Map<number, {
                                 id?: string;
                                 name?: string;
@@ -769,6 +777,7 @@ Deno.serve(async (req: Request) => {
                                 const { done, value } = await reader.read();
                                 if (done) break;
                                 if (value) {
+                                    controller.enqueue(value);
                                     const text = decoder.decode(value, { stream: true });
                                     parseText(text);
                                 }
@@ -916,6 +925,10 @@ Deno.serve(async (req: Request) => {
                                     }))
                                 });
                                 currentMessages.push(...toolResults);
+                            }
+                            if (keepaliveTimer) {
+                                clearInterval(keepaliveTimer);
+                                keepaliveTimer = null;
                             }
                             rounds++;
                             continue;
@@ -1096,6 +1109,9 @@ Deno.serve(async (req: Request) => {
                         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: e.message })}\n\n`));
                     } catch { /* skip */ }
                 } finally {
+                    if (keepaliveTimer) {
+                        clearInterval(keepaliveTimer);
+                    }
                     try {
                         controller.close();
                     } catch { /* ignore */ }

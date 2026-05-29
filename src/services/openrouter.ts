@@ -859,20 +859,30 @@ async function streamViaEdgeFunctionWrapper(
     let passChars = 0;
     let passText = '';
     let fullResponse = accumulated;
+    let contentChunkCount = 0;
+    let reasoningChunkCount = 0;
     const maxChunks = getMaxChunksForMode(mode);
 
     const innerCallbacks: StreamCallbacks = {
         ...callbacks,
         onChunk: (chunk, isContinuation) => {
+            contentChunkCount++;
             passChars += chunk.length;
             passText += chunk;
             fullResponse += chunk;
             callbacks.onChunk(chunk, isContinuation || continuationCount > 0);
         },
+        onReasoning: (reasoning) => {
+            reasoningChunkCount++;
+            callbacks.onReasoning(reasoning);
+        },
         onDone: async (truncated) => {
             const userAborted = signal?.aborted === true;
             const hitChunkCeiling = continuationCount >= maxChunks;
-            const stalled = passChars < STALL_MIN_CONTINUATION_CHARS;
+            const isReasoningOnlyPass = reasoningChunkCount > 0 && contentChunkCount === 0;
+            const stalled = isReasoningOnlyPass
+                ? (continuationCount >= 1)
+                : (contentChunkCount === 0 && reasoningChunkCount === 0 ? true : passChars < STALL_MIN_CONTINUATION_CHARS);
             const hitOutputCeiling = fullResponse.length >= ABSOLUTE_OUTPUT_CEILING * 8; // ~8 chars/token
             const hitTurnBudget = fullResponse.length >= PER_TURN_OUTPUT_CHAR_BUDGET;
             const repeating =
@@ -917,6 +927,12 @@ async function streamViaEdgeFunctionWrapper(
                 `[Continuation] truncated → auto-continue (${continuationCount + 1}/${maxChunks})`,
             );
             const continuationMessages = buildContinuationMessages(apiMessages, fullResponse);
+            if (isReasoningOnlyPass) {
+                continuationMessages.push({
+                    role: 'system',
+                    content: 'Please continue your response',
+                });
+            }
 
             await streamViaEdgeFunctionWrapper(
                 continuationMessages,
@@ -1416,17 +1432,6 @@ async function processStream(
                     continue;
                 }
                 if (currentEvent === 'content_start') {
-                    // Bug 1 fix: backend signals that the next stream is the
-                    // final content response after tool calls. MiniMax Nitro
-                    // (and some other reasoning models) send the actual answer
-                    // in delta.reasoning even when it's not internal thinking.
-                    // Setting this flag reroutes those chunks to onChunk.
-                    try {
-                        const eventData = JSON.parse(data);
-                        if (eventData?.after_tool_calls) {
-                            treatReasoningAsContent = true;
-                        }
-                    } catch { /* ignore */ }
                     currentEvent = null;
                     continue;
                 }
