@@ -939,7 +939,7 @@ Deno.serve(async (req: Request) => {
                             // MiniMax Nitro (and similar models) put their post-tool-call answer in
                             // delta.reasoning even though it's the response, not a thought.
                             if (rounds > 0) {
-                                controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: true })}\n\n`));
+                                controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: true, model: effectiveModel })}\n\n`));
                             }
 
                             for (const chunk of firstChunks) {

@@ -1432,6 +1432,12 @@ async function processStream(
                     continue;
                 }
                 if (currentEvent === 'content_start') {
+                    try {
+                        const eventData = JSON.parse(data);
+                        if (eventData?.after_tool_calls && eventData?.model?.includes('minimax')) {
+                            treatReasoningAsContent = true;
+                        }
+                    } catch { /* ignore */ }
                     currentEvent = null;
                     continue;
                 }
