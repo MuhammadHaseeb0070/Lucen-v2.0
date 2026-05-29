@@ -337,14 +337,34 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
 async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachment> {
     if (!isSupabaseEnabled() || !supabase) return attachment;
 
+    const needsUpload = (attachment.type === 'image' && attachment.dataUrl) ||
+                        (attachment.rawBase64 && !attachment.storagePath);
+
+    if (!needsUpload) return attachment;
+
+    let userId: string | null = null;
+    try {
+        const fresh = await ensureFreshSession();
+        if (fresh) {
+            const { data: { session } } = await supabase.auth.getSession();
+            userId = session?.user?.id || null;
+        }
+    } catch (sessionErr) {
+        console.error('[FileProcessor] Error fetching fresh session:', sessionErr);
+    }
+
+    if (!userId) {
+        console.error('[FileProcessor] Cannot upload attachment: No authenticated user session found');
+        return attachment;
+    }
+
     // For images: only upload the raw bytes to Supabase Storage so the file
     // persists for history / future reference. Description is generated later
     // at send time (see openrouter.ensureImageContext).
     if (attachment.type === 'image' && attachment.dataUrl) {
         try {
-            await ensureFreshSession();
             const bytes = dataUrlToUint8Array(attachment.dataUrl);
-            const path = `${Date.now()}-${attachment.name}`;
+            const path = `${userId}/${Date.now()}-${attachment.name}`;
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('attachments')
                 .upload(path, bytes, { contentType: attachment.mimeType, cacheControl: '3600', upsert: false });
@@ -362,11 +382,10 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
     // For documents with rawBase64 (e.g. .xlsx, .xls, .docx)
     if (attachment.rawBase64 && !attachment.storagePath) {
         try {
-            await ensureFreshSession();
             const binary = atob(attachment.rawBase64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const path = `${Date.now()}-${attachment.name}`;
+            const path = `${userId}/${Date.now()}-${attachment.name}`;
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('attachments')
                 .upload(path, bytes, { contentType: attachment.mimeType, cacheControl: '3600', upsert: false });
