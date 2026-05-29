@@ -462,13 +462,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                                         </div>
                                         <div className="tool-step-content">
                                             <span className="tool-step-label">{step.label}</span>
-                                            {step.durationMs !== undefined && (
+                                            {step.status === 'completed' && step.durationMs !== undefined && (
                                                 <span className="tool-step-duration">({(step.durationMs / 1000).toFixed(1)}s)</span>
-                                            )}
-                                            {step.args && Object.keys(step.args).length > 0 && (
-                                                <div className="tool-step-args" title={JSON.stringify(step.args, null, 2)}>
-                                                    {Object.entries(step.args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')}
-                                                </div>
                                             )}
                                         </div>
                                     </div>

@@ -207,6 +207,8 @@ const MessageInput: React.FC<MessageInputProps> = ({
         setAttachments((prev) => prev.filter((a) => a.id !== id));
     };
 
+    const hasUploadFailed = attachments.some((a) => a.uploadFailed === true);
+
     const hasContent = input.trim().length > 0 || attachments.length > 0 || quoteText !== null;
 
     return (
@@ -231,7 +233,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
                 {attachments.length > 0 && (
                     <div className="attachment-strip">
                         {attachments.map((att) => (
-                            <div key={att.id} className={`attachment-chip attachment-chip--${att.type}`}>
+                            <div key={att.id} className={`attachment-chip attachment-chip--${att.type}`} style={att.uploadFailed ? { border: '1.5px solid var(--danger, #ef4444)' } : undefined}>
                                 {att.type === 'image' && att.dataUrl ? (
                                     <img src={att.dataUrl} alt={att.name} className="attachment-chip-thumb" />
                                 ) : (
@@ -348,8 +350,8 @@ const MessageInput: React.FC<MessageInputProps> = ({
                             <button
                                 className="send-btn"
                                 onClick={handleSend}
-                                disabled={!hasContent || disabled}
-                                title="Send message"
+                                disabled={!hasContent || disabled || hasUploadFailed}
+                                title={hasUploadFailed ? "One or more files failed to upload. Please remove them and try again." : "Send message"}
                             >
                                 <Send size={16} />
                             </button>

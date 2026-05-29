@@ -202,7 +202,7 @@ Deno.serve(async (req: Request) => {
         let images: IncomingImage[] = [];
         
         if (!filePath && Array.isArray(imageIds) && imageIds.length > 0) {
-            // Retrieve storage_path from file_attachments table
+            // Retrieve storage_path from file_attachments table for the first image to check cache
             const { data: attachRecord, error: attachErr } = await supabaseAdmin
                 .from('file_attachments')
                 .select('storage_path')
@@ -210,7 +210,7 @@ Deno.serve(async (req: Request) => {
                 .single();
                 
             if (attachErr || !attachRecord?.storage_path) {
-                return await fail('client_error', 404, `Image attachment with ID ${imageIds[0]} not found in database: ${attachErr?.message ?? ''}`);
+                return await fail('client_error', 404, `First image attachment with ID ${imageIds[0]} not found in database: ${attachErr?.message ?? ''}`);
             }
             filePath = attachRecord.storage_path;
         }
@@ -249,21 +249,68 @@ Deno.serve(async (req: Request) => {
                 );
             }
 
-            const { data: fileData, error: downloadErr } = await supabaseAdmin
-                .storage
-                .from('attachments')
-                .download(filePath);
-            
-            if (downloadErr || !fileData) {
-                return await fail('client_error', 404, `Failed to download file from storage: ${downloadErr?.message ?? 'Not found'}`);
+            // If not cached, download all images
+            if (Array.isArray(imageIds) && imageIds.length > 0) {
+                const successes: IncomingImage[] = [];
+                let lastErrorMsg = '';
+
+                for (const imgId of imageIds) {
+                    try {
+                        const { data: attachRecord, error: attachErr } = await supabaseAdmin
+                            .from('file_attachments')
+                            .select('storage_path')
+                            .eq('id', imgId)
+                            .single();
+                            
+                        if (attachErr || !attachRecord?.storage_path) {
+                            throw new Error(`Image attachment with ID ${imgId} not found in database: ${attachErr?.message ?? ''}`);
+                        }
+
+                        const curPath = attachRecord.storage_path;
+                        const { data: fileData, error: downloadErr } = await supabaseAdmin
+                            .storage
+                            .from('attachments')
+                            .download(curPath);
+                        
+                        if (downloadErr || !fileData) {
+                            throw new Error(`Failed to download file from storage: ${downloadErr?.message ?? 'Not found'}`);
+                        }
+
+                        const buffer = await fileData.arrayBuffer();
+                        const base64Str = arrayBufferToBase64(buffer);
+                        const contentType = fileData.type || 'image/png';
+                        const dataUrl = `data:${contentType};base64,${base64Str}`;
+
+                        successes.push({ dataUrl, name: curPath.split('/').pop() });
+                    } catch (err: any) {
+                        console.warn(`[describe-image] Skipping image ID ${imgId} due to error:`, err.message);
+                        lastErrorMsg = err.message;
+                    }
+                }
+
+                if (successes.length === 0) {
+                    return await fail('client_error', 404, `All image attachments failed to load. Last error: ${lastErrorMsg}`);
+                }
+
+                images = successes;
+            } else {
+                // Single filePath fallback (legacy or manual payload)
+                const { data: fileData, error: downloadErr } = await supabaseAdmin
+                    .storage
+                    .from('attachments')
+                    .download(filePath);
+                
+                if (downloadErr || !fileData) {
+                    return await fail('client_error', 404, `Failed to download file from storage: ${downloadErr?.message ?? 'Not found'}`);
+                }
+
+                const buffer = await fileData.arrayBuffer();
+                const base64Str = arrayBufferToBase64(buffer);
+                const contentType = fileData.type || 'image/png';
+                const dataUrl = `data:${contentType};base64,${base64Str}`;
+
+                images = [{ dataUrl, name: filePath.split('/').pop() }];
             }
-
-            const buffer = await fileData.arrayBuffer();
-            const base64Str = arrayBufferToBase64(buffer);
-            const contentType = fileData.type || 'image/png';
-            const dataUrl = `data:${contentType};base64,${base64Str}`;
-
-            images = [{ dataUrl, name: filePath.split('/').pop() }];
         }
 
         accounting.imageTokens = images.length;

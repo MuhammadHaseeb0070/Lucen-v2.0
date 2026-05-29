@@ -12,6 +12,7 @@ export interface FileAttachment {
   storagePath?: string;
   tokenEstimate?: number;
   rawBase64?: string;
+  uploadFailed?: boolean;
 }
 
 export interface Message {

@@ -371,11 +371,13 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
 
             if (uploadError) {
                 console.error('[FileProcessor] Storage upload FAILED:', uploadError);
+                attachment.uploadFailed = true;
             } else if (uploadData) {
                 attachment.storagePath = uploadData.path;
             }
         } catch (err) {
             console.error('[FileProcessor] Storage exception:', err);
+            attachment.uploadFailed = true;
         }
     }
 
@@ -392,11 +394,13 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
 
             if (uploadError) {
                 console.error('[FileProcessor] Document Storage upload FAILED:', uploadError);
+                attachment.uploadFailed = true;
             } else if (uploadData) {
                 attachment.storagePath = uploadData.path;
             }
         } catch (err) {
             console.error('[FileProcessor] Document Storage exception:', err);
+            attachment.uploadFailed = true;
         }
     }
 
