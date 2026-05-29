@@ -50,8 +50,8 @@ export async function initializeModelConfig() {
             console.warn('[ModelConfig] failed to fetch from backend:', error);
             return;
         }
-        if (data) {
-            if (data.mainConfig) {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            if (data.mainConfig && typeof data.mainConfig === 'object') {
                 mainConfig = {
                     modelDisplayName: data.mainConfig.modelDisplayName ?? mainConfig.modelDisplayName,
                     supportsReasoning: !!data.mainConfig.supportsReasoning,
@@ -61,7 +61,7 @@ export async function initializeModelConfig() {
                     platformMaxStreamSeconds: Number(data.mainConfig.platformMaxStreamSeconds) || mainConfig.platformMaxStreamSeconds,
                 };
             }
-            if (data.sideConfig) {
+            if (data.sideConfig && typeof data.sideConfig === 'object') {
                 sideConfig = {
                     modelDisplayName: data.sideConfig.modelDisplayName ?? sideConfig.modelDisplayName,
                     supportsReasoning: !!data.sideConfig.supportsReasoning,
@@ -71,13 +71,25 @@ export async function initializeModelConfig() {
                     platformMaxStreamSeconds: Number(data.sideConfig.platformMaxStreamSeconds) || sideConfig.platformMaxStreamSeconds,
                 };
             }
-            if (data.lsVariantRegular && data.lsVariantPro) {
-                updateVariantIds(data.lsVariantRegular, data.lsVariantPro);
+            
+            if (data.lsVariantRegular) {
+                updateVariantIds(data.lsVariantRegular, undefined);
+            } else {
+                console.warn('[ModelConfig] lsVariantRegular is missing or empty in backend response');
             }
+
+            if (data.lsVariantPro) {
+                updateVariantIds(undefined, data.lsVariantPro);
+            } else {
+                console.warn('[ModelConfig] lsVariantPro is missing or empty in backend response');
+            }
+
             if (Array.isArray(data.adminEmails)) {
                 setAdminEmails(data.adminEmails);
             }
             console.debug('[ModelConfig] Loaded securely from backend:', { mainConfig, sideConfig });
+        } else {
+            console.warn('[ModelConfig] received null or malformed data payload from backend:', data);
         }
     } catch (err) {
         console.warn('[ModelConfig] Fetch exception:', err);

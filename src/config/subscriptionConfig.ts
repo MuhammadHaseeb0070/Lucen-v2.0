@@ -237,7 +237,7 @@ export function getPlanById(id: PlanId): PlanDefinition {
 }
 
 /** Update variant IDs dynamically from the backend config */
-export function updateVariantIds(regularId: string, proId: string) {
-  (PLANS.REGULAR as any).variantId = regularId;
-  (PLANS.PRO as any).variantId = proId;
+export function updateVariantIds(regularId?: string, proId?: string) {
+  if (regularId) (PLANS.REGULAR as any).variantId = regularId;
+  if (proId) (PLANS.PRO as any).variantId = proId;
 }
