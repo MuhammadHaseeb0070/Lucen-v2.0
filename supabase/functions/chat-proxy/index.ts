@@ -637,6 +637,24 @@ Deno.serve(async (req: Request) => {
 
                 try {
                     while (rounds < maxRounds) {
+                        // FIX 5: Missing Mid-Turn Credit Check
+                        const { data: loopCreditsRow, error: loopCreditsErr } = await supabaseAdmin
+                            .from('user_credits')
+                            .select('remaining_credits')
+                            .eq('user_id', user.id)
+                            .single();
+                        
+                        const loopRemainingCredits = typeof loopCreditsRow?.remaining_credits === 'number'
+                            ? loopCreditsRow.remaining_credits
+                            : 0;
+
+                        if (loopCreditsErr || loopRemainingCredits <= 0) {
+                            try {
+                                controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'Insufficient credits to continue.' })}\n\n`));
+                            } catch { /* ignore */ }
+                            break;
+                        }
+
                         const requestBody: any = {
                             model: effectiveModel,
                             messages: currentMessages,
@@ -707,6 +725,11 @@ Deno.serve(async (req: Request) => {
                                                 break outerLoop;
                                             }
                                             if (typeof choice.delta?.content === 'string' && choice.delta.content.trim().length > 0) {
+                                                isToolCall = false;
+                                                break outerLoop;
+                                            }
+                                            const reasoning = choice.delta?.reasoning || choice.delta?.reasoning_content;
+                                            if (typeof reasoning === 'string' && reasoning.trim().length > 0) {
                                                 isToolCall = false;
                                                 break outerLoop;
                                             }
@@ -788,23 +811,44 @@ Deno.serve(async (req: Request) => {
                                 }
                             }
 
-                            const toolCalls = Array.from(toolCallsMap.values());
+                            let toolCalls = Array.from(toolCallsMap.values());
+
+                            // Validate and sanitize tool calls (FIX 1)
+                            toolCalls = toolCalls.filter((tc) => {
+                                if (!tc.name) {
+                                    console.warn('[chat-proxy] Skipping tool call: missing function name', tc);
+                                    return false;
+                                }
+                                if (!tc.id || tc.id.trim() === '') {
+                                    tc.id = crypto.randomUUID();
+                                }
+                                return true;
+                            });
 
                             if (toolCalls.length > 0) {
                                 for (const tc of toolCalls) {
                                     let parsedArgs: any = {};
-                                    try { parsedArgs = JSON.parse(tc.arguments); } catch { /* ignore */ }
+                                    let argsParsedSuccessfully = true;
+                                    try { 
+                                        parsedArgs = JSON.parse(tc.arguments); 
+                                    } catch { 
+                                        argsParsedSuccessfully = false; 
+                                    }
 
                                     let label = '';
-                                    if (tc.name === 'analyze_image') {
-                                        label = parsedArgs.analysis_title || 'Analyzing image';
-                                    } else if (tc.name === 'process_file') {
-                                        label = parsedArgs.extraction_title || 'Reading file';
-                                    } else if (tc.name === 'web_search') {
-                                        label = parsedArgs.search_title || 'Searching the web';
+                                    if (argsParsedSuccessfully) {
+                                        if (tc.name === 'analyze_image') {
+                                            label = parsedArgs.analysis_title || 'Analyzing image';
+                                        } else if (tc.name === 'process_file') {
+                                            label = parsedArgs.extraction_title || 'Reading file';
+                                        } else if (tc.name === 'web_search') {
+                                            label = parsedArgs.search_title || 'Searching the web';
+                                        } else {
+                                            const def = TOOLS[tc.name ?? ''];
+                                            label = def?.userFacingLabel ?? `Running ${tc.name}`;
+                                        }
                                     } else {
-                                        const def = TOOLS[tc.name ?? ''];
-                                        label = def?.userFacingLabel ?? `Running ${tc.name}`;
+                                        label = `Running ${tc.name}`;
                                     }
 
                                     const eventPayload = {
@@ -827,7 +871,81 @@ Deno.serve(async (req: Request) => {
                                     let output = '';
                                     let success = true;
                                     let parsedArgs: any = {};
-                                    try { parsedArgs = JSON.parse(tc.arguments); } catch { /* ignore */ }
+                                    let argsParsedSuccessfully = true;
+                                    try { 
+                                        parsedArgs = JSON.parse(tc.arguments); 
+                                    } catch { 
+                                        argsParsedSuccessfully = false; 
+                                    }
+
+                                    let durationMs = 0;
+
+                                    // FIX 3: Malformed Arguments Crash Check
+                                    if (!argsParsedSuccessfully) {
+                                        success = false;
+                                        output = 'Tool execution failed: could not parse tool arguments.';
+                                        durationMs = Date.now() - start;
+
+                                        toolsExecuted.push({
+                                            id: tc.id!,
+                                            name: tc.name!,
+                                            arguments: tc.arguments,
+                                            status: 'failed',
+                                            durationMs
+                                        });
+
+                                        const eventPayload = {
+                                            id: tc.id,
+                                            tool: tc.name,
+                                            status: 'failed',
+                                            label: `Running ${tc.name}`,
+                                            args: {},
+                                            durationMs,
+                                            output: output.slice(0, 400)
+                                        };
+                                        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+
+                                        return {
+                                            tool_call_id: tc.id,
+                                            role: 'tool',
+                                            name: tc.name,
+                                            content: output
+                                        };
+                                    }
+
+                                    // FIX 4: Undefined Tool Name 404 Error Check
+                                    const ALLOWED_TOOLS = ['analyze_image', 'process_file', 'web_search'];
+                                    if (!ALLOWED_TOOLS.includes(tc.name)) {
+                                        success = false;
+                                        output = 'Tool execution failed: unknown tool name.';
+                                        durationMs = Date.now() - start;
+
+                                        toolsExecuted.push({
+                                            id: tc.id!,
+                                            name: tc.name!,
+                                            arguments: tc.arguments,
+                                            status: 'failed',
+                                            durationMs
+                                        });
+
+                                        const eventPayload = {
+                                            id: tc.id,
+                                            tool: tc.name,
+                                            status: 'failed',
+                                            label: `Running ${tc.name}`,
+                                            args: parsedArgs,
+                                            durationMs,
+                                            output: output.slice(0, 400)
+                                        };
+                                        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+
+                                        return {
+                                            tool_call_id: tc.id,
+                                            role: 'tool',
+                                            name: tc.name,
+                                            content: output
+                                        };
+                                    }
 
                                     let timerId: any;
                                     let res: any = null;
@@ -855,7 +973,7 @@ Deno.serve(async (req: Request) => {
                                         if (timerId) clearTimeout(timerId);
                                     }
 
-                                    const durationMs = Date.now() - start;
+                                    durationMs = Date.now() - start;
                                     toolsExecuted.push({
                                         id: tc.id!,
                                         name: tc.name!,
@@ -905,11 +1023,11 @@ Deno.serve(async (req: Request) => {
                                         controller.enqueue(encoder.encode(`event: web_search_results\ndata: ${JSON.stringify(resultsPayload)}\n\n`));
                                     }
 
-                                    // Fix 4: Truncate oversized tool results before returning
+                                    // FIX 2: Truncate oversized tool results before returning (12,000 limit)
                                     let finalOutput = output;
-                                    if (output.length > 3000) {
+                                    if (output.length > 12000) {
                                         console.warn(`[chat-proxy] Tool result for ${tc.name} truncated from ${output.length} characters.`);
-                                        finalOutput = output.slice(0, 3000) + '\n\n[Result truncated for length]';
+                                        finalOutput = output.slice(0, 12000) + '\n\n[Result truncated for length]';
                                     }
 
                                     return {
@@ -930,9 +1048,6 @@ Deno.serve(async (req: Request) => {
 
                                 currentMessages.push({
                                     role: 'assistant',
-                                    // Bug 3 fix: use "" not null — many models (MiniMax, etc.)
-                                    // reject null content in the assistant tool_calls turn and
-                                    // return an empty response on the next round.
                                     content: '',
                                     tool_calls: toolCalls.map(tc => ({
                                         id: tc.id,

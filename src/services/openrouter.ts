@@ -384,41 +384,55 @@ function buildApiMessages(
         });
     }
 
-function buildToolContextSummary(toolSteps: NonNullable<Message['toolSteps']>): string {
-    const lines: string[] = [];
-    for (const step of toolSteps) {
-        if (step.status === 'completed' && step.output) {
-            let toolName = step.tool;
-            if (step.tool === 'analyze_image') toolName = 'Image analysis';
-            else if (step.tool === 'process_file') toolName = 'File extraction';
-            else if (step.tool === 'web_search') toolName = 'Web search';
-
-            const sliced = step.output.slice(0, 300);
-            const ellipsis = step.output.length > 300 ? '...' : '';
-            lines.push(`${toolName}: ${sliced}${ellipsis}`);
-        }
-    }
-    return lines.join('\n');
-}
-
-// Assemble the API payload: System messages MUST come before the conversation history
+    // Assemble the API payload: System messages MUST come before the conversation history
     const apiHistory: Array<Record<string, unknown>> = [];
     for (const m of recentMessages) {
         if (m.role !== 'user' && m.role !== 'assistant') continue;
 
-        apiHistory.push({
-            role: m.role,
-            content: buildMessageContent(m),
-        });
-
+        // Check for tool calls execution in prior assistant turns (FIX 6)
         if (m.role === 'assistant' && m.toolSteps && m.toolSteps.length > 0) {
-            const summary = buildToolContextSummary(m.toolSteps);
-            if (summary) {
+            const completedSteps = m.toolSteps.filter(s => s.status === 'completed');
+            if (completedSteps.length > 0) {
+                // Stabilize tool call IDs by concatenating the message ID and step index
+                const assistantToolCalls = completedSteps.map((step, idx) => {
+                    const stableId = `call_${m.id.replace(/[^a-zA-Z0-9]/g, '')}_${idx}`;
+                    return {
+                        id: stableId,
+                        type: 'function' as const,
+                        function: {
+                            name: step.tool,
+                            arguments: JSON.stringify(step.args || {})
+                        }
+                    };
+                });
+
                 apiHistory.push({
-                    role: 'system',
-                    content: `[Tool context from this turn:\n${summary}]`,
+                    role: 'assistant',
+                    content: buildMessageContent(m),
+                    tool_calls: assistantToolCalls
+                });
+
+                for (let i = 0; i < completedSteps.length; i++) {
+                    const step = completedSteps[i];
+                    const stableId = `call_${m.id.replace(/[^a-zA-Z0-9]/g, '')}_${i}`;
+                    apiHistory.push({
+                        role: 'tool',
+                        tool_call_id: stableId,
+                        name: step.tool,
+                        content: step.output || ''
+                    });
+                }
+            } else {
+                apiHistory.push({
+                    role: m.role,
+                    content: buildMessageContent(m)
                 });
             }
+        } else {
+            apiHistory.push({
+                role: m.role,
+                content: buildMessageContent(m)
+            });
         }
     }
 
@@ -1287,6 +1301,7 @@ async function processStream(
         // eslint-disable-next-line no-console
         console.debug('[OpenRouter] streamSummary', {
             why,
+            modelId,
             truncated: wasTruncated,
             sawNaturalFinish,
             watchdogFired,
@@ -1370,6 +1385,9 @@ async function processStream(
     // the event type and onToolActivity is never called.
     let currentEvent: string | null = null;
 
+    // Safety guard for tool activity tracking (FIX 7)
+    let sawToolActivityEvent = false;
+
     // Bug 1 fix: when the model uses delta.reasoning for its final answer
     // (MiniMax Nitro behavior after a tool-call round), we need to route
     // those chunks to onChunk (main content) not onReasoning (thinking box).
@@ -1420,6 +1438,7 @@ async function processStream(
                 if (currentEvent === 'tool_activity') {
                     try {
                         const eventData = JSON.parse(data);
+                        sawToolActivityEvent = true;
                         callbacks.onToolActivity?.(eventData);
                     } catch { /* ignore */ }
                     currentEvent = null;
@@ -1439,7 +1458,7 @@ async function processStream(
                         if (eventData?.model) {
                             modelId = eventData.model;
                         }
-                        if (eventData?.after_tool_calls && modelId?.includes('minimax')) {
+                        if (eventData?.after_tool_calls) {
                             treatReasoningAsContent = true;
                         }
                     } catch { /* ignore */ }
@@ -1486,6 +1505,15 @@ async function processStream(
                         choice.finish_reason === 'end_turn'
                     ) {
                         sawNaturalFinish = true;
+                        
+                        if (choice.finish_reason === 'tool_calls' && !sawToolActivityEvent) {
+                            callbacks.onToolActivity?.({
+                                id: `call_fallback_${Date.now()}`,
+                                tool: 'tool',
+                                status: 'running',
+                                label: 'Executing tool calls'
+                            });
+                        }
                     }
 
                     const delta = choice.delta;
