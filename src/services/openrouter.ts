@@ -1440,6 +1440,7 @@ async function processStream(
                         if (eventData?.model) {
                             modelId = eventData.model;
                         }
+                        console.log('[MODEL_ID_CHECK]', { modelId, treatReasoningAsContent, after_tool_calls: eventData?.after_tool_calls });
                         if (eventData?.after_tool_calls && eventData?.model?.includes('minimax')) {
                             treatReasoningAsContent = true;
                         }
@@ -1510,6 +1511,8 @@ async function processStream(
                         const isMinimax = modelId?.includes('minimax');
                         const shouldRouteToChunk = treatReasoningAsContent || (isMinimax && !contentStarted);
                         
+                        console.log('[ROUTE_CHECK]', { isMinimax: modelId?.includes('minimax'), shouldRouteToChunk, treatReasoningAsContent, contentStarted, modelId });
+
                         if (shouldRouteToChunk) {
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
                             contentChunkCount++;
