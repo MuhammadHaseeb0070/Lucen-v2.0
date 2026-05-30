@@ -283,6 +283,8 @@ Deno.serve(async (req: Request) => {
             //                                   may switch to OPENROUTER_
             //                                   ONLINE_MODEL as a last resort
             web_search_enabled,
+            webSearchEnabled,
+            enableWebSearch,
             web_search_used,
             web_search_fallback_requested,
             // Accounting metadata (all optional, client-generated):
@@ -353,7 +355,7 @@ Deno.serve(async (req: Request) => {
         // We still inspect legacy `plugins` only for observability (warnings),
         // never as a trigger for fallback/model swap.
         const legacyPluginRequested = hasWebPlugin(plugins);
-        const webSearchRequested = !!web_search_enabled;
+        const webSearchRequested = !!(web_search_enabled || webSearchEnabled || enableWebSearch);
         const webSearchFallback = !!web_search_fallback_requested;
         const webSearchUsed = !!web_search_used;
 
@@ -383,9 +385,6 @@ Deno.serve(async (req: Request) => {
 
         const { hasImage, hasFile } = detectAttachments(messages);
         const toolsToPass: any[] = [];
-        if (webSearchRequested) {
-            toolsToPass.push(TOOLS.web_search);
-        }
         if (hasImage) {
             toolsToPass.push(TOOLS.analyze_image);
         }
@@ -438,6 +437,10 @@ Deno.serve(async (req: Request) => {
 
         if (remainingCredits <= 0 && !__bg_description) {
             return await fail('insufficient_credits', 402, 'Insufficient credits');
+        }
+
+        if (webSearchRequested && remainingCredits > 0) {
+            toolsToPass.push(TOOLS.web_search);
         }
 
         // Only forward plugins to OpenRouter in the explicit fallback path.

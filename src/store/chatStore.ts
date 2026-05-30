@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Artifact, Conversation, Message } from '../types';
 import { hasActiveSessionSync, supabase } from '../lib/supabase';
 import * as db from '../services/database';
+import { sanitizeMinimaxTags } from '../lib/stringUtil';
 import type { SearchResult } from '../services/database';
 import { MIDSTREAM_PERSIST_MS } from '../config/models';
 import { captureCall } from './debugStore';
@@ -572,13 +573,21 @@ export const useChatStore = create<ChatStore>()(
             },
 
             updateMessage: (convId, msgId, updates) => {
+                const sanitizedUpdates = { ...updates };
+                if (updates.content !== undefined) {
+                    sanitizedUpdates.content = updates.content ? sanitizeMinimaxTags(updates.content) : updates.content;
+                }
+                if (updates.reasoning !== undefined) {
+                    sanitizedUpdates.reasoning = updates.reasoning ? sanitizeMinimaxTags(updates.reasoning) : updates.reasoning;
+                }
+
                 set((state) => ({
                     conversations: state.conversations.map((c) => {
                         if (c.id !== convId) return c;
                         return {
                             ...c,
                             messages: c.messages.map((m) =>
-                                m.id === msgId ? { ...m, ...updates } : m
+                                m.id === msgId ? { ...m, ...sanitizedUpdates } : m
                             ),
                             updatedAt: Date.now(),
                         };

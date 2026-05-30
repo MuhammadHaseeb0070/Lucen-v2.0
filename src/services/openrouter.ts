@@ -20,6 +20,7 @@ import {
 } from './outputBudget';
 import { PARTIAL_OPEN_RE, INCOMPLETE_TAG_RE } from '../lib/artifactParser';
 import { captureCall } from '../store/debugStore';
+import { sanitizeMinimaxTags } from '../lib/stringUtil';
 
 function newRequestId(): string {
     return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -503,143 +504,148 @@ export async function streamChat(
     callbacks: StreamCallbacks,
     options: StreamOptions = {}
 ): Promise<void> {
-    const model = getActiveModel(options.isSideChat);
+    try {
+        const model = getActiveModel(options.isSideChat);
 
-    // Retrieve relevant file chunks via RAG before building context
-    const ragContext = await retrieveRelevantChunks(
-        messages,
-        options.conversationId || null
-    );
+        // Retrieve relevant file chunks via RAG before building context
+        const ragContext = await retrieveRelevantChunks(
+            messages,
+            options.conversationId || null
+        );
 
-    // Vision processing is now handled autonomously server-side via tools
+        // Vision processing is now handled autonomously server-side via tools
 
-    if (!isSupabaseEnabled() || !supabase) {
-        callbacks.onError('Please sign in to use chat.');
-        return;
-    }
-
-    // ─── Ensure fresh JWT: refresh if expired (fixes 401 from stale tokens) ───
-    const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError) {
-        callbacks.onError('Session expired. Please sign in again.');
-        return;
-    }
-    if (!session?.access_token) {
-        callbacks.onError('Please sign in to use chat.');
-        return;
-    }
-
-    // ─── Per-request output policy ──────────────────────────────────────────
-    // Side chat never produces artifacts, so it always uses chat-mode budget.
-    // Manual continuations inherit 'artifact' mode because if the user had to
-    // press Continue, the response was clearly long-form — give it the bigger
-    // cap so the resume pass actually completes the work.
-    const isContinuation = !!options.continuation;
-    const mode: ResponseMode = options.isSideChat
-        ? 'chat'
-        : isContinuation
-            ? 'artifact'
-            : detectResponseMode(messages);
-    // Dynamic per-call cap — depends on the model's throughput, reasoning
-    // leak profile, and context window. See outputBudget.ts.
-    const perCallCap = getPerCallOutput(mode, model);
-
-    // ─── Token-aware context pruning ────────────────────────────────────────
-    // Reserve room for:
-    //   - per-call output (perCallCap)
-    //   - safety headroom (tokenizer approximation, per-call framing)
-    //   - a blanket allowance for system prompts + template + RAG
-    const SYSTEM_PROMPT_RESERVE = 5000;
-    const conversationBudget = Math.max(
-        4096,
-        model.contextWindow - perCallCap - SAFETY_HEADROOM - SYSTEM_PROMPT_RESERVE,
-    );
-    const { pruned: prunedMessages, droppedCount } = pruneMessagesForContext(messages, conversationBudget);
-
-    let segmentSummary: string | null = null;
-    if (droppedCount > 5) {
-        try {
-            const dropped = messages.filter(m => !prunedMessages.some(pm => pm.id === m.id));
-            const droppedText = dropped.map(m => `${m.role}: ${m.content}`).join('\n');
-            const { data } = await supabase.functions.invoke('generate-title', {
-                body: {
-                    mode: 'summary',
-                    text_to_summarize: droppedText
-                }
-            });
-            if (data?.summary) {
-                segmentSummary = data.summary;
-            }
-        } catch (err) {
-            console.warn('[streamChat] failed to generate segment summary:', err);
+        if (!isSupabaseEnabled() || !supabase) {
+            callbacks.onError('Please sign in to use chat.');
+            return;
         }
+
+        // ─── Ensure fresh JWT: refresh if expired (fixes 401 from stale tokens) ───
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+            callbacks.onError('Session expired. Please sign in again.');
+            return;
+        }
+        if (!session?.access_token) {
+            callbacks.onError('Please sign in to use chat.');
+            return;
+        }
+
+        // ─── Per-request output policy ──────────────────────────────────────────
+        // Side chat never produces artifacts, so it always uses chat-mode budget.
+        // Manual continuations inherit 'artifact' mode because if the user had to
+        // press Continue, the response was clearly long-form — give it the bigger
+        // cap so the resume pass actually completes the work.
+        const isContinuation = !!options.continuation;
+        const mode: ResponseMode = options.isSideChat
+            ? 'chat'
+            : isContinuation
+                ? 'artifact'
+                : detectResponseMode(messages);
+        // Dynamic per-call cap — depends on the model's throughput, reasoning
+        // leak profile, and context window. See outputBudget.ts.
+        const perCallCap = getPerCallOutput(mode, model);
+
+        // ─── Token-aware context pruning ────────────────────────────────────────
+        // Reserve room for:
+        //   - per-call output (perCallCap)
+        //   - safety headroom (tokenizer approximation, per-call framing)
+        //   - a blanket allowance for system prompts + template + RAG
+        const SYSTEM_PROMPT_RESERVE = 5000;
+        const conversationBudget = Math.max(
+            4096,
+            model.contextWindow - perCallCap - SAFETY_HEADROOM - SYSTEM_PROMPT_RESERVE,
+        );
+        const { pruned: prunedMessages, droppedCount } = pruneMessagesForContext(messages, conversationBudget);
+
+        let segmentSummary: string | null = null;
+        if (droppedCount > 5) {
+            try {
+                const dropped = messages.filter(m => !prunedMessages.some(pm => pm.id === m.id));
+                const droppedText = dropped.map(m => `${m.role}: ${m.content}`).join('\n');
+                const { data } = await supabase.functions.invoke('generate-title', {
+                    body: {
+                        mode: 'summary',
+                        text_to_summarize: droppedText
+                    }
+                });
+                if (data?.summary) {
+                    segmentSummary = data.summary;
+                }
+            } catch (err) {
+                console.warn('[streamChat] failed to generate segment summary:', err);
+            }
+        }
+
+        const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
+            supportsVision: model.supportsVision,
+            omittedTurnsCount: droppedCount,
+            segmentSummary,
+        });
+
+        const outputBudget = await computeOutputBudget(
+            apiMessages,
+            model.contextWindow,
+            perCallCap
+        );
+
+        // Manual continuation: build the ChatGPT-style resume payload (prior
+        // assistant text as an `assistant` message + short `user` nudge). The
+        // auto-continuation path inside streamViaEdgeFunctionWrapper uses the
+        // exact same helper.
+        // Fresh turn: append a quiet "finish cleanly" note so the model doesn't
+        // write "…continued below" or similar meta-commentary.
+        const messagesWithBudget: Array<Record<string, unknown>> = isContinuation
+            ? buildContinuationMessages(apiMessages, options.continuation!.priorAssistantText)
+            : [
+                ...apiMessages,
+                {
+                    role: 'system',
+                    content:
+                        "[System Note: You have a large but STRICT token budget for this response. Plan your answer so it naturally finishes in this budget—pick depth and breadth you can carry to a clear ending (no mid-sentence cutoffs). If the ask is too large for one pass, deliver one complete useful slice and state that scope in plain language. Answer the user's real need directly. For artifacts: build a COMPLETE, working version — choose a scope you can finish, not one you'll have to truncate. Do not create an artifact unless they explicitly want a renderable or downloadable deliverable. Never mention tokens, budgets, limits, or chunking.]",
+                },
+            ];
+
+        const isReasoningEnabled = options.isSideChat ? false : model.supportsReasoning;
+
+        // Accounting: one parent id per user turn. All continuation chunks share
+        // this parent so the Usage UI can group them under the original turn.
+        const rootRequestId = generateRequestId();
+        const baseKind = 'chat';
+
+        const accounting: CallAccounting = {
+            parentRequestId: rootRequestId,
+            messageId: options.messageId,
+            conversationId: options.conversationId,
+            callKind: isContinuation ? 'chat_continuation' : baseKind,
+            inputCostPer1M: model.inputCostPer1m || 0,
+            outputCostPer1M: model.outputCostPer1m || 0,
+        };
+
+        // IMPORTANT: we always stream so the UX stays responsive.
+        // If a provider doesn't stream reasoning, `message.reasoning` may be empty.
+        //
+        // Seed `accumulated` with the prior assistant text on manual continuation
+        // so the output-ceiling check and repetition guard see the true running
+        // total, not just the chars produced in this pass.
+        await streamViaEdgeFunctionWrapper(
+            messagesWithBudget,
+            model,
+            session.access_token,
+            callbacks,
+            outputBudget,
+            isReasoningEnabled,
+            options.webSearchEnabled,
+            options.signal,
+            mode,
+            0,
+            isContinuation ? options.continuation!.priorAssistantText : '',
+            accounting,
+        );
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        callbacks.onError(msg);
     }
-
-    const apiMessages = buildApiMessages(prunedMessages, options.systemPromptOverride, ragContext, {
-        supportsVision: model.supportsVision,
-        omittedTurnsCount: droppedCount,
-        segmentSummary,
-    });
-
-    const outputBudget = await computeOutputBudget(
-        apiMessages,
-        model.contextWindow,
-        perCallCap
-    );
-
-    // Manual continuation: build the ChatGPT-style resume payload (prior
-    // assistant text as an `assistant` message + short `user` nudge). The
-    // auto-continuation path inside streamViaEdgeFunctionWrapper uses the
-    // exact same helper.
-    // Fresh turn: append a quiet "finish cleanly" note so the model doesn't
-    // write "…continued below" or similar meta-commentary.
-    const messagesWithBudget: Array<Record<string, unknown>> = isContinuation
-        ? buildContinuationMessages(apiMessages, options.continuation!.priorAssistantText)
-        : [
-            ...apiMessages,
-            {
-                role: 'system',
-                content:
-                    "[System Note: You have a large but STRICT token budget for this response. Plan your answer so it naturally finishes in this budget—pick depth and breadth you can carry to a clear ending (no mid-sentence cutoffs). If the ask is too large for one pass, deliver one complete useful slice and state that scope in plain language. Answer the user's real need directly. For artifacts: build a COMPLETE, working version — choose a scope you can finish, not one you'll have to truncate. Do not create an artifact unless they explicitly want a renderable or downloadable deliverable. Never mention tokens, budgets, limits, or chunking.]",
-            },
-        ];
-
-    const isReasoningEnabled = options.isSideChat ? false : model.supportsReasoning;
-
-    // Accounting: one parent id per user turn. All continuation chunks share
-    // this parent so the Usage UI can group them under the original turn.
-    const rootRequestId = generateRequestId();
-    const baseKind = 'chat';
-
-    const accounting: CallAccounting = {
-        parentRequestId: rootRequestId,
-        messageId: options.messageId,
-        conversationId: options.conversationId,
-        callKind: isContinuation ? 'chat_continuation' : baseKind,
-        inputCostPer1M: model.inputCostPer1m || 0,
-        outputCostPer1M: model.outputCostPer1m || 0,
-    };
-
-    // IMPORTANT: we always stream so the UX stays responsive.
-    // If a provider doesn't stream reasoning, `message.reasoning` may be empty.
-    //
-    // Seed `accumulated` with the prior assistant text on manual continuation
-    // so the output-ceiling check and repetition guard see the true running
-    // total, not just the chars produced in this pass.
-    await streamViaEdgeFunctionWrapper(
-        messagesWithBudget,
-        model,
-        session.access_token,
-        callbacks,
-        outputBudget,
-        isReasoningEnabled,
-        options.webSearchEnabled,
-        options.signal,
-        mode,
-        0,
-        isContinuation ? options.continuation!.priorAssistantText : '',
-        accounting,
-    );
 }
 
 function generateRequestId(): string {
@@ -1256,6 +1262,16 @@ async function processStream(
     signal?: AbortSignal,
     onFinalize?: (summary: StreamFinalizeSummary) => void,
 ): Promise<void> {
+    const originalOnFinalize = onFinalize;
+    if (originalOnFinalize) {
+        onFinalize = (summary) => {
+            originalOnFinalize({
+                ...summary,
+                content: sanitizeMinimaxTags(summary.content),
+                reasoning: sanitizeMinimaxTags(summary.reasoning),
+            });
+        };
+    }
     const reader = response.body?.getReader();
     if (!reader) {
         callbacks.onError('No response stream available');
@@ -1354,6 +1370,7 @@ async function processStream(
         if (!text) return text;
 
         let t = text;
+        t = sanitizeMinimaxTags(t);
 
         // Strip role-label leakage that some models emit (especially after prompt changes).
         // Keep this intentionally conservative: only remove at the start of a chunk/line.
@@ -1511,7 +1528,7 @@ async function processStream(
                                 id: `call_fallback_${Date.now()}`,
                                 tool: 'tool',
                                 status: 'running',
-                                label: 'Executing tool calls'
+                                label: 'Working...'
                             });
                         }
                     }

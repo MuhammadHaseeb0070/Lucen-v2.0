@@ -179,6 +179,10 @@ Update this after each completed task.
 - [x] Streaming bug fix: reasoning tokens no longer buffered in outerLoop
 - [x] Stream fix: treatReasoningAsContent applies to all models after tool calls
 - [x] Tool call hardening: ID validation, allowlist, argument parsing, truncation, credit checks, context rebuilding
+- [x] Web search tool validation: restrict web_search tool if disabled or credits <= 0
+- [x] MiniMax XML tag sanitization: strip minimax tags from chunks, final content, and DB messages
+- [x] Tool activity UI enhancements: friendly fallback labels and running step deduplication
+- [x] Stream state robustness: ensure isStreaming/isLoading is cleared on stream done, abort, or error via try-catch wrapping
 
 ### In Progress
 - [ ] (nothing currently)

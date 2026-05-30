@@ -423,12 +423,37 @@ const ChatArea: React.FC = () => {
                 const activeConv = useChatStore.getState().getActiveConversation();
                 const msg = activeConv?.messages.find(m => m.id === assistantMsgId);
                 const currentSteps = msg?.toolSteps || [];
-                const existingIndex = currentSteps.findIndex(s => s.id === event.id);
+
+                // FIX 3A — Better fallback labels:
+                let label = event.label;
+                if (!label || label === 'Executing tool calls') {
+                    if (event.tool === 'analyze_image') label = 'Analyzing image...';
+                    else if (event.tool === 'process_file') label = 'Reading document...';
+                    else if (event.tool === 'web_search') label = 'Searching the web...';
+                    else label = 'Working...';
+                } else {
+                    if (label === 'Analyzing image') label = 'Analyzing image...';
+                    else if (label === 'Reading file') label = 'Reading document...';
+                    else if (label === 'Searching the web') label = 'Searching the web...';
+                }
+                const mappedEvent = { ...event, label };
+
+                const existingIndex = currentSteps.findIndex(s => s.id === mappedEvent.id);
                 let nextSteps = [...currentSteps];
                 if (existingIndex !== -1) {
-                    nextSteps[existingIndex] = { ...nextSteps[existingIndex], ...event };
+                    nextSteps[existingIndex] = { ...nextSteps[existingIndex], ...mappedEvent };
                 } else {
-                    nextSteps.push(event);
+                    // FIX 3B — Deduplication: only show one "running" indicator at a time.
+                    if (mappedEvent.status === 'running') {
+                        const runningIndex = nextSteps.findIndex(s => s.status === 'running');
+                        if (runningIndex !== -1) {
+                            nextSteps[runningIndex] = mappedEvent;
+                        } else {
+                            nextSteps.push(mappedEvent);
+                        }
+                    } else {
+                        nextSteps.push(mappedEvent);
+                    }
                 }
                 updateMessage(convId, assistantMsgId, { toolSteps: nextSteps });
             },
