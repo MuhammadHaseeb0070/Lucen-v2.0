@@ -318,11 +318,18 @@ const ChatArea: React.FC = () => {
                 renderedContent += pendingText;
                 pendingText = '';
                 updates.content = renderedContent;
+                // Once main content arrives, reasoning has definitively completed
+                updates.isReasoningStreaming = false;
             }
             if (pendingReasoning) {
                 renderedReasoning += pendingReasoning;
                 pendingReasoning = '';
                 updates.reasoning = renderedReasoning;
+                
+                // If main content hasn't started arriving, ensure the UI shows the Thinking pulse
+                if (!renderedContent && !updates.content) {
+                    updates.isReasoningStreaming = true;
+                }
             }
             updateMessage(convId, assistantMsgId, updates);
         };
