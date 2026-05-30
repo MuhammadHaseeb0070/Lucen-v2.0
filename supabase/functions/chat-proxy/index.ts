@@ -952,11 +952,7 @@ Deno.serve(async (req: Request) => {
                             // chunks in this round are the model's actual answer, not internal thinking.
                             // MiniMax Nitro (and similar models) put their post-tool-call answer in
                             // delta.reasoning even though it's the response, not a thought.
-                            if (rounds > 0) {
-                                controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: true, model: effectiveModel })}\n\n`));
-                            }
-
-                            let streamChunkIndex = 0;
+                            controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
 
                             const parseUsageAndStream = (chunkVal: Uint8Array) => {
                                 controller.enqueue(chunkVal);
@@ -981,16 +977,6 @@ Deno.serve(async (req: Request) => {
                                         if (choice?.finish_reason) {
                                             finishReason = choice.finish_reason;
                                         }
-                                        
-                                        const delta = choice?.delta;
-                                        console.log('[STREAM_DEBUG]', {
-                                            chunkIndex: streamChunkIndex++,
-                                            hasDeltaContent: !!delta?.content,
-                                            contentLength: delta?.content?.length,
-                                            hasDeltaReasoning: !!delta?.reasoning,
-                                            reasoningLength: delta?.reasoning?.length,
-                                            finishReason: choice?.finish_reason
-                                        });
 
                                         if (parsed?.error) {
                                             finalStreamError = typeof parsed.error === 'string'
@@ -1021,16 +1007,6 @@ Deno.serve(async (req: Request) => {
                                         totalCompletionTokens += parsed.usage.completion_tokens || 0;
                                         totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
                                     }
-                                    const choice = parsed.choices?.[0];
-                                    const delta = choice?.delta;
-                                    console.log('[STREAM_DEBUG]', {
-                                        chunkIndex: streamChunkIndex++,
-                                        hasDeltaContent: !!delta?.content,
-                                        contentLength: delta?.content?.length,
-                                        hasDeltaReasoning: !!delta?.reasoning,
-                                        reasoningLength: delta?.reasoning?.length,
-                                        finishReason: choice?.finish_reason
-                                    });
                                 } catch { /* skip */ }
                             }
 

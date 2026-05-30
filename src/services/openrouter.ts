@@ -658,9 +658,10 @@ function getMaxChunksForMode(mode: ResponseMode): number {
     // These are imported as named exports from models.ts and refer to the
     // env-driven ceilings. Artifact mode gets more chunks because long-form
     // content (stories, code files, reports) benefits from multiple passes.
-    return mode === 'artifact'
+    const configured = mode === 'artifact'
         ? CONTINUATION_MAX_CHUNKS_ARTIFACT
         : CONTINUATION_MAX_CHUNKS_CHAT;
+    return Math.max(3, configured);
 }
 
 /**
@@ -1436,6 +1437,9 @@ async function processStream(
                 if (currentEvent === 'content_start') {
                     try {
                         const eventData = JSON.parse(data);
+                        if (eventData?.model) {
+                            modelId = eventData.model;
+                        }
                         if (eventData?.after_tool_calls && eventData?.model?.includes('minimax')) {
                             treatReasoningAsContent = true;
                         }
@@ -1503,18 +1507,9 @@ async function processStream(
                         // put their final answer in delta.reasoning rather than delta.content.
                         // When the backend sends content_start{after_tool_calls:true}, treat
                         // all delta.reasoning as main content, not internal thinking.
-                        const shouldRouteToChunk = treatReasoningAsContent || (
-                            modelId?.includes('minimax') &&
-                            !treatReasoningAsContent &&
-                            !contentStarted
-                        );
+                        const isMinimax = modelId?.includes('minimax');
+                        const shouldRouteToChunk = treatReasoningAsContent || (isMinimax && !contentStarted);
                         
-                        let dest = 'reasoning';
-                        if (shouldRouteToChunk || reasoningChunk.includes('<lucen_artifact')) {
-                            dest = 'chunk';
-                        }
-                        console.log('[PROCESS_STREAM]', { dest, treatReasoningAsContent, contentStarted, modelId, hasContent: !!delta?.content, hasReasoning: !!(delta?.reasoning || delta?.reasoning_content) });
-
                         if (shouldRouteToChunk) {
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
                             contentChunkCount++;
@@ -1541,7 +1536,6 @@ async function processStream(
 
                     // Handle regular content
                     if (delta.content) {
-                        console.log('[PROCESS_STREAM]', { dest: 'chunk', treatReasoningAsContent, contentStarted, modelId, hasContent: !!delta?.content, hasReasoning: !!(delta?.reasoning || delta?.reasoning_content) });
                         contentStarted = true;
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                         contentChunkCount++;
