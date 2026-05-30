@@ -956,9 +956,7 @@ Deno.serve(async (req: Request) => {
                                 controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: true, model: effectiveModel })}\n\n`));
                             }
 
-                            for (const chunk of firstChunks) {
-                                controller.enqueue(chunk);
-                            }
+                            let streamChunkIndex = 0;
 
                             const parseUsageAndStream = (chunkVal: Uint8Array) => {
                                 controller.enqueue(chunkVal);
@@ -983,6 +981,17 @@ Deno.serve(async (req: Request) => {
                                         if (choice?.finish_reason) {
                                             finishReason = choice.finish_reason;
                                         }
+                                        
+                                        const delta = choice?.delta;
+                                        console.log('[STREAM_DEBUG]', {
+                                            chunkIndex: streamChunkIndex++,
+                                            hasDeltaContent: !!delta?.content,
+                                            contentLength: delta?.content?.length,
+                                            hasDeltaReasoning: !!delta?.reasoning,
+                                            reasoningLength: delta?.reasoning?.length,
+                                            finishReason: choice?.finish_reason
+                                        });
+
                                         if (parsed?.error) {
                                             finalStreamError = typeof parsed.error === 'string'
                                                 ? parsed.error
@@ -991,6 +1000,10 @@ Deno.serve(async (req: Request) => {
                                     } catch { /* skip */ }
                                 }
                             };
+
+                            for (const chunk of firstChunks) {
+                                controller.enqueue(chunk);
+                            }
 
                             const lines = accumulatedText.split('\n');
                             for (const line of lines) {
@@ -1008,6 +1021,16 @@ Deno.serve(async (req: Request) => {
                                         totalCompletionTokens += parsed.usage.completion_tokens || 0;
                                         totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
                                     }
+                                    const choice = parsed.choices?.[0];
+                                    const delta = choice?.delta;
+                                    console.log('[STREAM_DEBUG]', {
+                                        chunkIndex: streamChunkIndex++,
+                                        hasDeltaContent: !!delta?.content,
+                                        contentLength: delta?.content?.length,
+                                        hasDeltaReasoning: !!delta?.reasoning,
+                                        reasoningLength: delta?.reasoning?.length,
+                                        finishReason: choice?.finish_reason
+                                    });
                                 } catch { /* skip */ }
                             }
 

@@ -1508,6 +1508,13 @@ async function processStream(
                             !treatReasoningAsContent &&
                             !contentStarted
                         );
+                        
+                        let dest = 'reasoning';
+                        if (shouldRouteToChunk || reasoningChunk.includes('<lucen_artifact')) {
+                            dest = 'chunk';
+                        }
+                        console.log('[PROCESS_STREAM]', { dest, treatReasoningAsContent, contentStarted, modelId, hasContent: !!delta?.content, hasReasoning: !!(delta?.reasoning || delta?.reasoning_content) });
+
                         if (shouldRouteToChunk) {
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
                             contentChunkCount++;
@@ -1534,6 +1541,7 @@ async function processStream(
 
                     // Handle regular content
                     if (delta.content) {
+                        console.log('[PROCESS_STREAM]', { dest: 'chunk', treatReasoningAsContent, contentStarted, modelId, hasContent: !!delta?.content, hasReasoning: !!(delta?.reasoning || delta?.reasoning_content) });
                         contentStarted = true;
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                         contentChunkCount++;
