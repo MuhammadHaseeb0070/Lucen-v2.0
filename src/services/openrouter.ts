@@ -1263,7 +1263,6 @@ async function processStream(
     const FINALIZE_CONTENT_CAP = 120_000;
     let accContent = '';
     let accReasoning = '';
-    let contentStarted = false;
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -1540,7 +1539,6 @@ async function processStream(
 
                     // Handle regular content
                     if (delta.content) {
-                        contentStarted = true;
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                         contentChunkCount++;
                         lastContentTail = String(delta.content).slice(-220);
