@@ -723,8 +723,10 @@ Deno.serve(async (req: Request) => {
 
                         if (isToolCall) {
                             // Fix 2: Flush all buffered reasoning chunks to the client via SSE
-                            for (const chunk of firstChunks) {
-                                controller.enqueue(chunk);
+                            // Bug Fix: Remove data: [DONE] so the client doesn't disconnect prematurely!
+                            let outputText = accumulatedText.replace(/data:\s*\[DONE\][\r\n]*/g, '');
+                            if (outputText) {
+                                controller.enqueue(encoder.encode(outputText));
                             }
 
                             // Start keepalive interval to prevent watchdog timeout during tool execution
@@ -777,9 +779,12 @@ Deno.serve(async (req: Request) => {
                                 const { done, value } = await reader.read();
                                 if (done) break;
                                 if (value) {
-                                    controller.enqueue(value);
-                                    const text = decoder.decode(value, { stream: true });
+                                    let text = decoder.decode(value, { stream: true });
                                     parseText(text);
+                                    text = text.replace(/data:\s*\[DONE\][\r\n]*/g, '');
+                                    if (text) {
+                                        controller.enqueue(encoder.encode(text));
+                                    }
                                 }
                             }
 
