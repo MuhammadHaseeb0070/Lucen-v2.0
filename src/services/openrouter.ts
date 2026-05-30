@@ -1440,8 +1440,7 @@ async function processStream(
                         if (eventData?.model) {
                             modelId = eventData.model;
                         }
-                        console.log('[MODEL_ID_CHECK]', { modelId, treatReasoningAsContent, after_tool_calls: eventData?.after_tool_calls });
-                        if (eventData?.after_tool_calls && eventData?.model?.includes('minimax')) {
+                        if (eventData?.after_tool_calls && modelId?.includes('minimax')) {
                             treatReasoningAsContent = true;
                         }
                     } catch { /* ignore */ }
@@ -1508,10 +1507,7 @@ async function processStream(
                         // put their final answer in delta.reasoning rather than delta.content.
                         // When the backend sends content_start{after_tool_calls:true}, treat
                         // all delta.reasoning as main content, not internal thinking.
-                        const isMinimax = modelId?.includes('minimax');
-                        const shouldRouteToChunk = treatReasoningAsContent || (isMinimax && !contentStarted);
-                        
-                        console.log('[ROUTE_CHECK]', { isMinimax: modelId?.includes('minimax'), shouldRouteToChunk, treatReasoningAsContent, contentStarted, modelId });
+                        const shouldRouteToChunk = treatReasoningAsContent;
 
                         if (shouldRouteToChunk) {
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
@@ -1524,6 +1520,11 @@ async function processStream(
                             // Some providers may mistakenly emit artifact blocks in the reasoning channel.
                             // Route those back to normal content so the artifact pipeline can handle them.
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
+                            contentChunkCount++;
+                            lastContentTail = reasoningChunk.slice(-220);
+                            if (accContent.length < FINALIZE_CONTENT_CAP) {
+                                accContent += reasoningChunk;
+                            }
                         } else {
                             callbacks.onReasoning(sanitizeAssistantOutput(reasoningChunk));
                         }

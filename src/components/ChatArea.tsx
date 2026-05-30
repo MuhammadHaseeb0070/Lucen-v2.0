@@ -291,9 +291,9 @@ const ChatArea: React.FC = () => {
         abortRef.current = controller;
         const contextMessages = getContextMessages(convId);
 
-        // Batch streaming updates at a fixed 200ms interval. This replaces
+        // Batch streaming updates at a fixed 50ms interval. This replaces
         // the previous per-frame RAF drain which caused too many React updates
-        // (one per animation frame). A 200ms interval means ~5 store updates/sec
+        // (one per animation frame). A 50ms interval means ~20 store updates/sec
         // max, which is enough for smooth UX without saturating the main thread.
         let pendingText = '';
         let pendingReasoning = '';
@@ -318,7 +318,6 @@ const ChatArea: React.FC = () => {
                 renderedContent += pendingText;
                 pendingText = '';
                 updates.content = renderedContent;
-                updates.isReasoningStreaming = false;
             }
             if (pendingReasoning) {
                 renderedReasoning += pendingReasoning;
