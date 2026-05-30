@@ -1,0 +1,217 @@
+# Lucen — AI Rules
+# This file is read by Cursor, Windsurf, Antigravity, and other AI IDEs automatically.
+# These rules are LAW. Follow every rule on every task, no exceptions.
+
+---
+
+## FIRST: Read These Files Before Doing Anything
+
+Before making ANY change to this codebase, you MUST read:
+1. PROJECT_SPEC.md — what the app does, every screen, every behavior
+2. ARCHITECTURE.md — how the system works, data flows, constraints
+
+If you have not read both files, stop and read them first.
+
+---
+
+## Core Principles
+
+### Understand Before Acting
+- Never fix a symptom without understanding the root cause
+- If you are unsure what a file does, read it before changing it
+- If a bug report mentions one file, check 3-5 related files before writing any fix
+- Describe the root cause before writing any code
+
+### Plan Before Coding
+- For any feature or fix: write a brief plan first, identify every file that will change
+- Identify edge cases before coding — what happens if the user has no credits? What if the stream fails mid-way? What if the model returns an unexpected format?
+- If a plan has more than 3 files changing, flag it and confirm before proceeding
+
+### Test the Whole Path
+- When fixing a bug, trace the entire request path: frontend → edge function → database → response
+- Do not assume a fix is correct just because the isolated code looks right
+- Always run `npm run build` after frontend changes to catch TypeScript errors
+
+---
+
+## Architecture Rules (NEVER Violate These)
+
+1. **OpenRouter API key stays in backend.** `OPENROUTER_API_KEY` is a Supabase secret ONLY. It must never appear in any file inside `src/` or any VITE_ environment variable.
+
+2. **All AI calls go through chat-proxy.** Never call OpenRouter directly from the frontend. Never add a new frontend function that calls OpenRouter. All AI requests go: frontend → chat-proxy → OpenRouter.
+
+3. **Tool calls execute server-side only.** `analyze_image`, `process_file`, `web_search` execute inside chat-proxy via sibling Supabase function calls. The frontend only receives SSE events about tool status and the final streamed response.
+
+4. **Credit mutations use SQL functions only.** Never write `UPDATE user_credits SET remaining_credits = ...` anywhere. Always use `deduct_user_credits()`, `grant_subscription_credits()`, or other SECURITY DEFINER functions.
+
+5. **RLS stays on.** Never disable Row Level Security on any table. Never use the service role key from the frontend.
+
+6. **Stream chunks must be flushed immediately.** chat-proxy must never buffer a complete response before sending it. Chunks go to the client as they arrive. Reasoning tokens (delta.reasoning, delta.reasoning_content) are flushed immediately — they never wait in a detection buffer.
+
+7. **treatReasoningAsContent applies to ALL models after tool calls.** When `after_tool_calls` is true in a content_start event, set `treatReasoningAsContent = true` regardless of model ID. Do not add model-specific conditions here.
+
+8. **Tool call context is preserved as proper OpenAI messages.** Prior tool call turns are injected into message history as `{ role: 'assistant', tool_calls: [...] }` + `{ role: 'tool', tool_call_id: ..., content: ... }` messages — never as a flat system prompt string.
+
+---
+
+## Coding Standards
+
+### TypeScript
+- All new code must be TypeScript, not plain JavaScript
+- No `any` types unless absolutely necessary — use proper interfaces
+- Always handle the case where an API response field might be undefined
+- Run `npm run build` after every change and fix all TypeScript errors before finishing
+
+### Error Handling
+- Every API call must have a try/catch
+- Every edge function must return a proper error response with status code and message
+- Never swallow errors silently (no empty catch blocks)
+- User-facing errors must be human-readable, not raw error objects
+
+### Edge Functions (Deno)
+- Always verify JWT at the start: `supabase.auth.getUser(jwt)` 
+- Return CORS headers on all responses
+- Log errors with enough context to debug (`console.error('context:', error.message)`)
+- Never return 200 for an error — use appropriate status codes (400, 401, 402, 500)
+
+### Frontend State
+- Use existing Zustand stores — do not create new global state management
+- Do not add new `useState` hooks for data that belongs in an existing store
+- Do not fetch data directly in components — use service files in `src/services/`
+
+---
+
+## What NOT to Do
+
+- **Do not refactor working code** while fixing a bug — fix only what is broken
+- **Do not rename variables or functions** unless they are directly part of the fix
+- **Do not add console.log statements** in production code paths — use the logger (`src/lib/logger.ts`)
+- **Do not change the database schema** without a corresponding migration file in `supabase/migrations/`
+- **Do not add new npm packages** without confirming they are needed — check if something similar already exists in package.json
+- **Do not move environment variables** from backend to frontend or vice versa without explicit instruction
+- **Do not change the SSE event format** between chat-proxy and frontend — both sides must stay in sync
+- **Do not change the tool allowlist** (`['analyze_image', 'process_file', 'web_search']`) without updating both toolRegistry.ts and callSiblingFunction mapping
+- **Do not touch the credit deduction logic** unless explicitly asked — it is financial code
+
+---
+
+## When Implementing a New Feature
+
+Follow this checklist every time:
+
+1. **Read PROJECT_SPEC.md** — does this feature already exist? Is it described there?
+2. **Read ARCHITECTURE.md** — which part of the system does this touch?
+3. **Identify all files that change** — list them before writing any code
+4. **Write the plan** — describe the flow end to end, including edge cases
+5. **Check security** — does this expose any sensitive data? Does it need auth?
+6. **Check credits** — does this consume tokens? Does it need credit deduction?
+7. **Implement the backend first** — edge function changes before frontend changes
+8. **Implement the frontend second** — call the new backend endpoint
+9. **Handle all states** — loading, success, error, empty, insufficient credits
+10. **Build and verify** — `npm run build` must pass with zero errors
+
+---
+
+## When Fixing a Bug
+
+Follow this checklist every time:
+
+1. **Reproduce the symptom** — describe exactly what the user sees
+2. **Trace the full path** — from user action to database and back
+3. **Find the root cause** — not the symptom, the actual broken thing
+4. **Check for related breakage** — does fixing this break anything adjacent?
+5. **Write the minimal fix** — change as few lines as possible
+6. **Verify the fix** — build passes, the symptom is gone, nothing new broke
+
+---
+
+## Known Issues — Do Not "Fix" These
+
+- `stripe_customer_id` column in `user_credits` is unused — leave it, it's for future use
+- Mammoth (Word doc parser) loses tables and images — this is a library limitation, not a bug
+- Pyodide takes time to initialize on first Python execution — expected behavior
+- Free tier users cannot use web search — this is intentional product behavior
+- The `local auth mode` mock user will crash on DB operations — it's a dev-only stub, not a bug
+
+---
+
+## File Ownership Map
+
+When a task involves these things, change these files:
+
+| Task | Primary Files |
+|------|--------------|
+| Chat streaming behavior | `supabase/functions/chat-proxy/index.ts`, `src/services/openrouter.ts` |
+| Tool call logic | `supabase/functions/chat-proxy/index.ts`, `supabase/functions/_shared/toolRegistry.ts` |
+| Message rendering | `src/components/MessageBubble.tsx`, `src/components/ChatArea.tsx` |
+| Artifact generation/display | `src/components/ArtifactRenderer.tsx`, `src/components/ArtifactWorkspace.tsx` |
+| Artifact versioning/patching | `src/lib/artifactPatcher.ts`, `src/lib/artifactPatchParser.ts`, `src/services/artifactVersionDb.ts` |
+| Auth flow | `src/store/authStore.ts`, `src/components/AuthScreen.tsx`, `src/services/auth.ts` |
+| Credits & billing | `supabase/functions/ls-webhook/index.ts`, `supabase/functions/ls-checkout/index.ts`, SQL migration files |
+| File upload & RAG | `src/services/fileProcessor.ts`, `supabase/functions/embed/index.ts`, `supabase/functions/retrieve-chunks/index.ts` |
+| Theme & appearance | `src/components/ChatAppearanceSection.tsx`, `src/index.css`, `src/services/userSettings.ts` |
+| Context pruning | `src/services/openrouter.ts` (pruneMessagesForContext function) |
+| Database schema | `supabase/migrations/` (always create a new migration file) |
+| Admin dashboard | `src/components/OwnerDashboard.tsx` |
+| Sidebar & navigation | `src/components/Sidebar.tsx`, `src/components/CommandPalette.tsx` |
+
+---
+
+## Progress Tracking
+
+Use this section to track what is done and what is in progress.
+Update this after each completed task.
+
+### Completed
+- [x] Core chat streaming (reasoning + content)
+- [x] Artifact generation (HTML, SVG, Mermaid, Python, file)
+- [x] Artifact versioning and patching
+- [x] Self-healing artifact error correction
+- [x] File upload and RAG pipeline (embed + retrieve)
+- [x] Intent classification and web search via Tavily
+- [x] Lemon Squeezy billing and webhook processing
+- [x] FIFO credit ledger system
+- [x] OTP-based auth (signup + password reset)
+- [x] Conversation history and sidebar
+- [x] Theme system
+- [x] Owner admin dashboard
+- [x] Artifact Hub (public sharing + sparks + comments)
+- [x] Streaming bug fix: reasoning tokens no longer buffered in outerLoop
+- [x] Stream fix: treatReasoningAsContent applies to all models after tool calls
+- [x] Tool call hardening: ID validation, allowlist, argument parsing, truncation, credit checks, context rebuilding
+
+### In Progress
+- [ ] (nothing currently)
+
+### Known Issues / Backlog
+- [ ] Mammoth Word parsing loses formatting — acceptable limitation
+- [ ] `stripe_customer_id` unused column — leave for future Stripe integration
+- [ ] Light theme polish
+
+---
+
+## Quick Reference: SSE Events
+
+```
+data: {...}                     — standard OpenAI stream chunk
+event: tool_activity            — tool started or finished
+event: web_search_results       — web search returned results  
+event: content_start            — final response about to begin (may have after_tool_calls: true)
+event: error                    — something went wrong
+: keepalive                     — heartbeat during long tool execution
+data: [DONE]                    — stream is complete
+```
+
+## Quick Reference: Tool Allowlist
+
+```typescript
+const ALLOWED_TOOLS = ['analyze_image', 'process_file', 'web_search'];
+```
+
+## Quick Reference: Credit Formula
+
+```
+credits = total_tokens / 1000
+web_search_credits = results_returned * 1
+total = text_credits + web_search_credits + image_credits
+```

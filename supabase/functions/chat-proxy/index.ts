@@ -693,6 +693,7 @@ Deno.serve(async (req: Request) => {
                         
                         let isToolCall = false;
                         const firstChunks: Uint8Array[] = [];
+                        const flushedChunks: boolean[] = [];
                         let accumulatedText = '';
                         let chunkCount = 0;
 
@@ -707,6 +708,7 @@ Deno.serve(async (req: Request) => {
                             if (value) {
                                 chunkCount++;
                                 firstChunks.push(value);
+                                flushedChunks.push(false);
                                 const text = decoder.decode(value, { stream: true });
                                 accumulatedText += text;
 
@@ -730,8 +732,12 @@ Deno.serve(async (req: Request) => {
                                             }
                                             const reasoning = choice.delta?.reasoning || choice.delta?.reasoning_content;
                                             if (typeof reasoning === 'string' && reasoning.trim().length > 0) {
-                                                isToolCall = false;
-                                                break outerLoop;
+                                                if (!flushedChunks[flushedChunks.length - 1]) {
+                                                    try {
+                                                        controller.enqueue(value);
+                                                    } catch { /* ignore */ }
+                                                    flushedChunks[flushedChunks.length - 1] = true;
+                                                }
                                             }
                                             const fr = choice.finish_reason;
                                             if (fr !== null && fr !== undefined) {
@@ -747,9 +753,17 @@ Deno.serve(async (req: Request) => {
                         if (isToolCall) {
                             // Fix 2: Flush all buffered reasoning chunks to the client via SSE
                             // Bug Fix: Remove data: [DONE] so the client doesn't disconnect prematurely!
-                            let outputText = accumulatedText.replace(/data:\s*\[DONE\][\r\n]*/g, '');
+                            let unflushedText = '';
+                            for (let i = 0; i < firstChunks.length; i++) {
+                                if (!flushedChunks[i]) {
+                                    unflushedText += decoder.decode(firstChunks[i], { stream: true });
+                                }
+                            }
+                            let outputText = unflushedText.replace(/data:\s*\[DONE\][\r\n]*/g, '');
                             if (outputText) {
-                                controller.enqueue(encoder.encode(outputText));
+                                try {
+                                    controller.enqueue(encoder.encode(outputText));
+                                } catch { /* ignore */ }
                             }
 
                             // Start keepalive interval to prevent watchdog timeout during tool execution
@@ -806,7 +820,9 @@ Deno.serve(async (req: Request) => {
                                     parseText(text);
                                     text = text.replace(/data:\s*\[DONE\][\r\n]*/g, '');
                                     if (text) {
-                                        controller.enqueue(encoder.encode(text));
+                                        try {
+                                            controller.enqueue(encoder.encode(text));
+                                        } catch { /* ignore */ }
                                     }
                                 }
                             }
@@ -836,7 +852,7 @@ Deno.serve(async (req: Request) => {
                                     }
 
                                     let label = '';
-                                    if (argsParsedSuccessfully) {
+                                    if (argsParsedSuccessfully && parsedArgs && typeof parsedArgs === 'object') {
                                         if (tc.name === 'analyze_image') {
                                             label = parsedArgs.analysis_title || 'Analyzing image';
                                         } else if (tc.name === 'process_file') {
@@ -849,6 +865,7 @@ Deno.serve(async (req: Request) => {
                                         }
                                     } else {
                                         label = `Running ${tc.name}`;
+                                        parsedArgs = {};
                                     }
 
                                     const eventPayload = {
@@ -858,7 +875,9 @@ Deno.serve(async (req: Request) => {
                                         label,
                                         args: parsedArgs
                                     };
-                                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                    try {
+                                        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                    } catch { /* ignore */ }
                                 }
 
                                 const parallelCalls = toolCalls.filter(tc => TOOLS[tc.name ?? '']?.parallelizable);
@@ -903,7 +922,44 @@ Deno.serve(async (req: Request) => {
                                             durationMs,
                                             output: output.slice(0, 400)
                                         };
-                                        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                        try {
+                                            controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                        } catch { /* ignore */ }
+
+                                        return {
+                                            tool_call_id: tc.id,
+                                            role: 'tool',
+                                            name: tc.name,
+                                            content: output
+                                        };
+                                    }
+
+                                    // BUG B Check: null/invalid arguments check
+                                    if (!parsedArgs || typeof parsedArgs !== 'object') {
+                                        success = false;
+                                        output = 'Tool execution failed: arguments were null or invalid.';
+                                        durationMs = Date.now() - start;
+
+                                        toolsExecuted.push({
+                                            id: tc.id!,
+                                            name: tc.name!,
+                                            arguments: tc.arguments,
+                                            status: 'failed',
+                                            durationMs
+                                        });
+
+                                        const eventPayload = {
+                                            id: tc.id,
+                                            tool: tc.name,
+                                            status: 'failed',
+                                            label: `Running ${tc.name}`,
+                                            args: {},
+                                            durationMs,
+                                            output: output.slice(0, 400)
+                                        };
+                                        try {
+                                            controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                        } catch { /* ignore */ }
 
                                         return {
                                             tool_call_id: tc.id,
@@ -937,7 +993,9 @@ Deno.serve(async (req: Request) => {
                                             durationMs,
                                             output: output.slice(0, 400)
                                         };
-                                        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                        try {
+                                            controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                        } catch { /* ignore */ }
 
                                         return {
                                             tool_call_id: tc.id,
@@ -1008,7 +1066,9 @@ Deno.serve(async (req: Request) => {
                                         durationMs,
                                         output: output.slice(0, 400)
                                     };
-                                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                    try {
+                                        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                    } catch { /* ignore */ }
 
                                     if (success && tc.name === 'web_search' && res && res.organic && Array.isArray(res.organic) && res.organic.length > 0) {
                                         const urls = res.organic.map((r: any) => ({
@@ -1020,7 +1080,9 @@ Deno.serve(async (req: Request) => {
                                             urls,
                                             query: parsedArgs.query
                                         };
-                                        controller.enqueue(encoder.encode(`event: web_search_results\ndata: ${JSON.stringify(resultsPayload)}\n\n`));
+                                        try {
+                                            controller.enqueue(encoder.encode(`event: web_search_results\ndata: ${JSON.stringify(resultsPayload)}\n\n`));
+                                        } catch { /* ignore */ }
                                     }
 
                                     // FIX 2: Truncate oversized tool results before returning (12,000 limit)
@@ -1107,8 +1169,10 @@ Deno.serve(async (req: Request) => {
                                 }
                             };
 
-                            for (const chunk of firstChunks) {
-                                controller.enqueue(chunk);
+                            for (let i = 0; i < firstChunks.length; i++) {
+                                if (!flushedChunks[i]) {
+                                    controller.enqueue(firstChunks[i]);
+                                }
                             }
 
                             const lines = accumulatedText.split('\n');
