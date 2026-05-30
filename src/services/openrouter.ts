@@ -1201,7 +1201,7 @@ async function streamViaEdgeFunction(
         return;
     }
 
-    await processStream(response, callbacks, signal, (summary) => {
+    await processStream(response, callbacks, model.id, signal, (summary) => {
         finalizeChat({
             status: response.status,
             response: summary,
@@ -1237,6 +1237,7 @@ interface StreamFinalizeSummary {
 async function processStream(
     response: Response,
     callbacks: StreamCallbacks,
+    modelId?: string,
     signal?: AbortSignal,
     onFinalize?: (summary: StreamFinalizeSummary) => void,
 ): Promise<void> {
@@ -1261,6 +1262,7 @@ async function processStream(
     const FINALIZE_CONTENT_CAP = 120_000;
     let accContent = '';
     let accReasoning = '';
+    let contentStarted = false;
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -1441,6 +1443,17 @@ async function processStream(
                     currentEvent = null;
                     continue;
                 }
+                if (currentEvent === 'web_search_results') {
+                    try {
+                        const eventData = JSON.parse(data);
+                        if (eventData?.urls && Array.isArray(eventData.urls)) {
+                            const urlStrings = eventData.urls.map((u: any) => u.url);
+                            callbacks.onWebSearchUsed?.(urlStrings);
+                        }
+                    } catch { /* ignore */ }
+                    currentEvent = null;
+                    continue;
+                }
                 currentEvent = null;
 
                 try {
@@ -1453,6 +1466,10 @@ async function processStream(
                     }
 
                     const parsed = JSON.parse(data);
+                    if (parsed && parsed.error) {
+                        callbacks.onError(parsed.error.message ?? (typeof parsed.error === 'string' ? parsed.error : 'Stream error'));
+                        return;
+                    }
                     const choice = parsed.choices?.[0];
                     if (!choice) continue;
 
@@ -1486,7 +1503,12 @@ async function processStream(
                         // put their final answer in delta.reasoning rather than delta.content.
                         // When the backend sends content_start{after_tool_calls:true}, treat
                         // all delta.reasoning as main content, not internal thinking.
-                        if (treatReasoningAsContent) {
+                        const shouldRouteToChunk = treatReasoningAsContent || (
+                            modelId?.includes('minimax') &&
+                            !treatReasoningAsContent &&
+                            !contentStarted
+                        );
+                        if (shouldRouteToChunk) {
                             callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
                             contentChunkCount++;
                             lastContentTail = reasoningChunk.slice(-220);
@@ -1512,6 +1534,7 @@ async function processStream(
 
                     // Handle regular content
                     if (delta.content) {
+                        contentStarted = true;
                         callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
                         contentChunkCount++;
                         lastContentTail = String(delta.content).slice(-220);

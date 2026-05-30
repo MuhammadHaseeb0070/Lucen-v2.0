@@ -825,6 +825,7 @@ Deno.serve(async (req: Request) => {
                                     try { parsedArgs = JSON.parse(tc.arguments); } catch { /* ignore */ }
 
                                     let timerId: any;
+                                    let res: any = null;
                                     try {
                                         let siblingName = tc.name;
                                         if (tc.name === 'analyze_image') siblingName = 'describe-image';
@@ -836,7 +837,7 @@ Deno.serve(async (req: Request) => {
                                             timerId = setTimeout(() => reject(new Error('timeout')), 12000);
                                         });
 
-                                        const res = await Promise.race([executionPromise, timeoutPromise]);
+                                        res = await Promise.race([executionPromise, timeoutPromise]);
                                         output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
                                     } catch (err: any) {
                                         success = false;
@@ -885,6 +886,19 @@ Deno.serve(async (req: Request) => {
                                         output: output.slice(0, 400)
                                     };
                                     controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+
+                                    if (success && tc.name === 'web_search' && res && res.organic && Array.isArray(res.organic) && res.organic.length > 0) {
+                                        const urls = res.organic.map((r: any) => ({
+                                            title: r.title,
+                                            url: r.link,
+                                            snippet: r.snippet
+                                        }));
+                                        const resultsPayload = {
+                                            urls,
+                                            query: parsedArgs.query
+                                        };
+                                        controller.enqueue(encoder.encode(`event: web_search_results\ndata: ${JSON.stringify(resultsPayload)}\n\n`));
+                                    }
 
                                     // Fix 4: Truncate oversized tool results before returning
                                     let finalOutput = output;
@@ -1126,6 +1140,7 @@ Deno.serve(async (req: Request) => {
                 'Content-Type': 'text/event-stream',
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
             },
         });
     } catch (err) {

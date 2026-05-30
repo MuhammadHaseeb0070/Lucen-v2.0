@@ -330,7 +330,7 @@ const ChatArea: React.FC = () => {
 
         const startFlushTimer = () => {
             if (flushTimer !== null) return;
-            flushTimer = setInterval(flushBatch, 200);
+            flushTimer = setInterval(flushBatch, 50);
         };
 
         const stopFlushTimer = () => {

@@ -584,7 +584,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                             <span>Processing artifact…</span>
                         </div>
                     )}
-                    {cleanContent && <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />}
+                    {cleanContent ? (
+                        <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />
+                    ) : (
+                        !message.isStreaming && message.toolSteps && message.toolSteps.length > 0 && (
+                            <div className="msg-fallback-error" style={{ opacity: 0.6, fontSize: '0.9em', fontStyle: 'italic' }}>
+                                I wasn't able to generate a response. Please try again.
+                            </div>
+                        )
+                    )}
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}
