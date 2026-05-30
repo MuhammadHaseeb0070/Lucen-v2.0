@@ -679,7 +679,7 @@ Deno.serve(async (req: Request) => {
                         let chunkCount = 0;
 
                         outerLoop: while (true) {
-                            if (chunkCount >= 200) {
+                            if (chunkCount >= 1000) {
                                 isToolCall = false;
                                 break;
                             }
@@ -706,7 +706,7 @@ Deno.serve(async (req: Request) => {
                                                 isToolCall = true;
                                                 break outerLoop;
                                             }
-                                            if (typeof choice.delta?.content === 'string' && choice.delta.content.length > 0) {
+                                            if (typeof choice.delta?.content === 'string' && choice.delta.content.trim().length > 0) {
                                                 isToolCall = false;
                                                 break outerLoop;
                                             }
