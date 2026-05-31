@@ -12,20 +12,41 @@ const EMBED_INPUT_COST_PER_1M = Number(
     Deno.env.get('EMBEDDING_INPUT_COST_PER_1M') ?? '0',
 );
 
-const CHUNK_SIZE = 400;
-const CHUNK_OVERLAP = 50;
+const CHUNK_SIZE_CHARS = 4000;  // ~1,000 tokens, safe under 2,048
+const CHUNK_OVERLAP_CHARS = 400;
 
 function chunkText(text: string): string[] {
     if (!text || typeof text !== 'string') {
         return [];
     }
-    const words = text.split(/\s+/).filter(Boolean);
+    const clean = text.trim();
+    if (!clean) {
+        return [];
+    }
     const chunks: string[] = [];
-    let i = 0;
-    while (i < words.length) {
-        const chunk = words.slice(i, i + CHUNK_SIZE).join(' ');
-        if (chunk && typeof chunk === 'string' && chunk.trim()) chunks.push(chunk.trim());
-        i += CHUNK_SIZE - CHUNK_OVERLAP;
+    let start = 0;
+    while (start < clean.length) {
+        let end = start + CHUNK_SIZE_CHARS;
+        if (end < clean.length) {
+            // Try to break at a word boundary (space, newline)
+            const breakPoint = clean.lastIndexOf(' ', end);
+            if (breakPoint > start + CHUNK_SIZE_CHARS / 2) {
+                end = breakPoint;
+            }
+            const chunk = clean.slice(start, end).trim();
+            if (chunk) chunks.push(chunk);
+            const nextStart = end - CHUNK_OVERLAP_CHARS;
+            // Ensure progress is always made
+            if (nextStart <= start) {
+                start = start + CHUNK_SIZE_CHARS - CHUNK_OVERLAP_CHARS;
+            } else {
+                start = nextStart;
+            }
+        } else {
+            const chunk = clean.slice(start).trim();
+            if (chunk) chunks.push(chunk);
+            break;
+        }
     }
     return chunks;
 }
@@ -40,6 +61,7 @@ async function embedTexts(texts: string[], apiKey: string): Promise<{ embeddings
         body: JSON.stringify({
             model: EMBED_MODEL,
             input: texts,
+            dimensions: 768,
         }),
     });
 
@@ -200,9 +222,13 @@ Deno.serve(async (req: Request) => {
             .eq('message_id', message_id)
             .eq('file_name', file_name);
 
-        // Chunk the text
-        const chunks = chunkText(text);
-        if (chunks.length === 0) {
+        // Chunk the text with a backend length cap
+        const MAX_INPUT_CHARS = 40000;
+        const safeText = text.slice(0, MAX_INPUT_CHARS);
+        const chunks = chunkText(safeText);
+        const safeChunks = chunks.filter(c => c.length <= 5000);
+
+        if (safeChunks.length === 0) {
             return await logAndReturn(
                 new Response(JSON.stringify({ success: true, chunks: 0 }), { headers: { ...cors, 'Content-Type': 'application/json' } }),
                 'completed',
@@ -210,42 +236,70 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        // Embed in batches of 20
-        const BATCH_SIZE = 20;
-        const allEmbeddings: number[][] = [];
+        // Embed in batches of 5 (down from 20) for token ceiling safety
+        const BATCH_SIZE = 5;
+        const allRows: any[] = [];
         let totalPromptTokens = 0;
-        for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-            const batch = chunks.slice(i, i + BATCH_SIZE);
-            const { embeddings, promptTokens } = await embedTexts(batch, openrouterApiKey);
-            allEmbeddings.push(...embeddings);
-            totalPromptTokens += promptTokens;
+        let successCount = 0;
+        let embedErrorOccurred = false;
+
+        for (let i = 0; i < safeChunks.length; i += BATCH_SIZE) {
+            const batch = safeChunks.slice(i, i + BATCH_SIZE);
+            try {
+                const { embeddings, promptTokens } = await embedTexts(batch, openrouterApiKey);
+                totalPromptTokens += promptTokens;
+
+                // Build rows dynamically for successfully embedded chunks
+                batch.forEach((content, index) => {
+                    allRows.push({
+                        user_id: userId,
+                        conversation_id,
+                        message_id,
+                        file_name,
+                        chunk_index: successCount + index,
+                        content,
+                        token_estimate: Math.ceil(content.length / 4),
+                        embedding: JSON.stringify(embeddings[index]),
+                    });
+                });
+                successCount += batch.length;
+            } catch (err) {
+                console.error(`[embed] batch starting at index ${i} failed to embed:`, err);
+                embedErrorOccurred = true;
+            }
         }
         accounting.promptTokens = totalPromptTokens;
 
-        // Store chunks with embeddings
-        const rows = chunks.map((content, index) => ({
-            user_id: userId,
-            conversation_id,
-            message_id,
-            file_name,
-            chunk_index: index,
-            content,
-            token_estimate: Math.ceil(content.length / 4),
-            embedding: JSON.stringify(allEmbeddings[index]),
-        }));
+        if (allRows.length > 0) {
+            const { error: insertError } = await supabaseAdmin
+                .from('document_chunks')
+                .insert(allRows);
 
-        const { error: insertError } = await supabaseAdmin
-            .from('document_chunks')
-            .insert(rows);
+            if (insertError) throw insertError;
+        }
 
-        if (insertError) throw insertError;
+        if (embedErrorOccurred) {
+            return await logAndReturn(
+                new Response(
+                    JSON.stringify({
+                        success: true,
+                        partial: true,
+                        chunksEmbedded: successCount,
+                        error: 'Some chunks could not be embedded'
+                    }),
+                    { headers: { ...cors, 'Content-Type': 'application/json' } }
+                ),
+                'completed',
+                `partial_success=${successCount}`,
+            );
+        }
 
         return await logAndReturn(
-            new Response(JSON.stringify({ success: true, chunks: chunks.length }), {
+            new Response(JSON.stringify({ success: true, chunks: safeChunks.length }), {
                 headers: { ...cors, 'Content-Type': 'application/json' },
             }),
             'completed',
-            `chunks=${chunks.length}`,
+            `chunks=${safeChunks.length}`,
         );
 
     } catch (err) {

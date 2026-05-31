@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${openrouterApiKey}`,
             },
-            body: JSON.stringify({ model: EMBED_MODEL, input: [query] }),
+            body: JSON.stringify({ model: EMBED_MODEL, input: [query], dimensions: 768 }),
         });
 
         if (!embedResponse.ok) {
