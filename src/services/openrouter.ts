@@ -396,7 +396,7 @@ function buildApiMessages(
             if (completedSteps.length > 0) {
                 // Stabilize tool call IDs by concatenating the message ID and step index
                 const assistantToolCalls = completedSteps.map((step, idx) => {
-                    const stableId = `call_${m.id.replace(/[^a-zA-Z0-9]/g, '')}_${idx}`;
+                    const stableId = `call_${(m.id ? String(m.id) : '').replace(/[^a-zA-Z0-9]/g, '')}_${idx}`;
                     return {
                         id: stableId,
                         type: 'function' as const,
@@ -415,7 +415,7 @@ function buildApiMessages(
 
                 for (let i = 0; i < completedSteps.length; i++) {
                     const step = completedSteps[i];
-                    const stableId = `call_${m.id.replace(/[^a-zA-Z0-9]/g, '')}_${i}`;
+                    const stableId = `call_${(m.id ? String(m.id) : '').replace(/[^a-zA-Z0-9]/g, '')}_${i}`;
                     apiHistory.push({
                         role: 'tool',
                         tool_call_id: stableId,
