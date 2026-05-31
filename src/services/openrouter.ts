@@ -1270,8 +1270,8 @@ async function processStream(
         onFinalize = (summary) => {
             originalOnFinalize({
                 ...summary,
-                content: summary.content ? sanitizeMinimaxTags(summary.content) : summary.content,
-                reasoning: summary.reasoning ? sanitizeMinimaxTags(summary.reasoning) : summary.reasoning,
+                content: summary.content ? sanitizeMinimaxTags(summary.content) : (summary.content ?? ''),
+                reasoning: summary.reasoning ? sanitizeMinimaxTags(summary.reasoning) : (summary.reasoning ?? ''),
             });
         };
     }
@@ -1372,7 +1372,7 @@ async function processStream(
     function sanitizeAssistantOutput(t: string): string {
         if (!t || typeof t !== 'string') return t ?? '';
 
-        t = t ? sanitizeMinimaxTags(t) : t;
+        t = t ? sanitizeMinimaxTags(t) : (t ?? '');
 
         // Strip role-label leakage that some models emit (especially after prompt changes).
         // Keep this intentionally conservative: only remove at the start of a chunk/line.

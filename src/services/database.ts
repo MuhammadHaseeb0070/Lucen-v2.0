@@ -208,8 +208,8 @@ export async function saveMessage(
             id: message.id,
             conversation_id: conversationId,
             role: message.role,
-            content: message.content ? sanitizeMinimaxTags(message.content) : message.content,
-            reasoning: message.reasoning ? sanitizeMinimaxTags(message.reasoning) : null,
+            content: message.content ? sanitizeMinimaxTags(message.content) : (message.content ?? ''),
+            reasoning: message.reasoning ? sanitizeMinimaxTags(message.reasoning) : (message.reasoning ?? ''),
             is_truncated: message.isTruncated || false,
             is_pinned: message.isPinned || false,
             is_streaming: message.isStreaming || false,
@@ -268,8 +268,8 @@ export async function updateMessageInDb(
     if (!hasActiveSessionSync() || !supabase) return false;
 
     const dbUpdates: Record<string, unknown> = {};
-    if (updates.content !== undefined) dbUpdates.content = updates.content ? sanitizeMinimaxTags(updates.content) : updates.content;
-    if (updates.reasoning !== undefined) dbUpdates.reasoning = updates.reasoning ? sanitizeMinimaxTags(updates.reasoning) : updates.reasoning;
+    if (updates.content !== undefined) dbUpdates.content = updates.content ? sanitizeMinimaxTags(updates.content) : (updates.content ?? '');
+    if (updates.reasoning !== undefined) dbUpdates.reasoning = updates.reasoning ? sanitizeMinimaxTags(updates.reasoning) : (updates.reasoning ?? '');
     if (updates.isTruncated !== undefined) dbUpdates.is_truncated = updates.isTruncated;
     if (updates.isStreaming !== undefined) dbUpdates.is_streaming = updates.isStreaming;
     if (updates.toolSteps !== undefined) dbUpdates.tools_used = updates.toolSteps;
@@ -307,8 +307,8 @@ export async function upsertStreamingMessage(
                 id: message.id,
                 conversation_id: conversationId,
                 role: message.role,
-                content: message.content ? sanitizeMinimaxTags(message.content) : message.content,
-                reasoning: message.reasoning ? sanitizeMinimaxTags(message.reasoning) : null,
+                content: message.content ? sanitizeMinimaxTags(message.content) : (message.content ?? ''),
+                reasoning: message.reasoning ? sanitizeMinimaxTags(message.reasoning) : (message.reasoning ?? ''),
                 is_truncated: message.isTruncated || false,
                 is_pinned: message.isPinned || false,
                 is_streaming: message.isStreaming === true,

@@ -591,10 +591,10 @@ export const useChatStore = create<ChatStore>()(
             updateMessage: (convId, msgId, updates) => {
                 const sanitizedUpdates = { ...updates };
                 if (updates.content !== undefined) {
-                    sanitizedUpdates.content = updates.content ? sanitizeMinimaxTags(updates.content) : updates.content;
+                    sanitizedUpdates.content = updates.content ? sanitizeMinimaxTags(updates.content) : (updates.content ?? '');
                 }
                 if (updates.reasoning !== undefined) {
-                    sanitizedUpdates.reasoning = updates.reasoning ? sanitizeMinimaxTags(updates.reasoning) : updates.reasoning;
+                    sanitizedUpdates.reasoning = updates.reasoning ? sanitizeMinimaxTags(updates.reasoning) : (updates.reasoning ?? '');
                 }
 
                 set((state) => ({
