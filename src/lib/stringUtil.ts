@@ -16,5 +16,11 @@ export function sanitizeMinimaxTags(text: string): string {
         .replace(/(?:search_query|web_search|query)>[^\n]*/gi, '')
         .replace(/<\/?(?:query|search_query|web_search)[^>]*>/gi, '')
         .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
-        .replace(/<\/?tool_call[^>]*>/gi, '');
+        .replace(/<\/?tool_call[^>]*>/gi, '')
+        .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
+        .replace(/<parameter[\s\S]*?<\/parameter>/gi, '')
+        .replace(/<\/?invoke[^>]*>/gi, '')
+        .replace(/<\/?parameter[^>]*>/gi, '')
+        .replace(/<[a-z_:]+\s[^>]*>[\s\S]*?<\/[a-z_:]+>/gi, '')
+        .replace(/<[a-z_:]+>[\s\S]*?<\/[a-z_:]+>/gi, '');
 }

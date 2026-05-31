@@ -518,43 +518,58 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         </div>
                     )}
             
-            {message.webSearchUsed && message.webSearchUrls && message.webSearchUrls.length > 0 && (
-                <div className="reasoning-block search-sources-block" style={{ marginTop: normalizedReasoning ? '0.5rem' : '0' }}>
-                    <button className="reasoning-toggle" onClick={() => setSearchSourcesOpen(!searchSourcesOpen)}>
-                        <Globe size={14} />
-                        <span className="reasoning-label" style={{ flex: 1, textAlign: 'left', marginLeft: '0.25rem' }}>
-                            Searched {message.webSearchUrls.length} sources
-                        </span>
-                        {searchSourcesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
-                    {searchSourcesOpen && (
-                        <div className="citation-cards-container">
-                            {message.webSearchUrls.map((url, idx) => {
-                                try {
-                                    const parsedUrl = new URL(url);
-                                    const domain = parsedUrl.hostname.replace('www.', '');
-                                    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-                                    return (
-                                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="citation-card" title={url}>
-                                            <div className="citation-card-header">
-                                                <img src={faviconUrl} alt={`${domain} favicon`} className="citation-favicon" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                                                <span className="citation-domain">{domain}</span>
-                                            </div>
-                                            <div className="citation-url">{parsedUrl.pathname !== '/' ? parsedUrl.pathname : url}</div>
-                                        </a>
-                                    );
-                                } catch {
-                                    return (
-                                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="citation-card">
-                                            <div className="citation-url" style={{ wordBreak: 'break-all' }}>{url}</div>
-                                        </a>
-                                    );
-                                }
-                            })}
-                        </div>
-                    )}
-                </div>
-            )}
+            {message.webSearchUsed && message.webSearchUrls && message.webSearchUrls.length > 0 && (() => {
+                const uniqueUrls: string[] = [];
+                const seenUrls = new Set<string>();
+                for (const url of message.webSearchUrls) {
+                    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+                        try {
+                            const parsed = new URL(url);
+                            const normalized = parsed.toString();
+                            if (!seenUrls.has(normalized)) {
+                                seenUrls.add(normalized);
+                                uniqueUrls.push(url);
+                            }
+                        } catch {
+                            // ignore
+                        }
+                    }
+                }
+                if (uniqueUrls.length === 0) return null;
+                return (
+                    <div className="reasoning-block search-sources-block" style={{ marginTop: normalizedReasoning ? '0.5rem' : '0' }}>
+                        <button className="reasoning-toggle" onClick={() => setSearchSourcesOpen(!searchSourcesOpen)}>
+                            <Globe size={14} />
+                            <span className="reasoning-label" style={{ flex: 1, textAlign: 'left', marginLeft: '0.25rem' }}>
+                                Searched {uniqueUrls.length} sources
+                            </span>
+                            {searchSourcesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {searchSourcesOpen && (
+                            <div className="citation-cards-container">
+                                {uniqueUrls.map((url, idx) => {
+                                    try {
+                                        const parsedUrl = new URL(url);
+                                        const domain = parsedUrl.hostname.replace('www.', '');
+                                        const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+                                        return (
+                                            <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="citation-card" title={url}>
+                                                <div className="citation-card-header">
+                                                    <img src={faviconUrl} alt={`${domain} favicon`} className="citation-favicon" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                                    <span className="citation-domain">{domain}</span>
+                                                </div>
+                                                <div className="citation-url">{parsedUrl.pathname !== '' ? parsedUrl.pathname : '/'}</div>
+                                            </a>
+                                        );
+                                    } catch {
+                                        return null;
+                                    }
+                                })}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {showGenerationStatus && (
                 <div className="artifact-parse-loading" aria-live="polite">

@@ -28,6 +28,22 @@ const ABSOLUTE_OUTPUT_CEILING = Number(
 );
 const MIN_OUTPUT = 512;
 
+function cleanLeakedToolCalls(text: string): string {
+    if (!text) return '';
+    return text
+        .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
+        .replace(/<\/?minimax:[^>]*>/g, '')
+        .replace(/<(?:query|search_query|web_search)[^>]*>[\s\S]*?<\/(?:query|search_query|web_search)>/gi, '')
+        .replace(/(?:search_query|web_search|query)>[^\n]*/gi, '')
+        .replace(/<\/?(?:query|search_query|web_search)[^>]*>/gi, '')
+        .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
+        .replace(/<\/?tool_call[^>]*>/gi, '')
+        .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
+        .replace(/<parameter[\s\S]*?<\/parameter>/gi, '')
+        .replace(/<\/?invoke[^>]*>/gi, '')
+        .replace(/<\/?parameter[^>]*>/gi, '');
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> {
     const base64 = token.split('.')[1];
     const json = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
@@ -1302,15 +1318,9 @@ Deno.serve(async (req: Request) => {
                             rounds++;
                             continue;
                         } else {
-                            // Bug 1 fix: emit a content_start sentinel before forwarding the
-                            // final content stream. This tells the frontend that any delta.reasoning
-                            // chunks in this round are the model's actual answer, not internal thinking.
-                            // MiniMax Nitro (and similar models) put their post-tool-call answer in
-                            // delta.reasoning even though it's the response, not a thought.
-                            controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
+                            let accumulatedResponseText = '';
 
-                            const parseUsageAndStream = (chunkVal: Uint8Array) => {
-                                controller.enqueue(chunkVal);
+                            const processChunk = (chunkVal: Uint8Array) => {
                                 const text = decoder.decode(chunkVal, { stream: true });
                                 const lines = text.split('\n');
                                 for (const line of lines) {
@@ -1338,44 +1348,72 @@ Deno.serve(async (req: Request) => {
                                                 ? parsed.error
                                                 : (parsed.error?.message ?? 'stream error');
                                         }
+
+                                        const delta = choice?.delta;
+                                        if (delta) {
+                                            const contentChunk = delta.content || delta.reasoning || delta.reasoning_content || '';
+                                            accumulatedResponseText += contentChunk;
+                                        }
                                     } catch { /* skip */ }
                                 }
                             };
 
+                            const finalChunks: Uint8Array[] = [];
                             for (let i = 0; i < firstChunks.length; i++) {
                                 if (!flushedChunks[i]) {
-                                    controller.enqueue(firstChunks[i]);
+                                    finalChunks.push(firstChunks[i]);
+                                    processChunk(firstChunks[i]);
                                 }
-                            }
-
-                            const lines = accumulatedText.split('\n');
-                            for (const line of lines) {
-                                const trimmed = line.trim();
-                                if (!trimmed.startsWith('data: ')) continue;
-                                const dataStr = trimmed.slice(6);
-                                if (dataStr === '[DONE]') {
-                                    finalSawDone = true;
-                                    continue;
-                                }
-                                try {
-                                    const parsed = JSON.parse(dataStr);
-                                    if (parsed.usage) {
-                                        totalPromptTokens += parsed.usage.prompt_tokens || 0;
-                                        totalCompletionTokens += parsed.usage.completion_tokens || 0;
-                                        totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
-                                    }
-                                } catch { /* skip */ }
                             }
 
                             while (true) {
                                 const { done, value } = await reader.read();
                                 if (done) break;
                                 if (value) {
-                                    parseUsageAndStream(value);
+                                    finalChunks.push(value);
+                                    processChunk(value);
                                 }
                             }
 
-                            break;
+                            const hasLeakedToolCall = 
+                                /<invoke\s+name=/i.test(accumulatedResponseText) ||
+                                /<tool_call>/i.test(accumulatedResponseText) ||
+                                /<minimax:tool_call>/i.test(accumulatedResponseText);
+
+                            if (hasLeakedToolCall) {
+                                const cleanedContent = cleanLeakedToolCalls(accumulatedResponseText).trim();
+                                if (cleanedContent.length < 50 && rounds < maxRounds - 1) {
+                                    currentMessages.push({
+                                        role: 'assistant',
+                                        content: accumulatedResponseText
+                                    });
+                                    currentMessages.push({
+                                        role: 'system',
+                                        content: 'Please provide your answer as plain text without any tool calls or XML tags.'
+                                    });
+                                    rounds++;
+                                    continue;
+                                } else {
+                                    controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
+                                    const cleanChunk = {
+                                        choices: [{
+                                            delta: {
+                                                content: cleanedContent || 'I was unable to generate a response.'
+                                            },
+                                            finish_reason: 'stop'
+                                        }]
+                                    };
+                                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(cleanChunk)}\n\n`));
+                                    controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                                    break;
+                                }
+                            } else {
+                                controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
+                                for (const chunk of finalChunks) {
+                                    controller.enqueue(chunk);
+                                }
+                                break;
+                            }
                         }
                     }
 
