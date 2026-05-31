@@ -1366,10 +1366,9 @@ async function processStream(
     };
     signal?.addEventListener('abort', onAbort, { once: true });
 
-    function sanitizeAssistantOutput(text: string): string {
-        if (!text) return text;
+    function sanitizeAssistantOutput(t: string): string {
+        if (!t || typeof t !== 'string') return t ?? '';
 
-        let t = text;
         t = sanitizeMinimaxTags(t);
 
         // Strip role-label leakage that some models emit (especially after prompt changes).
@@ -1454,10 +1453,12 @@ async function processStream(
 
                 if (currentEvent === 'tool_activity') {
                     try {
-                        const eventData = JSON.parse(data);
+                        const activityData = JSON.parse(data);
                         sawToolActivityEvent = true;
-                        callbacks.onToolActivity?.(eventData);
-                    } catch { /* ignore */ }
+                        callbacks.onToolActivity?.(activityData);
+                    } catch {
+                        // malformed tool activity event, skip silently
+                    }
                     currentEvent = null;
                     continue;
                 }
@@ -1554,7 +1555,10 @@ async function processStream(
                         const shouldRouteToChunk = treatReasoningAsContent;
 
                         if (shouldRouteToChunk) {
-                            callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
+                            const chunk = sanitizeAssistantOutput(reasoningChunk);
+                            if (chunk && typeof chunk === 'string') {
+                                callbacks.onChunk(chunk);
+                            }
                             contentChunkCount++;
                             lastContentTail = reasoningChunk.slice(-220);
                             if (accContent.length < FINALIZE_CONTENT_CAP) {
@@ -1563,14 +1567,20 @@ async function processStream(
                         } else if (reasoningChunk.includes('<lucen_artifact')) {
                             // Some providers may mistakenly emit artifact blocks in the reasoning channel.
                             // Route those back to normal content so the artifact pipeline can handle them.
-                            callbacks.onChunk(sanitizeAssistantOutput(reasoningChunk));
+                            const chunk = sanitizeAssistantOutput(reasoningChunk);
+                            if (chunk && typeof chunk === 'string') {
+                                callbacks.onChunk(chunk);
+                            }
                             contentChunkCount++;
                             lastContentTail = reasoningChunk.slice(-220);
                             if (accContent.length < FINALIZE_CONTENT_CAP) {
                                 accContent += reasoningChunk;
                             }
                         } else {
-                            callbacks.onReasoning(sanitizeAssistantOutput(reasoningChunk));
+                            const chunk = sanitizeAssistantOutput(reasoningChunk);
+                            if (chunk && typeof chunk === 'string') {
+                                callbacks.onReasoning(chunk);
+                            }
                         }
                         reasoningChunkCount++;
                         lastReasoningTail = reasoningChunk.slice(-220);
@@ -1584,7 +1594,10 @@ async function processStream(
 
                     // Handle regular content
                     if (delta.content) {
-                        callbacks.onChunk(sanitizeAssistantOutput(String(delta.content)));
+                        const chunk = sanitizeAssistantOutput(String(delta.content));
+                        if (chunk && typeof chunk === 'string') {
+                            callbacks.onChunk(chunk);
+                        }
                         contentChunkCount++;
                         lastContentTail = String(delta.content).slice(-220);
                         if (accContent.length < FINALIZE_CONTENT_CAP) {

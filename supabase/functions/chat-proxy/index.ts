@@ -383,7 +383,8 @@ Deno.serve(async (req: Request) => {
             }
         }
 
-        const { hasImage, hasFile } = detectAttachments(messages);
+        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+        const { hasImage, hasFile } = detectAttachments(lastUserMessage ? [lastUserMessage] : []);
         const toolsToPass: any[] = [];
         if (hasImage) {
             toolsToPass.push(TOOLS.analyze_image);

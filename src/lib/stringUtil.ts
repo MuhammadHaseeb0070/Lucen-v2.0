@@ -8,7 +8,7 @@
  *  - The text content BETWEEN these tags if the tags are present
  */
 export function sanitizeMinimaxTags(text: string): string {
-    if (!text) return text;
+    if (!text || typeof text !== 'string') return text ?? '';
     return text
         .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
         .replace(/<\/?minimax:[^>]*>/g, '');
