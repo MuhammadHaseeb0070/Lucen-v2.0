@@ -11,6 +11,7 @@ import {
 import { useUIStore } from '../store/uiStore';
 import { useCreditsStore } from '../store/creditsStore';
 import { startCheckout } from '../services/checkout';
+import { getUserFriendlyError } from '../lib/errorMessages';
 
 // ─── FAQ Accordion Item ───
 const FaqItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
@@ -216,7 +217,7 @@ const PricingModal: React.FC = () => {
             const redirectUrl = `${window.location.origin}/chat?subscription_updated=1`;
             await startCheckout(plan.variantId, redirectUrl);
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Checkout failed');
+            setError(getUserFriendlyError(e instanceof Error ? e.message : 'Checkout failed'));
             setLoadingTier(null);
         }
     };

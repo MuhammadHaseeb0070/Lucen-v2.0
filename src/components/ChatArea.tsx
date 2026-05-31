@@ -19,6 +19,7 @@ import { useUIStore } from '../store/uiStore';
 import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
 import { SmoothScroll } from './SmoothScroll';
+import { getUserFriendlyError } from '../lib/errorMessages';
 
 // Patch/update flow removed: artifacts are generated from scratch only.
 
@@ -405,14 +406,15 @@ const ChatArea: React.FC = () => {
             },
             onError: (error) => {
                 flushAllPending();
+                const friendlyErr = getUserFriendlyError(error);
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation
-                        ? `${renderedContent}\n\n⚠️ Error continuing: ${error}`
-                        : `⚠️ Error: ${error}`,
+                        ? `${renderedContent}\n\n⚠️ Error continuing: ${friendlyErr}`
+                        : `⚠️ Error: ${friendlyErr}`,
                     isStreaming: false,
                     isReasoningStreaming: false,
                     generationStatus: 'failed_recoverable',
-                    generationStatusDetail: error,
+                    generationStatusDetail: friendlyErr,
                 });
                 abortRef.current = null;
                 useCreditsStore.getState().syncFromServer();

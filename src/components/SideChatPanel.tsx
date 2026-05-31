@@ -18,6 +18,7 @@ import { useChatStore } from '../store/chatStore';
 import { useUIStore } from '../store/uiStore';
 import { streamChat } from '../services/openrouter';
 import { SIDE_CHAT_SYSTEM_PROMPT } from '../config/prompts';
+import { getUserFriendlyError } from '../lib/errorMessages';
 import type { Message, FileAttachment } from '../types';
 import Logo from './Logo';
 import { SmoothScroll } from './SmoothScroll';
@@ -225,8 +226,9 @@ const SideChatPanel: React.FC = () => {
                 },
                 onError: (error) => {
                     if (sideRaf !== null) { cancelAnimationFrame(sideRaf); sideRaf = null; }
+                    const friendlyErr = getUserFriendlyError(error);
                     updateMessage(assistantMsgId, {
-                        content: `⚠️ Error: ${error}`,
+                        content: `⚠️ Error: ${friendlyErr}`,
                         isStreaming: false,
                     });
                     abortRef.current = null;

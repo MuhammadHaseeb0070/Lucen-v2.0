@@ -16,12 +16,15 @@ const CHUNK_SIZE = 400;
 const CHUNK_OVERLAP = 50;
 
 function chunkText(text: string): string[] {
+    if (!text || typeof text !== 'string') {
+        return [];
+    }
     const words = text.split(/\s+/).filter(Boolean);
     const chunks: string[] = [];
     let i = 0;
     while (i < words.length) {
         const chunk = words.slice(i, i + CHUNK_SIZE).join(' ');
-        if (chunk.trim()) chunks.push(chunk.trim());
+        if (chunk && typeof chunk === 'string' && chunk.trim()) chunks.push(chunk.trim());
         i += CHUNK_SIZE - CHUNK_OVERLAP;
     }
     return chunks;
@@ -54,6 +57,35 @@ async function embedTexts(texts: string[], apiKey: string): Promise<{ embeddings
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+
+    // Validate incoming payload at the very top of request handler.
+    // If required fields are missing or empty, return 200 skipped.
+    let text = '';
+    let file_name = '';
+    let message_id = '';
+    let conversation_id = '';
+    let request_id = '';
+    let parent_request_id = '';
+    let parsedBody: any = null;
+
+    try {
+        parsedBody = await req.clone().json();
+        text = parsedBody?.text;
+        file_name = parsedBody?.file_name;
+        message_id = parsedBody?.message_id;
+        conversation_id = parsedBody?.conversation_id;
+        request_id = parsedBody?.request_id;
+        parent_request_id = parsedBody?.parent_request_id;
+    } catch {
+        // Silent catch
+    }
+
+    if (!text || typeof text !== 'string' || !text.trim() || !file_name || !message_id || !conversation_id) {
+        return new Response(
+            JSON.stringify({ success: true, skipped: true }),
+            { headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+    }
 
     const startedAt = Date.now();
     const accounting = {
@@ -100,7 +132,7 @@ Deno.serve(async (req: Request) => {
 
     try {
         const authHeader = req.headers.get('Authorization');
-        if (!authHeader) {
+        if (!authHeader || typeof authHeader !== 'string') {
             return await logAndReturn(
                 new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }),
                 'auth_error',
@@ -116,7 +148,14 @@ Deno.serve(async (req: Request) => {
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
         let userId = '';
         try {
-            const base64 = token.split('.')[1];
+            const parts = token.split('.');
+            if (parts.length < 2) {
+                throw new Error('Malformed token');
+            }
+            const base64 = parts[1];
+            if (!base64 || typeof base64 !== 'string') {
+                throw new Error('Malformed base64 part');
+            }
             const claims = JSON.parse(atob(base64.replace(/-/g, '+').replace(/_/g, '/')));
             userId = claims.sub as string;
         } catch {
@@ -135,8 +174,8 @@ Deno.serve(async (req: Request) => {
         }
         accounting.userId = userId;
 
-        const body = await req.json();
-        const { text, file_name, message_id, conversation_id, request_id, parent_request_id } = body ?? {};
+        const body = parsedBody || await req.json().catch(() => ({}));
+        const { text: _t, file_name: _fn, message_id: _mi, conversation_id: _ci, request_id: _ri, parent_request_id: _pri } = body ?? {};
 
         if (typeof conversation_id === 'string') accounting.conversationId = conversation_id;
         if (typeof message_id === 'string') accounting.messageId = message_id;

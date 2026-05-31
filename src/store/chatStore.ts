@@ -419,55 +419,63 @@ export const useChatStore = create<ChatStore>()(
                         await db.saveMessage(convId, message);
 
                         // RAG embeds: fire-and-forget
-                        if (message.attachments && message.attachments.length > 0) {
-                            const { data: { session } } = await supabase!.auth.getSession();
-                            if (session?.access_token) {
-                                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                                const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                                for (const att of message.attachments) {
-                                    const contentToEmbed = att.textContent || att.aiDescription;
-                                    if (contentToEmbed && contentToEmbed.length > 200) {
-                                        const embedRequestId =
-                                            typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                                                ? crypto.randomUUID()
-                                                : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-                                        const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
-                                        const embedBody = {
-                                            text: contentToEmbed,
-                                            file_name: att.name,
-                                            message_id: message.id,
-                                            conversation_id: convId,
-                                            request_id: embedRequestId,
-                                        };
-                                        const finalizeEmbed = captureCall({
-                                            id: embedRequestId,
-                                            kind: 'embed',
-                                            endpoint: embedEndpoint,
-                                            request: embedBody,
-                                        });
-                                        fetch(embedEndpoint, {
-                                            method: 'POST',
-                                            headers: {
-                                                'Content-Type': 'application/json',
-                                                'Authorization': `Bearer ${session.access_token}`,
-                                                'apikey': anonKey || '',
-                                            },
-                                            body: JSON.stringify(embedBody),
-                                        })
-                                            .then(async (r) => {
-                                                const text = await r.text().catch(() => '');
-                                                finalizeEmbed({
-                                                    status: r.status,
-                                                    response: text.slice(0, 4000),
-                                                    error: r.ok ? undefined : `HTTP ${r.status}`,
-                                                });
-                                            })
-                                            .catch((err) => {
-                                                console.error('[RAG Embed] Failed:', err);
-                                                finalizeEmbed({
-                                                    error: err instanceof Error ? err.message : 'unknown',
-                                                });
+                        const conv = get().conversations.find((c) => c.id === convId);
+                        const hasPriorFiles = conv?.messages.some(m =>
+                            m.attachments && m.attachments.some(a => a.type !== 'image')
+                        ) || false;
+                        const hasAttachments = !!(message.attachments && message.attachments.length > 0);
+
+                        if (hasAttachments || (message.content && message.content.length > 500 && hasPriorFiles)) {
+                            if (message.attachments && message.attachments.length > 0) {
+                                const { data: { session } } = await supabase!.auth.getSession();
+                                if (session?.access_token) {
+                                    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                                    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                                    for (const att of message.attachments) {
+                                        const contentToEmbed = att.textContent || att.aiDescription;
+                                        if (contentToEmbed && contentToEmbed.length > 200) {
+                                            const embedRequestId =
+                                                typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                                                    ? crypto.randomUUID()
+                                                    : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                                            const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
+                                            const embedBody = {
+                                                text: contentToEmbed,
+                                                file_name: att.name,
+                                                message_id: message.id,
+                                                conversation_id: convId,
+                                                request_id: embedRequestId,
+                                            };
+                                            const finalizeEmbed = captureCall({
+                                                id: embedRequestId,
+                                                kind: 'embed',
+                                                endpoint: embedEndpoint,
+                                                request: embedBody,
                                             });
+                                            fetch(embedEndpoint, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'Authorization': `Bearer ${session.access_token}`,
+                                                    'apikey': anonKey || '',
+                                                },
+                                                body: JSON.stringify(embedBody),
+                                            })
+                                                .then(async (r) => {
+                                                    const text = await r.text().catch(() => '');
+                                                    finalizeEmbed({
+                                                        status: r.status,
+                                                        response: text.slice(0, 4000),
+                                                        error: r.ok ? undefined : `HTTP ${r.status}`,
+                                                    });
+                                                })
+                                                .catch((err) => {
+                                                    console.error('[RAG Embed] Failed:', err);
+                                                    finalizeEmbed({
+                                                        error: err instanceof Error ? err.message : 'unknown',
+                                                    });
+                                                });
+                                        }
                                     }
                                 }
                             }
@@ -513,55 +521,63 @@ export const useChatStore = create<ChatStore>()(
                         }
                         await db.saveMessage(convId, message);
 
-                        if (message.attachments && message.attachments.length > 0) {
-                            const { data: { session } } = await supabase!.auth.getSession();
-                            if (session?.access_token) {
-                                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                                const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                                for (const att of message.attachments) {
-                                    const contentToEmbed = att.textContent || att.aiDescription;
-                                    if (contentToEmbed && contentToEmbed.length > 200) {
-                                        const embedRequestId =
-                                            typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                                                ? crypto.randomUUID()
-                                                : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-                                        const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
-                                        const embedBody = {
-                                            text: contentToEmbed,
-                                            file_name: att.name,
-                                            message_id: message.id,
-                                            conversation_id: convId,
-                                            request_id: embedRequestId,
-                                        };
-                                        const finalizeEmbed = captureCall({
-                                            id: embedRequestId,
-                                            kind: 'embed',
-                                            endpoint: embedEndpoint,
-                                            request: embedBody,
-                                        });
-                                        fetch(embedEndpoint, {
-                                            method: 'POST',
-                                            headers: {
-                                                'Content-Type': 'application/json',
-                                                'Authorization': `Bearer ${session.access_token}`,
-                                                'apikey': anonKey || '',
-                                            },
-                                            body: JSON.stringify(embedBody),
-                                        })
-                                            .then(async (r) => {
-                                                const text = await r.text().catch(() => '');
-                                                finalizeEmbed({
-                                                    status: r.status,
-                                                    response: text.slice(0, 4000),
-                                                    error: r.ok ? undefined : `HTTP ${r.status}`,
-                                                });
-                                            })
-                                            .catch((err) => {
-                                                console.error('[RAG Embed] Failed:', err);
-                                                finalizeEmbed({
-                                                    error: err instanceof Error ? err.message : 'unknown',
-                                                });
+                        const conv = get().conversations.find((c) => c.id === convId);
+                        const hasPriorFiles = conv?.messages.some(m =>
+                            m.attachments && m.attachments.some(a => a.type !== 'image')
+                        ) || false;
+                        const hasAttachments = !!(message.attachments && message.attachments.length > 0);
+
+                        if (hasAttachments || (message.content && message.content.length > 500 && hasPriorFiles)) {
+                            if (message.attachments && message.attachments.length > 0) {
+                                const { data: { session } } = await supabase!.auth.getSession();
+                                if (session?.access_token) {
+                                    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                                    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                                    for (const att of message.attachments) {
+                                        const contentToEmbed = att.textContent || att.aiDescription;
+                                        if (contentToEmbed && contentToEmbed.length > 200) {
+                                            const embedRequestId =
+                                                typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                                                    ? crypto.randomUUID()
+                                                    : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                                            const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
+                                            const embedBody = {
+                                                text: contentToEmbed,
+                                                file_name: att.name,
+                                                message_id: message.id,
+                                                conversation_id: convId,
+                                                request_id: embedRequestId,
+                                            };
+                                            const finalizeEmbed = captureCall({
+                                                id: embedRequestId,
+                                                kind: 'embed',
+                                                endpoint: embedEndpoint,
+                                                request: embedBody,
                                             });
+                                            fetch(embedEndpoint, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'Authorization': `Bearer ${session.access_token}`,
+                                                    'apikey': anonKey || '',
+                                                },
+                                                body: JSON.stringify(embedBody),
+                                            })
+                                                .then(async (r) => {
+                                                    const text = await r.text().catch(() => '');
+                                                    finalizeEmbed({
+                                                        status: r.status,
+                                                        response: text.slice(0, 4000),
+                                                        error: r.ok ? undefined : `HTTP ${r.status}`,
+                                                    });
+                                                })
+                                                .catch((err) => {
+                                                    console.error('[RAG Embed] Failed:', err);
+                                                    finalizeEmbed({
+                                                        error: err instanceof Error ? err.message : 'unknown',
+                                                    });
+                                                });
+                                        }
                                     }
                                 }
                             }

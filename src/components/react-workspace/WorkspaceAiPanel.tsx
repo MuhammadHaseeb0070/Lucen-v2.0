@@ -7,6 +7,7 @@ import { useDiagnosticsStore } from '../../store/diagnosticsStore';
 import { useWorkspaceSessionStore } from '../../store/workspaceSessionStore';
 import { streamWorkspaceAiResponse } from '../../services/workspaceAi';
 import type { WorkspaceAiMessage } from '../../types/workspace';
+import { getUserFriendlyError } from '../../lib/errorMessages';
 
 interface WorkspaceAiPanelProps {
   seedPrompt?: string | null;
@@ -90,8 +91,9 @@ const WorkspaceAiPanel: React.FC<WorkspaceAiPanelProps> = ({ seedPrompt, onSeedC
         setIsStreaming(false);
       },
       onError: (message) => {
+        const friendlyMsg = getUserFriendlyError(message);
         updateAiMessage(assistantMessage.id, {
-          content: `Workspace AI failed: ${message}`,
+          content: `Workspace AI failed: ${friendlyMsg}`,
           isStreaming: false,
         });
         setIsStreaming(false);
@@ -105,7 +107,7 @@ const WorkspaceAiPanel: React.FC<WorkspaceAiPanelProps> = ({ seedPrompt, onSeedC
       addAiMessage({
         id: uuidv4(),
         role: 'system',
-        content: `Patch application failed: ${result.message}`,
+        content: `Patch application failed: ${getUserFriendlyError(result.message)}`,
         createdAt: Date.now(),
       });
     }

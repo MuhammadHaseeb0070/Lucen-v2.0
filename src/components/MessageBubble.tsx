@@ -8,6 +8,7 @@ import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
 import { fetchUsageReceipt } from '../services/database';
+import { getUserFriendlyError } from '../lib/errorMessages';
 
 interface MessageBubbleProps {
     message: Message;
@@ -567,7 +568,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         {message.generationStatus === 'validating' && 'Validating artifact…'}
                         {message.generationStatus === 'repairing' && 'Repairing artifact…'}
                         {message.generationStatus === 'failed_recoverable' && 'Generation failed recoverably. You can retry.'}
-                        {message.generationStatusDetail ? ` ${message.generationStatusDetail}` : ''}
+                        {message.generationStatusDetail ? ` ${getUserFriendlyError(message.generationStatusDetail)}` : ''}
                     </span>
                 </div>
             )}
