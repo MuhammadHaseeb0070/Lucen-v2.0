@@ -393,6 +393,10 @@ Deno.serve(async (req: Request) => {
             toolsToPass.push(TOOLS.process_file);
         }
 
+        console.log('[chat-proxy] hasImage:', hasImage, 'hasFile:', hasFile, 
+          'toolsToPass count:', toolsToPass.length,
+          'lastUserMsg preview:', lastUserMessage?.content?.slice(0, 100));
+
         // Decide the effective upstream model.
         // Default: use the resolved effectiveModel.
         // Only swap when we're in explicit fallback mode AND the env var is
@@ -673,8 +677,7 @@ Deno.serve(async (req: Request) => {
 
                         if (toolsToPass.length > 0 && rounds < maxRounds - 1) {
                             requestBody.tools = toolsToPass;
-                        } else {
-                            requestBody.tool_choice = 'none';
+                            requestBody.tool_choice = 'auto';
                         }
 
                         const openrouterResponse = await fetch(OPENROUTER_URL, {
