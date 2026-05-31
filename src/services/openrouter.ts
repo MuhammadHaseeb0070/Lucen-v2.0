@@ -1674,6 +1674,7 @@ async function processStream(
                 reasoning: accReasoning,
             });
         } else {
+            console.error('[processStream] EXCEPTION:', err);
             const msg = err instanceof Error ? err.message : 'Unknown error';
             callbacks.onError(msg);
             logStreamSummary('error');
