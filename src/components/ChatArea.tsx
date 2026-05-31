@@ -406,6 +406,7 @@ const ChatArea: React.FC = () => {
             },
             onError: (error) => {
                 flushAllPending();
+                console.error('[ChatArea] onError received:', error);
                 const friendlyErr = getUserFriendlyError(error);
                 updateMessage(convId, assistantMsgId, {
                     content: options.continuation

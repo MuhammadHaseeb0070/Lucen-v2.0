@@ -643,6 +643,7 @@ export async function streamChat(
             accounting,
         );
     } catch (err: unknown) {
+        console.error('[streamChat] top-level catch:', err);
         const msg = err instanceof Error ? err.message : String(err);
         callbacks.onError(msg);
     }
@@ -1218,6 +1219,8 @@ async function streamViaEdgeFunction(
                 ? 'Session expired. Please sign out and sign in again.'
                 : `API Error ${response.status}`;
         }
+        const errorText = errorMsg;
+        console.error('[streamViaEdgeFunction] HTTP error:', response.status, errorText);
         callbacks.onError(errorMsg); 
         return;
     }
@@ -1507,6 +1510,7 @@ async function processStream(
 
                     const parsed = JSON.parse(data);
                     if (parsed && parsed.error) {
+                        console.error('[processStream] API error chunk:', parsed.error);
                         callbacks.onError(parsed.error.message ?? (typeof parsed.error === 'string' ? parsed.error : 'Stream error'));
                         return;
                     }
