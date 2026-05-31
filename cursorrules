@@ -183,6 +183,10 @@ Update this after each completed task.
 - [x] MiniMax XML tag sanitization: strip minimax tags from chunks, final content, and DB messages
 - [x] Tool activity UI enhancements: friendly fallback labels and running step deduplication
 - [x] Stream state robustness: ensure isStreaming/isLoading is cleared on stream done, abort, or error via try-catch wrapping
+- [x] Per-tool deduplication: image by ID, file by ID, search by query
+- [x] maxRounds reduced to 3
+- [x] Tool result compression after round 1
+- [x] FINAL RESPONSE instruction on last round
 
 ### In Progress
 - [ ] (nothing currently)

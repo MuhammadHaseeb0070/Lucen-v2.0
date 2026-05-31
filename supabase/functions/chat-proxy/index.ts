@@ -617,7 +617,34 @@ Deno.serve(async (req: Request) => {
                 
                 let currentMessages = [...messages];
                 let rounds = 0;
-                const maxRounds = 4;
+                const maxRounds = 3;
+                
+                const toolCallCounts: Record<string, number> = {};
+                const MAX_CALLS_PER_TOOL: Record<string, number> = { web_search: 3 };
+                const analyzedImageIds = new Set<string>();
+                const processedFileIds = new Set<string>();
+                const searchedQueries = new Set<string>();
+
+                const uploadedImageIds = new Set<string>();
+                const uploadedFileIds = new Set<string>();
+                for (const msg of messages) {
+                    if (msg && typeof msg === 'object') {
+                        const content = msg.content;
+                        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+                        
+                        const imgRegex = /\[Attached Image:\s*([a-zA-Z0-9-]+)\]/g;
+                        let imgMatch;
+                        while ((imgMatch = imgRegex.exec(contentStr)) !== null) {
+                            uploadedImageIds.add(imgMatch[1]);
+                        }
+                        
+                        const fileRegex = /\[Attached File:\s*([a-zA-Z0-9-]+)\]/g;
+                        let fileMatch;
+                        while ((fileMatch = fileRegex.exec(contentStr)) !== null) {
+                            uploadedFileIds.add(fileMatch[1]);
+                        }
+                    }
+                }
                 
                 // Track total accumulated metrics across all rounds
                 let totalPromptTokens = 0;
@@ -677,6 +704,39 @@ Deno.serve(async (req: Request) => {
                             break;
                         }
 
+                        // FIX 3 — Tool result compression for rounds > 1
+                        if (rounds > 0) {
+                            for (const msg of currentMessages) {
+                                if (msg && typeof msg === 'object' && msg.role === 'tool' && typeof msg.content === 'string') {
+                                    if (msg.content.length > 2000) {
+                                        msg.content = msg.content.slice(0, 2000) + '\n[Truncated for efficiency. Key information above.]';
+                                    }
+                                }
+                            }
+                        }
+
+                        const allLimitsReached = toolsToPass.length > 0 && toolsToPass.every((tool: any) => {
+                            const name = tool.function?.name;
+                            if (name === 'web_search') {
+                                return (toolCallCounts['web_search'] || 0) >= 3;
+                            }
+                            if (name === 'analyze_image') {
+                                return uploadedImageIds.size === 0 || Array.from(uploadedImageIds).every(id => analyzedImageIds.has(id));
+                            }
+                            if (name === 'process_file') {
+                                return uploadedFileIds.size === 0 || Array.from(uploadedFileIds).every(id => processedFileIds.has(id));
+                            }
+                            return false;
+                        });
+                        const isLastRound = rounds >= maxRounds - 1;
+
+                        if (allLimitsReached || isLastRound) {
+                            currentMessages.push({
+                                role: 'system',
+                                content: 'FINAL RESPONSE REQUIRED: Generate a complete, helpful response now using only the search results and information already retrieved above. Do not output search queries. Do not reference needing more searches. Write a direct, useful answer to the user.'
+                            });
+                        }
+
                         const requestBody: any = {
                             model: effectiveModel,
                             messages: currentMessages,
@@ -689,7 +749,7 @@ Deno.serve(async (req: Request) => {
                             ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
                         };
 
-                        if (toolsToPass.length > 0 && rounds < maxRounds - 1) {
+                        if (toolsToPass.length > 0 && rounds < maxRounds - 1 && !allLimitsReached) {
                             requestBody.tools = toolsToPass;
                             requestBody.tool_choice = 'auto';
                         }
@@ -920,6 +980,8 @@ Deno.serve(async (req: Request) => {
 
                                     let durationMs = 0;
 
+                                    // Old simple limits check removed (moved below arguments validation)
+
                                     // FIX 3: Malformed Arguments Crash Check
                                     if (!argsParsedSuccessfully) {
                                         success = false;
@@ -995,6 +1057,96 @@ Deno.serve(async (req: Request) => {
                                     if (!ALLOWED_TOOLS.includes(tc.name)) {
                                         success = false;
                                         output = 'Tool execution failed: unknown tool name.';
+                                        durationMs = Date.now() - start;
+
+                                        toolsExecuted.push({
+                                            id: tc.id!,
+                                            name: tc.name!,
+                                            arguments: tc.arguments,
+                                            status: 'failed',
+                                            durationMs
+                                        });
+
+                                        const eventPayload = {
+                                            id: tc.id,
+                                            tool: tc.name,
+                                            status: 'failed',
+                                            label: `Running ${tc.name}`,
+                                            args: parsedArgs,
+                                            durationMs,
+                                            output: output.slice(0, 400)
+                                        };
+                                        try {
+                                            controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                                        } catch { /* ignore */ }
+
+                                        return {
+                                            tool_call_id: tc.id,
+                                            role: 'tool',
+                                            name: tc.name,
+                                            content: output
+                                        };
+                                    }
+
+                                    // Check tool limits & deduplication
+                                    const toolName = tc.name;
+                                    let isLimitReached = false;
+                                    let limitMsg = '';
+
+                                    if (toolName === 'web_search') {
+                                        const query = (parsedArgs?.query || '').trim().toLowerCase();
+                                        const currentCount = toolCallCounts['web_search'] || 0;
+                                        const maxForWebSearch = MAX_CALLS_PER_TOOL['web_search'] ?? 3;
+
+                                        if (currentCount >= maxForWebSearch) {
+                                            isLimitReached = true;
+                                            limitMsg = 'Search limit reached for this message. Use results already retrieved.';
+                                        } else if (query && searchedQueries.has(query)) {
+                                            isLimitReached = true;
+                                            limitMsg = 'Query already searched. Use results already retrieved.';
+                                        }
+                                        
+                                        if (!isLimitReached) {
+                                            toolCallCounts['web_search'] = currentCount + 1;
+                                            if (query) {
+                                                searchedQueries.add(query);
+                                            }
+                                        }
+                                    } else if (toolName === 'analyze_image') {
+                                        const imageIds = parsedArgs?.image_ids || [];
+                                        if (Array.isArray(imageIds) && imageIds.length > 0) {
+                                            const allAlreadyAnalyzed = imageIds.every((id: string) => analyzedImageIds.has(id));
+                                            if (allAlreadyAnalyzed) {
+                                                isLimitReached = true;
+                                                limitMsg = 'Image already analyzed. Use results already retrieved.';
+                                            } else {
+                                                imageIds.forEach((id: string) => analyzedImageIds.add(id));
+                                            }
+                                        }
+                                    } else if (toolName === 'process_file') {
+                                        const fileId = parsedArgs?.file_id;
+                                        if (fileId && typeof fileId === 'string') {
+                                            if (processedFileIds.has(fileId)) {
+                                                isLimitReached = true;
+                                                limitMsg = 'File already processed. Use results already retrieved.';
+                                            } else {
+                                                processedFileIds.add(fileId);
+                                            }
+                                        }
+                                    } else {
+                                        // For any other/unknown tools, default to 1 count limit
+                                        const currentCount = toolCallCounts[toolName] || 0;
+                                        if (currentCount >= 1) {
+                                            isLimitReached = true;
+                                            limitMsg = 'Execution limit reached for this tool.';
+                                        } else {
+                                            toolCallCounts[toolName] = currentCount + 1;
+                                        }
+                                    }
+
+                                    if (isLimitReached) {
+                                        success = false;
+                                        output = limitMsg;
                                         durationMs = Date.now() - start;
 
                                         toolsExecuted.push({

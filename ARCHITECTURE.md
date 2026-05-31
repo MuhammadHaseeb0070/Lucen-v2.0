@@ -42,6 +42,19 @@ These are non-negotiable. Breaking any of these will break the system.
 
 ---
 
+## Tool Call Limits (Hard Rules — Never Change Without Discussion)
+
+web_search:     max 3 per message, query deduplication via Set
+analyze_image:  max 1 per unique image_id, not per message  
+process_file:   max 1 per unique file_id, not per message
+total rounds:   max 3
+
+After round 1: tool results compressed to 2,000 chars
+Final round:   FINAL RESPONSE instruction injected, no tools offered
+Dedup:         same query/image/file never processed twice per message
+
+---
+
 ## Request Flow — Standard Chat Message
 
 ```
