@@ -359,6 +359,20 @@ Deno.serve(async (req: Request) => {
         const webSearchFallback = !!web_search_fallback_requested;
         const webSearchUsed = !!web_search_used;
 
+        if (!webSearchRequested) {
+            const systemMsg = {
+                role: 'system',
+                content: 'You do not have access to the internet or web search in this conversation. Do not attempt to search the web, generate search queries, or reference real-time information. If asked about current events or live data, honestly tell the user you cannot access the web and suggest they enable web search.'
+            };
+            const reversedIndex = [...messages].reverse().findIndex(m => m.role === 'user');
+            if (reversedIndex !== -1) {
+                const targetIndex = messages.length - 1 - reversedIndex;
+                messages.splice(targetIndex, 0, systemMsg);
+            } else {
+                messages.push(systemMsg);
+            }
+        }
+
         const sanitizedWebPlugins = webSearchFallback && legacyPluginRequested
             ? sanitizeWebPlugins(plugins)
             : undefined;

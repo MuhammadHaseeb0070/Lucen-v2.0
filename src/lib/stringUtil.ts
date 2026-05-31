@@ -11,5 +11,8 @@ export function sanitizeMinimaxTags(text: string): string {
     if (!text || typeof text !== 'string') return text ?? '';
     return text
         .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
-        .replace(/<\/?minimax:[^>]*>/g, '');
+        .replace(/<\/?minimax:[^>]*>/g, '')
+        .replace(/<(?:query|search_query|web_search)[^>]*>[\s\S]*?<\/(?:query|search_query|web_search)>/gi, '')
+        .replace(/(?:search_query|web_search|query)>[^\n]*/gi, '')
+        .replace(/<\/?(?:query|search_query|web_search)[^>]*>/gi, '');
 }
