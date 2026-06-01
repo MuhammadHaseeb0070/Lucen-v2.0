@@ -1393,7 +1393,6 @@ Deno.serve(async (req: Request) => {
                                         role: 'system',
                                         content: 'IMPORTANT: You must now write your final answer as plain conversational text. You have already searched the web and analyzed the image. Do NOT use any XML tags, tool calls, or <invoke> tags. Just write your answer directly to the user now.'
                                     });
-                                    rounds++;
                                     continue;
                                 } else {
                                     controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
