@@ -633,7 +633,8 @@ Deno.serve(async (req: Request) => {
                 
                 let currentMessages = [...messages];
                 let rounds = 0;
-                const maxRounds = 3;
+                const maxRounds = 4;
+                let emergencyRetryUsed = false;
                 
                 const toolCallCounts: Record<string, number> = {};
                 const MAX_CALLS_PER_TOOL: Record<string, number> = { web_search: 3 };
@@ -1382,14 +1383,15 @@ Deno.serve(async (req: Request) => {
 
                             if (hasLeakedToolCall) {
                                 const cleanedContent = cleanLeakedToolCalls(accumulatedResponseText).trim();
-                                if (cleanedContent.length < 50 && rounds < maxRounds - 1) {
+                                if (cleanedContent.length < 50 && !emergencyRetryUsed) {
+                                    emergencyRetryUsed = true;
                                     currentMessages.push({
                                         role: 'assistant',
                                         content: accumulatedResponseText
                                     });
                                     currentMessages.push({
                                         role: 'system',
-                                        content: 'Please provide your answer as plain text without any tool calls or XML tags.'
+                                        content: 'IMPORTANT: You must now write your final answer as plain conversational text. You have already searched the web and analyzed the image. Do NOT use any XML tags, tool calls, or <invoke> tags. Just write your answer directly to the user now.'
                                     });
                                     rounds++;
                                     continue;
