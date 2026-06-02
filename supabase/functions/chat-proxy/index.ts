@@ -28,20 +28,79 @@ const ABSOLUTE_OUTPUT_CEILING = Number(
 );
 const MIN_OUTPUT = 512;
 
-function cleanLeakedToolCalls(text: string): string {
-    if (!text) return '';
-    return text
-        .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
-        .replace(/<\/?minimax:[^>]*>/g, '')
-        .replace(/<(?:query|search_query|web_search)[^>]*>[\s\S]*?<\/(?:query|search_query|web_search)>/gi, '')
-        .replace(/(?:search_query|web_search|query)>[^\n]*/gi, '')
-        .replace(/<\/?(?:query|search_query|web_search)[^>]*>/gi, '')
-        .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
-        .replace(/<\/?tool_call[^>]*>/gi, '')
-        .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
-        .replace(/<parameter[\s\S]*?<\/parameter>/gi, '')
-        .replace(/<\/?invoke[^>]*>/gi, '')
-        .replace(/<\/?parameter[^>]*>/gi, '');
+interface ValidationResult {
+  valid: boolean;
+  type: 'plain' | 'final' | 'artifact' | 'raw';
+  content: string;
+  rawContent: string;
+}
+
+function validateModelOutput(raw: string): ValidationResult {
+  if (!raw || typeof raw !== 'string') {
+    return { valid: false, type: 'raw', content: '', rawContent: raw || '' };
+  }
+
+  // Check for lucen_response tags (plain or final)
+  const responseMatch = raw.match(
+    /<lucen_response\s+type="(plain|final)">([\s\S]*?)<\/lucen_response>/i
+  );
+  if (responseMatch) {
+    const content = responseMatch[2].trim();
+    if (content.length >= 15) {
+      return { 
+        valid: true, 
+        type: responseMatch[1] as 'plain' | 'final',
+        content,
+        rawContent: raw
+      };
+    }
+  }
+
+  // Check for artifact (pass through as-is, handled by frontend)
+  if (/<lucen_artifact[\s\S]*?<\/lucen_artifact>/i.test(raw)) {
+    return { valid: true, type: 'artifact', content: raw, rawContent: raw };
+  }
+
+  // Fallback: if no tags but substantial plain text with no leaked XML
+  const hasLeakedXml = /<invoke\s|<tool_call|<minimax:|<query>|<parameter/i.test(raw);
+  const cleaned = raw.replace(/<[a-zA-Z_:][^>]*>[\s\S]*?<\/[a-zA-Z_:][^>]*>/g, '')
+                     .replace(/<[a-zA-Z_:][^>]*/g, '').trim();
+  
+  if (!hasLeakedXml && cleaned.length >= 30) {
+    return { valid: true, type: 'raw', content: cleaned, rawContent: raw };
+  }
+
+  return { valid: false, type: 'raw', content: '', rawContent: raw };
+}
+
+function buildResponseFormatContract(hasToolResults: boolean, webSearchEnabled: boolean): string {
+  return `## Response Format — MANDATORY
+
+You MUST wrap every response in the correct tag:
+
+**For direct answers** (no tools used this turn):
+<lucen_response type="plain">
+your response in markdown here
+</lucen_response>
+
+**For answers using tool results** (after web search, image analysis, file reading):
+<lucen_response type="final">
+your response using the gathered information
+</lucen_response>
+
+**For code, apps, HTML, Python, SVG, diagrams**:
+<lucen_artifact type="[html|python|svg|mermaid|text]" title="[descriptive title]">
+code here
+</lucen_artifact>
+
+**STRICT RULES**:
+- ALWAYS use the correct wrapper tag — no exceptions
+- NEVER output <invoke>, <tool_call>, <parameter>, or any XML tool tags
+- NEVER show search queries or tool names to the user  
+- NEVER say "I was unable to generate a response"
+- For artifacts with explanation, output both tags sequentially
+${!webSearchEnabled ? '- Web search is DISABLED. If asked about real-time info, say so and suggest enabling web search.' : ''}
+${hasToolResults ? '- You have tool results available. Use them to write a complete, helpful answer.\n- If you analyzed multiple images, describe each one individually and reference them by their order (Image 1, Image 2, etc.)' : ''}`;
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -758,9 +817,29 @@ Deno.serve(async (req: Request) => {
                             });
                         }
 
+                        // Remove any previous format contract messages to avoid duplication
+                        const filteredMessages = currentMessages.filter(
+                          m => !(m.role === 'system' && m.content?.includes('## Response Format — MANDATORY'))
+                        );
+                        
+                        const hasToolResults = rounds > 0;
+                        const formatContract = buildResponseFormatContract(hasToolResults, webSearchRequested);
+                        
+                        // Insert format contract as second-to-last message 
+                        // (just before the last user message)
+                        const lastUserIdx = [...filteredMessages].map(m => m.role).lastIndexOf('user');
+                        if (lastUserIdx !== -1) {
+                          filteredMessages.splice(lastUserIdx, 0, {
+                            role: 'system',
+                            content: formatContract
+                          });
+                        } else {
+                          filteredMessages.push({ role: 'system', content: formatContract });
+                        }
+
                         const requestBody: any = {
                             model: effectiveModel,
-                            messages: currentMessages,
+                            messages: filteredMessages,
                             stream: true,
                             max_tokens: resolvedMaxTokens,
                             max_completion_tokens: resolvedMaxTokens,
@@ -1323,101 +1402,118 @@ Deno.serve(async (req: Request) => {
                             rounds++;
                             continue;
                         } else {
-                            let accumulatedResponseText = '';
-
-                            const processChunk = (chunkVal: Uint8Array) => {
-                                const text = decoder.decode(chunkVal, { stream: true });
-                                const lines = text.split('\n');
-                                for (const line of lines) {
-                                    const trimmed = line.trim();
-                                    if (!trimmed.startsWith('data: ')) continue;
-                                    const dataStr = trimmed.slice(6);
-                                    if (dataStr === '[DONE]') {
-                                        finalSawDone = true;
-                                        continue;
-                                    }
-                                    try {
-                                        const parsed = JSON.parse(dataStr);
-                                        if (parsed.usage) {
-                                            totalPromptTokens += parsed.usage.prompt_tokens || 0;
-                                            totalCompletionTokens += parsed.usage.completion_tokens || 0;
-                                            totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
-                                        }
-                                        const choice = parsed.choices?.[0];
-                                        if (choice?.finish_reason) {
-                                            finishReason = choice.finish_reason;
-                                        }
-
-                                        if (parsed?.error) {
-                                            finalStreamError = typeof parsed.error === 'string'
-                                                ? parsed.error
-                                                : (parsed.error?.message ?? 'stream error');
-                                        }
-
-                                        const delta = choice?.delta;
-                                        if (delta) {
-                                            const contentChunk = delta.content || delta.reasoning || delta.reasoning_content || '';
-                                            accumulatedResponseText += contentChunk;
-                                        }
-                                    } catch { /* skip */ }
-                                }
+                            // Collect all final response chunks
+                            let accumulatedFinalText = '';
+                            const finalChunks: Uint8Array[] = [];
+                            
+                            const collectChunk = (chunkVal: Uint8Array) => {
+                              finalChunks.push(chunkVal);
+                              const text = decoder.decode(chunkVal, { stream: true });
+                              const lines = text.split('\n');
+                              for (const line of lines) {
+                                if (!line.trim().startsWith('data: ')) continue;
+                                const dataStr = line.trim().slice(6);
+                                if (dataStr === '[DONE]') { finalSawDone = true; continue; }
+                                try {
+                                  const parsed = JSON.parse(dataStr);
+                                  if (parsed.usage) {
+                                    totalPromptTokens += parsed.usage.prompt_tokens || 0;
+                                    totalCompletionTokens += parsed.usage.completion_tokens || 0;
+                                    totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
+                                  }
+                                  if (parsed.error) {
+                                    finalStreamError = parsed.error.message ?? 'stream error';
+                                  }
+                                  const choice = parsed.choices?.[0];
+                                  const delta = choice?.delta;
+                                  if (delta) {
+                                    accumulatedFinalText += delta.content || delta.reasoning || 
+                                                            delta.reasoning_content || '';
+                                  }
+                                } catch { /* skip */ }
+                              }
                             };
 
-                            const finalChunks: Uint8Array[] = [];
+                            // Collect firstChunks that weren't already flushed
                             for (let i = 0; i < firstChunks.length; i++) {
-                                if (!flushedChunks[i]) {
-                                    finalChunks.push(firstChunks[i]);
-                                    processChunk(firstChunks[i]);
-                                }
+                              if (!flushedChunks[i]) collectChunk(firstChunks[i]);
                             }
 
+                            // Collect remaining stream
                             while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                if (value) {
-                                    finalChunks.push(value);
-                                    processChunk(value);
-                                }
+                              const { done, value } = await reader.read();
+                              if (done) break;
+                              if (value) collectChunk(value);
                             }
 
-                            const hasLeakedToolCall = 
-                                /<invoke\s+name=/i.test(accumulatedResponseText) ||
-                                /<tool_call>/i.test(accumulatedResponseText) ||
-                                /<minimax:tool_call>/i.test(accumulatedResponseText);
+                            // Validate output
+                            const validation = validateModelOutput(accumulatedFinalText);
 
-                            if (hasLeakedToolCall) {
-                                const cleanedContent = cleanLeakedToolCalls(accumulatedResponseText).trim();
-                                if (cleanedContent.length < 50 && !emergencyRetryUsed) {
-                                    emergencyRetryUsed = true;
-                                    currentMessages.push({
-                                        role: 'assistant',
-                                        content: accumulatedResponseText
-                                    });
-                                    currentMessages.push({
-                                        role: 'system',
-                                        content: 'IMPORTANT: You must now write your final answer as plain conversational text. You have already searched the web and analyzed the image. Do NOT use any XML tags, tool calls, or <invoke> tags. Just write your answer directly to the user now.'
-                                    });
-                                    continue;
-                                } else {
-                                    controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
-                                    const cleanChunk = {
-                                        choices: [{
-                                            delta: {
-                                                content: cleanedContent || 'I was unable to generate a response.'
-                                            },
-                                            finish_reason: 'stop'
-                                        }]
-                                    };
-                                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(cleanChunk)}\n\n`));
-                                    controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-                                    break;
-                                }
-                            } else {
-                                controller.enqueue(encoder.encode(`event: content_start\ndata: ${JSON.stringify({ after_tool_calls: rounds > 0, model: effectiveModel })}\n\n`));
+                            if (validation.valid) {
+                              // Valid output — stream it
+                              if (validation.type === 'artifact') {
+                                // Artifact: stream raw chunks as-is (frontend handles parsing)
+                                controller.enqueue(encoder.encode(
+                                  `event: content_start\ndata: ${JSON.stringify({ 
+                                    after_tool_calls: rounds > 0, model: effectiveModel 
+                                  })}\n\n`
+                                ));
                                 for (const chunk of finalChunks) {
-                                    controller.enqueue(chunk);
+                                  controller.enqueue(chunk);
                                 }
-                                break;
+                              } else {
+                                // plain/final/raw: synthesize a clean single response chunk
+                                controller.enqueue(encoder.encode(
+                                  `event: content_start\ndata: ${JSON.stringify({ 
+                                    after_tool_calls: rounds > 0, model: effectiveModel 
+                                  })}\n\n`
+                                ));
+                                const cleanChunk = {
+                                  choices: [{
+                                    delta: { content: validation.content },
+                                    finish_reason: 'stop'
+                                  }]
+                                };
+                                controller.enqueue(encoder.encode(
+                                  `data: ${JSON.stringify(cleanChunk)}\n\n`
+                                ));
+                                controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              }
+                              break;
+
+                            } else if (!emergencyRetryUsed && rounds < maxRounds) {
+                              // Invalid output — one emergency retry
+                              emergencyRetryUsed = true;
+                              currentMessages.push({
+                                role: 'assistant',
+                                content: accumulatedFinalText || '[no response]'
+                              });
+                              currentMessages.push({
+                                role: 'system',
+                                content: 'Your previous response did not follow the required format. You MUST wrap your response in <lucen_response type="final">...</lucen_response> tags. Do NOT use any XML tool tags. Write your complete answer now.'
+                              });
+                              // Do NOT increment rounds — this is a format correction, not a tool call
+                              continue;
+
+                            } else {
+                              // Both attempts failed — stream neutral fallback
+                              controller.enqueue(encoder.encode(
+                                `event: content_start\ndata: ${JSON.stringify({ 
+                                  after_tool_calls: rounds > 0, model: effectiveModel 
+                                })}\n\n`
+                              ));
+                              const fallbackContent = 'I found the information but had trouble formatting my response. Please try asking again.';
+                              const fallbackChunk = {
+                                choices: [{
+                                  delta: { content: fallbackContent },
+                                  finish_reason: 'stop'
+                                }]
+                              };
+                              controller.enqueue(encoder.encode(
+                                `data: ${JSON.stringify(fallbackChunk)}\n\n`
+                              ));
+                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                              break;
                             }
                         }
                     }

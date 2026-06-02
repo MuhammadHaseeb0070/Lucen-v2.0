@@ -18,7 +18,7 @@ export const TOOLS: Record<string, ToolDefinition> = {
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyzes one or more image files from storage by their attachment UUIDs, answering a specific question.',
+            description: 'Analyze and identify the content of one or more uploaded images. Pass ALL image_ids that are relevant to the current question. If the user asks about a specific image, pass only that image\'s ID. Always call this tool when the user references an image you haven\'t described yet in this conversation.',
             parameters: {
                 type: 'object',
                 properties: {

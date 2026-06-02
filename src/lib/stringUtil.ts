@@ -1,26 +1,14 @@
 /**
- * Helper utility to filter out MiniMax internal XML tags.
- * Strips any text matching these patterns:
- *  - <minimax:tool_call>...</minimax:tool_call> (full tag + content)
- *  - <minimax:tool_call ...any attributes...>
- *  - </minimax:tool_call>
- *  - Any opening or closing tag starting with <minimax: or </minimax:
- *  - The text content BETWEEN these tags if the tags are present
+ * Helper utility to filter out MiniMax internal XML tags and leaked tool calls.
+ * Uses 3 clean regex patterns instead of 15 individual ones.
  */
 export function sanitizeMinimaxTags(text: string): string {
     if (!text || typeof text !== 'string') return text ?? '';
     return text
-        .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
-        .replace(/<\/?minimax:[^>]*>/g, '')
-        .replace(/<(?:query|search_query|web_search)[^>]*>[\s\S]*?<\/(?:query|search_query|web_search)>/gi, '')
-        .replace(/(?:search_query|web_search|query)>[^\n]*/gi, '')
-        .replace(/<\/?(?:query|search_query|web_search)[^>]*>/gi, '')
-        .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
-        .replace(/<\/?tool_call[^>]*>/gi, '')
-        .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
-        .replace(/<parameter[\s\S]*?<\/parameter>/gi, '')
-        .replace(/<\/?invoke[^>]*>/gi, '')
-        .replace(/<\/?parameter[^>]*>/gi, '')
-        .replace(/<[a-z_:]+\s[^>]*>[\s\S]*?<\/[a-z_:]+>/gi, '')
-        .replace(/<[a-z_:]+>[\s\S]*?<\/[a-z_:]+>/gi, '');
+        // Strip complete paired XML tags with content (non-HTML tags)
+        .replace(/<(minimax:[a-z_]+|invoke|tool_call|query|search_query|web_search|parameter)[^>]*>[\s\S]*?<\/\1>/gi, '')
+        // Strip any remaining unpaired tags from the above set  
+        .replace(/<\/?(minimax:[a-z_]+|invoke|tool_call|query|search_query|web_search|parameter)[^>]*>/gi, '')
+        // Strip malformed openings (e.g. "query>text")
+        .replace(/(?:search_query|web_search|query|invoke|tool_call)>[^\n]*/gi, '');
 }
