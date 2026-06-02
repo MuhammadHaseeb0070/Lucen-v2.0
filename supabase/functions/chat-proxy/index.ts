@@ -721,12 +721,16 @@ Deno.serve(async (req: Request) => {
                             break;
                         }
 
-                        // FIX 3 — Tool result compression for rounds > 1
+                        // Smarter tool result compression for rounds > 0
                         if (rounds > 0) {
                             for (const msg of currentMessages) {
                                 if (msg && typeof msg === 'object' && msg.role === 'tool' && typeof msg.content === 'string') {
-                                    if (msg.content.length > 2000) {
-                                        msg.content = msg.content.slice(0, 2000) + '\n[Truncated for efficiency. Key information above.]';
+                                    const limit = msg.name === 'web_search' ? 6000
+                                                : msg.name === 'process_file' ? 4000
+                                                : 2000; // analyze_image and others
+                                    if (msg.content.length > limit) {
+                                        msg.content = msg.content.slice(0, limit) + '\n[Truncated for efficiency]';
+                                        console.warn(`[chat-proxy] Tool result for ${msg.name} truncated to ${limit} chars`);
                                     }
                                 }
                             }
