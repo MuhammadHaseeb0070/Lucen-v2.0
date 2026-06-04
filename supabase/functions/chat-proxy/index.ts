@@ -2,6 +2,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus, type UsageCallKind } from '../_shared/usage.ts';
 import { TOOLS, getOpenRouterTools } from '../_shared/toolRegistry.ts';
+import { createLogger } from '../_shared/logging.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { circuitAllow, circuitSuccess, circuitFailure } from '../_shared/circuitBreaker.ts';
+import { isKillSwitched } from '../_shared/featureFlags.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const WEB_PLUGIN_ID = 'web';
@@ -227,6 +231,16 @@ Deno.serve(async (req: Request) => {
         return new Response('ok', { headers: cors });
     }
 
+    const log = createLogger('chat-proxy');
+
+    // Feature flag kill switch — return 503 if chat is disabled
+    if (isKillSwitched('CHAT')) {
+        return new Response(JSON.stringify({ error: 'Chat is temporarily unavailable. Please try again later.' }), {
+            status: 503,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+        });
+    }
+
     // Every exit path populates this shared `accounting` object; a single
     // `recordUsage` call at the very end writes it. Streaming responses set
     // `accounting.finalized = true` from inside the async pump so we don't
@@ -324,6 +338,13 @@ Deno.serve(async (req: Request) => {
             return await fail('auth_error', 401, 'JWT missing sub claim');
         }
         accounting.userId = userId;
+
+        // Rate limit: 30 requests per minute per user
+        const rateLimitResult = checkRateLimit(`chat:${userId}`, 30, 60_000);
+        if (!rateLimitResult.allowed) {
+            log.warn('Rate limit exceeded', { userId, retryAfterMs: rateLimitResult.retryAfterMs });
+            return await fail('rate_limited', 429, 'Too many requests. Please wait a moment and try again.');
+        }
         if (expiry && expiry < Math.floor(Date.now() / 1000)) {
             return await fail('auth_error', 401, 'Token expired');
         }
@@ -357,6 +378,8 @@ Deno.serve(async (req: Request) => {
             //   web_search_fallback_requested — classify-intent CRASHED; we
             //                                   may switch to OPENROUTER_
             //                                   ONLINE_MODEL as a last resort
+            // M4 fix: three key names for backward compat with different client versions.
+            // web_search_enabled is canonical, others are legacy aliases.
             web_search_enabled,
             webSearchEnabled,
             enableWebSearch,
@@ -567,6 +590,12 @@ Deno.serve(async (req: Request) => {
 
         const shouldStream = stream !== false;
 
+        // Circuit breaker: block requests if OpenRouter is consistently failing
+        if (!circuitAllow('openrouter')) {
+            log.warn('Circuit breaker OPEN — OpenRouter unavailable');
+            return await fail('upstream_unavailable', 503, 'AI service is temporarily unavailable. Please try again in a moment.');
+        }
+
         // ─── Non-stream mode (generate-title, bg calls, etc.) ───────────
         // Only fires for explicit stream:false requests. All normal chat
         // requests use the streaming agentic loop below.
@@ -595,7 +624,13 @@ Deno.serve(async (req: Request) => {
 
             if (!openrouterResponse.ok) {
                 const errBody = await openrouterResponse.text();
-                console.error(`[OpenRouter Error] ${openrouterResponse.status}:`, errBody);
+                circuitFailure('openrouter');
+                log.error('OpenRouter upstream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
+            } else {
+                circuitSuccess('openrouter');
+            }
+
+            if (!openrouterResponse.ok) {
                 return await fail(
                     'upstream_error',
                     openrouterResponse.status,
@@ -692,7 +727,7 @@ Deno.serve(async (req: Request) => {
                 
                 let currentMessages = [...messages];
                 let rounds = 0;
-                const maxRounds = 4;
+                const maxRounds = 3;
                 let emergencyRetryUsed = false;
                 
                 const toolCallCounts: Record<string, number> = {};
@@ -780,19 +815,22 @@ Deno.serve(async (req: Request) => {
                             break;
                         }
 
-                        // Smarter tool result compression for rounds > 0
+                        // M2 fix: tool result compression for rounds > 0
+                        // Create new message objects instead of mutating in-place to avoid
+                        // inconsistent state if a parallel tool fails after one success.
                         if (rounds > 0) {
-                            for (const msg of currentMessages) {
+                            currentMessages = currentMessages.map((msg) => {
                                 if (msg && typeof msg === 'object' && msg.role === 'tool' && typeof msg.content === 'string') {
                                     const limit = msg.name === 'web_search' ? 6000
                                                 : msg.name === 'process_file' ? 4000
                                                 : 2000; // analyze_image and others
                                     if (msg.content.length > limit) {
-                                        msg.content = msg.content.slice(0, limit) + '\n[Truncated for efficiency]';
                                         console.warn(`[chat-proxy] Tool result for ${msg.name} truncated to ${limit} chars`);
+                                        return { ...msg, content: msg.content.slice(0, limit) + '\n[Truncated for efficiency]' };
                                     }
                                 }
-                            }
+                                return msg;
+                            });
                         }
 
                         const allLimitsReached = toolsToPass.length > 0 && toolsToPass.every((tool: any) => {
@@ -867,8 +905,11 @@ Deno.serve(async (req: Request) => {
 
                         if (!openrouterResponse.ok) {
                             const errBody = await openrouterResponse.text().catch(() => '');
+                            circuitFailure('openrouter');
+                            log.error('OpenRouter stream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
                             throw new Error(`OpenRouter upstream error ${openrouterResponse.status}: ${errBody}`);
                         }
+                        circuitSuccess('openrouter');
 
                         const reader = openrouterResponse.body!.getReader();
                         
@@ -1502,7 +1543,7 @@ Deno.serve(async (req: Request) => {
                                   after_tool_calls: rounds > 0, model: effectiveModel 
                                 })}\n\n`
                               ));
-                              const fallbackContent = 'I found the information but had trouble formatting my response. Please try asking again.';
+                              const fallbackContent = 'I apologize, but I encountered a formatting issue while generating my response. Please ask your question again and I\'ll try a different approach.';
                               const fallbackChunk = {
                                 choices: [{
                                   delta: { content: fallbackContent },
@@ -1558,7 +1599,14 @@ Deno.serve(async (req: Request) => {
                                 .eq('user_id', user.id);
                         }
                     } catch (dbErr) {
-                        console.error('Failed to deduct stream credits:', dbErr);
+                        // H11 fix: log AND alert on deduction failure — don't silently swallow
+                        console.error('[chat-proxy] CRITICAL: Failed to deduct stream credits:', dbErr);
+                        // Send error event to client so they know billing failed
+                        try {
+                            controller.enqueue(encoder.encode(
+                                `event: error\ndata: ${JSON.stringify({ error: 'Credit deduction failed. Your balance may be inaccurate.', code: 'BILLING_ERROR' })}\n\n`
+                            ));
+                        } catch { /* stream already closed */ }
                     }
 
                     const receiptPayload = {

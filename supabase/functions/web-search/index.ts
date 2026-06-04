@@ -27,8 +27,14 @@ Deno.serve(async (req: Request) => {
         const authHeader = req.headers.get('Authorization');
         if (authHeader) {
             const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-            const claims = decodeJwtPayload(token);
-            if (claims) userId = claims.sub as string;
+            // S1 fix: verify JWT signature via Supabase instead of local decode
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+            const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+            if (supabaseUrl && serviceKey) {
+                const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+                const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+                if (user) userId = user.id;
+            }
         }
 
         const body = await req.json().catch(() => ({}));

@@ -23,43 +23,18 @@ Deno.serve(async (req: Request) => {
         }
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        if (!token || token.split('.').length !== 3) {
-            return new Response(JSON.stringify({ error: 'Invalid token format' }), {
-                status: 401,
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
-        }
-
-        let claims: Record<string, unknown>;
-        try {
-            claims = decodeJwtPayload(token);
-        } catch {
-            return new Response(JSON.stringify({ error: 'Malformed token payload' }), {
-                status: 401,
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
-        }
-
-        const userId = claims.sub as string;
-        if (!userId) {
-            return new Response(JSON.stringify({ error: 'Invalid token subject' }), {
-                status: 401,
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
-        }
-
-        // Verify the user exists via admin client to reject revoked sessions
+        // S1 fix: verify JWT signature via Supabase instead of local decode
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-        const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
-        if (adminError || !adminUser?.user) {
-            return new Response(JSON.stringify({ error: 'User not found or revoked' }), {
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) {
+            return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
                 status: 401,
                 headers: { ...cors, 'Content-Type': 'application/json' },
             });
         }
+        const userId = user.id;
 
         // Safe model configuration payload
         const mainDisplayName = Deno.env.get('MAIN_CHAT_MODEL_NAME') ?? 'Lucen M2.7';

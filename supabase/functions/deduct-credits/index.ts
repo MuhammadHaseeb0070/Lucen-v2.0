@@ -26,35 +26,15 @@ Deno.serve(async (req: Request) => {
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        let claims: Record<string, unknown>;
-        try {
-            claims = decodeJwtPayload(token);
-        } catch {
-            return new Response(
-                JSON.stringify({ error: 'Malformed JWT' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
-
-        const userId = claims.sub as string;
-        if (!userId) {
-            return new Response(
-                JSON.stringify({ error: 'JWT missing sub claim' }),
-                { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
-            );
-        }
-
+        // S1 fix: verify JWT signature via Supabase instead of local decode
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
-
-        if (adminError || !adminUser?.user) {
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) {
             return new Response(
                 JSON.stringify({ error: 'Invalid or expired token' }),
                 { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
             );
         }
-
-        const user = adminUser.user;
         const { action, amount } = await req.json();
 
         switch (action) {

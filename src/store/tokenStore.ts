@@ -23,7 +23,7 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     initializeWorker: () => {
         if (get().worker) return;
 
-        // Create the worker
+        // H7 fix: Create the worker with HMR cleanup to prevent worker thread leaks
         const worker = new Worker(new URL('../workers/tokenizer.worker.ts', import.meta.url), {
             type: 'module',
         });
@@ -43,6 +43,13 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
         };
 
         set({ worker });
+
+        // H7: Clean up on HMR dispose to prevent leaked Worker threads
+        if (import.meta.hot) {
+            import.meta.hot.dispose(() => {
+                worker.terminate();
+            });
+        }
     },
 
     calculateTokens: (text: string) => {

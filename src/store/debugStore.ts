@@ -21,8 +21,10 @@ import { create } from 'zustand';
 
 const MAX_ENTRIES = 200;
 
-// Never enable payload capture in production builds. In development mode (!PROD), it is enabled by default.
-export const DEBUG_CAPTURE_ENABLED = !import.meta.env.PROD;
+// M8 fix: Only enable payload capture when BOTH dev mode AND the env var is set.
+// Previously this was just `!import.meta.env.PROD` which enabled capture in ALL
+// non-prod builds (including staging) without explicit opt-in.
+export const DEBUG_CAPTURE_ENABLED = !import.meta.env.PROD && import.meta.env.VITE_DEV_PAYLOAD_CAPTURE === 'true';
 
 export type DebugEntryKind =
     | 'chat'

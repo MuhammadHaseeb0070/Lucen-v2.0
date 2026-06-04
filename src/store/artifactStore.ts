@@ -241,7 +241,8 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
 
   incHealAttempts: (artifactId) => {
     const current = get().healAttempts[artifactId] ?? 0;
-    const next = current + 1;
+    // M10 fix: cap at 3 as documented (was uncapped, relying on caller)
+    const next = Math.min(3, current + 1);
     set((state) => ({
       healAttempts: { ...state.healAttempts, [artifactId]: next },
     }));

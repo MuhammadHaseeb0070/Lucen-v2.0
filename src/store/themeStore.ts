@@ -636,6 +636,15 @@ function flushAppearanceSyncToServer(): void {
     });
 }
 
+/** M12 fix: Clear the sync debounce timer — called on sign-out to prevent
+ *  the timer from firing and trying to upsert to Supabase with no session. */
+export function clearThemeSyncTimer(): void {
+    if (syncDebounceTimer) {
+        clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = null;
+    }
+}
+
 /** Debounced Supabase sync so rapid theme edits (e.g. color drag) do not queue hundreds of timers. */
 function scheduleAppearanceSyncToServer(): void {
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);

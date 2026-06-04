@@ -67,19 +67,18 @@ Deno.serve(async (req: Request) => {
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY')!;
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        let userId = '';
-        try {
-            const base64 = token.split('.')[1];
-            const claims = JSON.parse(atob(base64.replace(/-/g, '+').replace(/_/g, '/')));
-            userId = claims.sub as string;
-        } catch {
+        // S1 fix: verify JWT signature via Supabase instead of local decode
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) {
             return await logAndReturn(
-                new Response(JSON.stringify({ error: 'Invalid token' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }),
+                new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }),
                 'auth_error',
                 null,
-                'Malformed JWT',
+                authError?.message || 'Invalid token',
             );
         }
+        const userId = user.id;
         accounting.userId = userId;
 
         const body = await req.json();

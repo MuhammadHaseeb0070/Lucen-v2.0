@@ -170,27 +170,12 @@ Deno.serve(async (req: Request) => {
         accounting.modelId = visionModel;
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        if (!token || token.split('.').length !== 3) return await fail('auth_error', 401, 'Invalid token format');
-
-        let claims: Record<string, unknown>;
-        try {
-            claims = decodeJwtPayload(token);
-        } catch {
-            return await fail('auth_error', 401, 'Malformed JWT');
-        }
-
-        const userId = claims.sub as string;
-        const expiry = claims.exp as number;
-        if (!userId) return await fail('auth_error', 401, 'JWT missing sub claim');
-        accounting.userId = userId;
-        if (expiry && expiry < Math.floor(Date.now() / 1000)) {
-            return await fail('auth_error', 401, 'Token expired');
-        }
-
+        // S1 fix: verify JWT signature via Supabase instead of local decode
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
-        if (adminError || !adminUser?.user) return await fail('auth_error', 401, 'User not found');
-        const user = adminUser.user;
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) return await fail('auth_error', 401, 'Invalid or expired token');
+        const userId = user.id;
+        accounting.userId = userId;
 
         // ─── Parse body ──────────────────────────────────────────────────────
         const body = await req.json();
@@ -368,7 +353,7 @@ Deno.serve(async (req: Request) => {
                     { role: 'user', content: userContent },
                 ],
                 stream: false,
-                max_tokens: 900,
+                max_tokens: Math.min(400 + (images.length * 350), 1800),
                 include_usage: true,
             }),
         });
@@ -424,15 +409,38 @@ Deno.serve(async (req: Request) => {
             // Bug 2c fix: update the EXISTING attachment row (by UUID when available,
             // storage_path otherwise) instead of inserting a new duplicate row.
             // INSERT was creating orphan rows that broke the cache lookup on next call.
-            if (Array.isArray(imageIds) && imageIds.length > 0 && imageIds[0]) {
-                await supabaseAdmin
-                    .from('file_attachments')
-                    .update({
-                        ai_description: description,
-                        question_hash: qHash,
-                        token_estimate: Math.ceil(description.length / 4)
-                    })
-                    .eq('id', imageIds[0]);
+            if (Array.isArray(imageIds) && imageIds.length > 0) {
+                // H13 fix: parse per-image descriptions from the combined response.
+                // The vision model returns descriptions separated by "Image N:" markers.
+                // We parse those and write each image's individual description.
+                const imageDescMap = new Map<string, string>();
+                if (imageIds.length > 1) {
+                    // Try to split by "Image N:" markers
+                    const parts = description.split(/\n*(?:Image\s+\d+[:.]\s*)/i).filter(Boolean);
+                    if (parts.length >= imageIds.length) {
+                        imageIds.forEach((imgId, idx) => {
+                            if (imgId && parts[idx]) {
+                                imageDescMap.set(imgId, parts[idx].trim());
+                            }
+                        });
+                    }
+                }
+                // Fallback: if we couldn't split, use the full description for all
+                // (better than nothing — the user gets the combined description)
+
+                for (const imgId of imageIds) {
+                    if (imgId) {
+                        const descForImage = imageDescMap.get(imgId) || description;
+                        await supabaseAdmin
+                            .from('file_attachments')
+                            .update({
+                                ai_description: descForImage,
+                                question_hash: qHash,
+                                token_estimate: Math.ceil(descForImage.length / 4)
+                            })
+                            .eq('id', imgId);
+                    }
+                }
             } else {
                 await supabaseAdmin
                     .from('file_attachments')

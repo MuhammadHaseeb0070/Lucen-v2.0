@@ -40,6 +40,16 @@ Deno.serve(async (req: Request) => {
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
+        // S1 fix: verify JWT signature via Supabase instead of local decode
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) {
+            return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
+                status: 401,
+                headers: { ...cors, 'Content-Type': 'application/json' }
+            });
+        }
+
         let textContent = null;
         if (fileId) {
             const { data: dbRecord, error: dbError } = await supabaseAdmin

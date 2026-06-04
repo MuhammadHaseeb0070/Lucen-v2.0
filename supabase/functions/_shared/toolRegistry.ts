@@ -18,14 +18,14 @@ export const TOOLS: Record<string, ToolDefinition> = {
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyze and identify the content of one or more uploaded images. Pass ALL image_ids that are relevant to the current question. If the user asks about a specific image, pass only that image\'s ID. Always call this tool when the user references an image you haven\'t described yet in this conversation.',
+            description: 'Analyze and identify the content of uploaded images. Always pass ALL image IDs from the current message. Images are described individually and labeled Image 1, Image 2, etc. Call this once with all image IDs rather than multiple times with one ID each.',
             parameters: {
                 type: 'object',
                 properties: {
                     image_ids: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'The attachment UUIDs of the image(s) to analyze (from the [Attached Image: uuid] markers).'
+                        description: 'Array of ALL attachment UUIDs for images to analyze in this request. IMPORTANT: You must pass ALL image IDs that appear in [Attached Image: id] markers in the current message — do not skip any. Each image will be analyzed and described separately. If the user uploaded 3 images, pass all 3 IDs in this array.'
                     },
                     question: {
                         type: 'string',

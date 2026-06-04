@@ -80,13 +80,23 @@ function flushAllStreamingMessages(): void {
     }
 }
 
+// H5 fix: track listeners for cleanup to prevent HMR duplicate handlers
+const _beforeUnloadHandler = flushAllStreamingMessages;
+const _visibilityChangeHandler = () => {
+    if (document.visibilityState === 'hidden') {
+        flushAllStreamingMessages();
+    }
+};
 if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', flushAllStreamingMessages);
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            flushAllStreamingMessages();
-        }
-    });
+    window.addEventListener('beforeunload', _beforeUnloadHandler);
+    document.addEventListener('visibilitychange', _visibilityChangeHandler);
+    // H5: clean up on HMR dispose
+    if (import.meta.hot) {
+        import.meta.hot.dispose(() => {
+            window.removeEventListener('beforeunload', _beforeUnloadHandler);
+            document.removeEventListener('visibilitychange', _visibilityChangeHandler);
+        });
+    }
 }
 
 // ─── AI Chat Title Generator ─────────────────────────────────────────────
@@ -412,20 +422,26 @@ export const useChatStore = create<ChatStore>()(
                             const currentTitle = conv?.title || 'New Chat';
                             await db.createConversation(convId, currentTitle);
                         }
+                        // C2 fix: always persist to DB first (even for streaming messages)
                         if (message.isStreaming) {
                             await db.upsertStreamingMessage(convId, message);
-                            return;
+                            // Don't return early — still run RAG embed below if applicable
+                        } else {
+                            await db.saveMessage(convId, message);
                         }
-                        await db.saveMessage(convId, message);
 
                         // RAG embeds: fire-and-forget
+                        // C1 fix: embed for BOTH attachment-based messages AND long assistant
+                        // messages when the conversation has prior files. Previously the inner
+                        // `hasAttachments` check blocked the hasPriorFiles branch.
                         const conv = get().conversations.find((c) => c.id === convId);
                         const hasPriorFiles = conv?.messages.some(m =>
                             m.attachments && m.attachments.some(a => a.type !== 'image')
                         ) || false;
                         const hasAttachments = !!(message.attachments && message.attachments.length > 0);
 
-                        if (hasAttachments || (message.content && message.content.length > 500 && hasPriorFiles)) {
+                        // Only run RAG embed for non-streaming messages (streaming content isn't final yet)
+                        if (!message.isStreaming && (hasAttachments || (message.content && message.content.length > 500 && hasPriorFiles))) {
                             if (message.attachments && message.attachments.length > 0) {
                                 const { data: { session } } = await supabase!.auth.getSession();
                                 if (session?.access_token) {
@@ -452,29 +468,43 @@ export const useChatStore = create<ChatStore>()(
                                                 endpoint: embedEndpoint,
                                                 request: embedBody,
                                             });
-                                            fetch(embedEndpoint, {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'Authorization': `Bearer ${session.access_token}`,
-                                                    'apikey': anonKey || '',
-                                                },
-                                                body: JSON.stringify(embedBody),
-                                            })
-                                                .then(async (r) => {
+                                            // H9 fix: retry embed once on failure instead of fire-and-forget
+                                            const embedHeaders = {
+                                                'Content-Type': 'application/json',
+                                                'Authorization': `Bearer ${session.access_token}`,
+                                                'apikey': anonKey || '',
+                                            };
+                                            const doEmbed = async (attempt: number): Promise<void> => {
+                                                try {
+                                                    const r = await fetch(embedEndpoint, {
+                                                        method: 'POST',
+                                                        headers: embedHeaders,
+                                                        body: JSON.stringify(embedBody),
+                                                    });
                                                     const text = await r.text().catch(() => '');
                                                     finalizeEmbed({
                                                         status: r.status,
                                                         response: text.slice(0, 4000),
                                                         error: r.ok ? undefined : `HTTP ${r.status}`,
                                                     });
-                                                })
-                                                .catch((err) => {
-                                                    console.error('[RAG Embed] Failed:', err);
+                                                    if (!r.ok && attempt < 1) {
+                                                        console.warn(`[RAG Embed] Attempt ${attempt + 1} failed (${r.status}), retrying...`);
+                                                        await new Promise(resolve => setTimeout(resolve, 1000));
+                                                        return doEmbed(attempt + 1);
+                                                    }
+                                                } catch (err) {
+                                                    if (attempt < 1) {
+                                                        console.warn(`[RAG Embed] Attempt ${attempt + 1} failed, retrying...`);
+                                                        await new Promise(resolve => setTimeout(resolve, 1000));
+                                                        return doEmbed(attempt + 1);
+                                                    }
+                                                    console.error('[RAG Embed] All attempts failed:', err);
                                                     finalizeEmbed({
                                                         error: err instanceof Error ? err.message : 'unknown',
                                                     });
-                                                });
+                                                }
+                                            };
+                                            doEmbed(0);
                                         }
                                     }
                                 }
@@ -485,107 +515,11 @@ export const useChatStore = create<ChatStore>()(
                     }
             },
 
-            // Original addMessage kept for backward compatibility (calls both).
+            // H1 fix: addMessage delegates to addMessageLocal + addMessageRemote
+            // eliminating ~80 lines of duplicated persistence logic.
             addMessage: (convId, message) => {
-                let isFirstMessage = false;
-
-                set((state) => ({
-                    conversations: state.conversations.map((c) => {
-                        if (c.id !== convId) return c;
-
-                        const isFirst = c.messages.length === 0;
-                        if (isFirst) {
-                            isFirstMessage = true;
-                        }
-
-                        const messages = [...c.messages, message];
-                        return { ...c, messages, updatedAt: Date.now() };
-                    }),
-                }));
-
-                if (!hasActiveSessionSync()) {
-                    return Promise.resolve();
-                }
-
-                return (async () => {
-                    try {
-                        if (isFirstMessage) {
-                            const conv = get().conversations.find((c) => c.id === convId);
-                            const currentTitle = conv?.title || 'New Chat';
-                            await db.createConversation(convId, currentTitle);
-                        }
-
-                        if (message.isStreaming) {
-                            await db.upsertStreamingMessage(convId, message);
-                            return;
-                        }
-                        await db.saveMessage(convId, message);
-
-                        const conv = get().conversations.find((c) => c.id === convId);
-                        const hasPriorFiles = conv?.messages.some(m =>
-                            m.attachments && m.attachments.some(a => a.type !== 'image')
-                        ) || false;
-                        const hasAttachments = !!(message.attachments && message.attachments.length > 0);
-
-                        if (hasAttachments || (message.content && message.content.length > 500 && hasPriorFiles)) {
-                            if (message.attachments && message.attachments.length > 0) {
-                                const { data: { session } } = await supabase!.auth.getSession();
-                                if (session?.access_token) {
-                                    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                                    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                                    for (const att of message.attachments) {
-                                        const contentToEmbed = att.textContent || att.aiDescription;
-                                        if (contentToEmbed && contentToEmbed.length > 200) {
-                                            const embedRequestId =
-                                                typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                                                    ? crypto.randomUUID()
-                                                    : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-                                            const embedEndpoint = `${supabaseUrl}/functions/v1/embed`;
-                                            const embedBody = {
-                                                text: contentToEmbed,
-                                                file_name: att.name,
-                                                message_id: message.id,
-                                                conversation_id: convId,
-                                                request_id: embedRequestId,
-                                            };
-                                            const finalizeEmbed = captureCall({
-                                                id: embedRequestId,
-                                                kind: 'embed',
-                                                endpoint: embedEndpoint,
-                                                request: embedBody,
-                                            });
-                                            fetch(embedEndpoint, {
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'Authorization': `Bearer ${session.access_token}`,
-                                                    'apikey': anonKey || '',
-                                                },
-                                                body: JSON.stringify(embedBody),
-                                            })
-                                                .then(async (r) => {
-                                                    const text = await r.text().catch(() => '');
-                                                    finalizeEmbed({
-                                                        status: r.status,
-                                                        response: text.slice(0, 4000),
-                                                        error: r.ok ? undefined : `HTTP ${r.status}`,
-                                                    });
-                                                })
-                                                .catch((err) => {
-                                                    console.error('[RAG Embed] Failed:', err);
-                                                    finalizeEmbed({
-                                                        error: err instanceof Error ? err.message : 'unknown',
-                                                    });
-                                                });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (err) {
-                        console.error('[Sync] Error saving message to Supabase:', err);
-                    }
-                })();
+                const isFirstMessage = get().addMessageLocal(convId, message);
+                return get().addMessageRemote(convId, message, isFirstMessage);
             },
 
             updateMessage: (convId, msgId, updates) => {

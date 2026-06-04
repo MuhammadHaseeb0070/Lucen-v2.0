@@ -22,6 +22,9 @@ const MAX_EXCEL_ROWS = 200;
 const MAX_EXCEL_SHEETS = 5;
 const MAX_PPTX_SLIDES = 30;
 const MAX_FILES = 5;
+// H8 fix: combined upload size limit to prevent browser tab crash
+const MAX_TOTAL_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB combined
+const MAX_NON_IMAGE_FILE_SIZE = 30 * 1024 * 1024; // 30 MB per non-image file
 
 // ═══════════════════════════════════════════
 //  SUPPORTED FILE TYPES
@@ -419,7 +422,25 @@ export async function processFiles(files: FileList | File[]): Promise<{ attachme
     const accepted = fileArray.filter(isAcceptedFile).slice(0, MAX_FILES);
     if (fileArray.length > MAX_FILES) errors.push(`Only the first ${MAX_FILES} files were attached.`);
 
-    const processed = await Promise.allSettled(accepted.map(processFile));
+    // H8 fix: check combined file size limit
+    let totalBytes = 0;
+    const sizeChecked: File[] = [];
+    for (const file of accepted) {
+        totalBytes += file.size;
+        if (totalBytes > MAX_TOTAL_UPLOAD_BYTES) {
+            errors.push(`Total file size exceeds ${formatFileSize(MAX_TOTAL_UPLOAD_BYTES)} limit. Please reduce the number or size of files.`);
+            break;
+        }
+        // H8 fix: per-file size check for non-image files
+        const fileType = getFileType(file);
+        if (fileType !== 'image' && file.size > MAX_NON_IMAGE_FILE_SIZE) {
+            errors.push(`File "${file.name}" exceeds the ${formatFileSize(MAX_NON_IMAGE_FILE_SIZE)} size limit for document files.`);
+            continue;
+        }
+        sizeChecked.push(file);
+    }
+
+    const processed = await Promise.allSettled(sizeChecked.map(processFile));
     const toEnrich: FileAttachment[] = [];
     for (const res of processed) {
         if (res.status === 'fulfilled') toEnrich.push(res.value);

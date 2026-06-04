@@ -142,71 +142,30 @@ Deno.serve(async (req: Request) => {
             });
         }
 
-        const claims = decodeJwtPayload(token);
-        const claimUserId = (claims?.sub as string | undefined) ?? null;
-        const expiry = (claims?.exp as number | undefined) ?? 0;
-        if (!claimUserId) {
-            intentAccounting.finalized = true;
-            await recordUsage({
-                userId: 'unknown',
-                callKind: 'classify_intent',
-                status: 'auth_error',
-                errorMessage: 'JWT missing sub',
-                modelId: INTENT_MODEL,
-                durationMs: Date.now() - startedAt,
-            });
-            return new Response(JSON.stringify({ error: 'Invalid token' }), {
-                status: 401,
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
-        }
-        if (expiry && expiry < Math.floor(Date.now() / 1000)) {
-            intentAccounting.finalized = true;
-            await recordUsage({
-                userId: claimUserId,
-                callKind: 'classify_intent',
-                status: 'auth_error',
-                errorMessage: 'Token expired',
-                modelId: INTENT_MODEL,
-                durationMs: Date.now() - startedAt,
-            });
-            return new Response(JSON.stringify({ error: 'Token expired' }), {
-                status: 401,
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
-        }
-
-        // Validate against Supabase admin to make sure the JWT really belongs
-        // to a live user (revoked tokens still decode).
+        // S1 fix: verify JWT signature via Supabase instead of local decode
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
         const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-        let userId: string | null = claimUserId;
+        let userId: string | null = null;
         if (supabaseUrl && serviceKey) {
-            try {
-                const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-                const { data, error } = await admin.auth.admin.getUserById(claimUserId);
-                if (error || !data?.user) {
-                    userId = null;
-                }
-            } catch (err) {
-                console.warn('[classify-intent] admin.getUserById failed:', err);
-                // Fall through with decoded userId — logging still uses it.
+            const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+            const { data: { user }, error: authError } = await admin.auth.getUser(token);
+            if (user) {
+                userId = user.id;
+            } else {
+                intentAccounting.finalized = true;
+                await recordUsage({
+                    userId: 'unknown',
+                    callKind: 'classify_intent',
+                    status: 'auth_error',
+                    errorMessage: authError?.message || 'Invalid token',
+                    modelId: INTENT_MODEL,
+                    durationMs: Date.now() - startedAt,
+                });
+                return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
+                    status: 401,
+                    headers: { ...cors, 'Content-Type': 'application/json' },
+                });
             }
-        }
-        if (!userId) {
-            intentAccounting.finalized = true;
-            await recordUsage({
-                userId: claimUserId,
-                callKind: 'classify_intent',
-                status: 'auth_error',
-                errorMessage: 'User not found',
-                modelId: INTENT_MODEL,
-                durationMs: Date.now() - startedAt,
-            });
-            return new Response(JSON.stringify({ error: 'User not found' }), {
-                status: 401,
-                headers: { ...cors, 'Content-Type': 'application/json' },
-            });
         }
         intentAccounting.userId = userId;
 

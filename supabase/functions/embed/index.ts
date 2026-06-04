@@ -168,30 +168,19 @@ Deno.serve(async (req: Request) => {
         const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY')!;
 
         const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-        let userId = '';
-        try {
-            const parts = token.split('.');
-            if (parts.length < 2) {
-                throw new Error('Malformed token');
-            }
-            const base64 = parts[1];
-            if (!base64 || typeof base64 !== 'string') {
-                throw new Error('Malformed base64 part');
-            }
-            const claims = JSON.parse(atob(base64.replace(/-/g, '+').replace(/_/g, '/')));
-            userId = claims.sub as string;
-        } catch {
+        // S1 fix: verify JWT signature via Supabase instead of local decode
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) {
             return await logAndReturn(
-                new Response(JSON.stringify({ error: 'Invalid token' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }),
+                new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }),
                 'auth_error',
                 null,
-                'Malformed JWT',
+                authError?.message || 'Invalid token',
             );
         }
-        if (!userId) {
-            return await logAndReturn(
-                new Response(JSON.stringify({ error: 'Invalid token' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }),
-                'auth_error',
+        const userId = user.id;
+        accounting.userId = userId;
             );
         }
         accounting.userId = userId;

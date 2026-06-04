@@ -598,10 +598,18 @@ serve(async (req: Request) => {
         return jsonResponse({ received: true }, { status: 200 });
       }
 
-      // Guard: If credits already exist for this exact subscription_id, skip
+      // C5 guard: If credits already exist for this exact subscription_id, skip
       // the grant. This prevents duplicate subscription_created events (e.g.
       // LS test mode rapid-fire or retries with different event IDs) from
       // stacking credits.
+      // NOTE: This is a SELECT-then-INSERT pattern (TOCTOU). The tryClaimEvent
+      // atomic INSERT protects against duplicate event IDs, but two DIFFERENT
+      // event IDs for the same logical subscription could race past this check.
+      // For full protection, a DB migration should add a UNIQUE partial index:
+      //   CREATE UNIQUE INDEX idx_credit_ledgers_active_sub
+      //   ON credit_ledgers(subscription_id, user_id)
+      //   WHERE remaining_amount > 0;
+      // This would make the grant_subscription_credits RPC fail atomically.
       if (subscriptionId) {
         const { data: existingGrant } = await supabaseAdmin
           .from("credit_ledgers")

@@ -305,13 +305,18 @@ export const useProjectStore = create<ProjectStore>()((set, get) => ({
     } else {
       const descendants = Object.keys(files).filter((candidate) => candidate.startsWith(`${normalizedPath}/`));
       if (descendants.length === 0) return;
-      descendants.forEach((candidate) => {
+      // M14 fix: use for...of instead of forEach so we can break on failure
+      // (forEach `return` is equivalent to `continue`, not `break`)
+      let renameFailed = false;
+      for (const candidate of descendants) {
         const nextCandidate = candidate.replace(`${normalizedPath}/`, `${normalizedNext}/`);
         const result = applyPatchOperation(files, { type: 'renameFile', path: candidate, newPath: nextCandidate });
         if (!result.ok) {
-          return;
+          renameFailed = true;
+          break;
         }
-      });
+      }
+      if (renameFailed) return;
     }
 
     set({
