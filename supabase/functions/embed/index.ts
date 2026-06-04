@@ -181,9 +181,6 @@ Deno.serve(async (req: Request) => {
         }
         const userId = user.id;
         accounting.userId = userId;
-            );
-        }
-        accounting.userId = userId;
 
         const body = parsedBody || await req.json().catch(() => ({}));
         const { text: _t, file_name: _fn, message_id: _mi, conversation_id: _ci, request_id: _ri, parent_request_id: _pri } = body ?? {};
@@ -201,8 +198,6 @@ Deno.serve(async (req: Request) => {
                 'Missing required fields',
             );
         }
-
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
         // Delete existing chunks for this file in this message (idempotent)
         await supabaseAdmin

@@ -95,7 +95,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
                         // We must clear chats so the next login doesn't see stale data.
                         useChatStore.getState().clearChats();
                         // Also clear theme sync timer (M12 fix)
-                        useThemeStore.getState().clearSyncTimer?.();
+                        import('./themeStore').then(m => m.clearThemeSyncTimer()).catch(() => {});
                         if (prevUser) {
                             set({ sessionExpired: true });
                         }
