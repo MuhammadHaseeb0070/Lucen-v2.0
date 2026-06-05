@@ -96,7 +96,25 @@ function clearWorkspace(py: any) {
 
 function extractPythonError(err: any): string {
   if (!err) return 'Unknown error';
+  
+  const msg = err.message || '';
+  const stack = err.stack || '';
   const full = typeof err.toString === 'function' ? err.toString() : String(err);
+
+  // If the message is just "PythonError" or similar, look for more details in the stack.
+  if (msg.trim() === 'PythonError' && stack) {
+    const tbIdx = stack.indexOf('Traceback (most recent call last):');
+    if (tbIdx !== -1) {
+      return stack.substring(tbIdx);
+    }
+    return stack;
+  }
+
+  // If we have a python traceback in the message, stack, or toString, use it.
+  if (msg.includes('Traceback')) return msg;
+  if (stack.includes('Traceback')) return stack;
+  if (full.includes('Traceback')) return full;
+
   if (err.message === 'PythonError' || err.type || (err.constructor && err.constructor.name === 'PythonError')) {
     return full;
   }
@@ -738,7 +756,9 @@ except Exception:
     // 6. Run the code
     let runError: string | null = null;
     try {
-      await py.runPythonAsync(code);
+      // Append a newline and None to prevent Pyodide from trying to serialize 
+      // the last expression (which can fail for DataFrames, Figures, etc.)
+      await py.runPythonAsync(code + '\nNone');
     } catch (err: any) {
       runError = extractPythonError(err);
     }

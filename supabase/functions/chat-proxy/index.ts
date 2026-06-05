@@ -1430,136 +1430,72 @@ Deno.serve(async (req: Request) => {
                                         id: tc.id,
                                         type: 'function',
                                         function: {
-                                            name: tc.name,
-                                            arguments: tc.arguments
-                                        }
-                                    }))
-                                });
-                                currentMessages.push(...toolResults);
-                            }
-                            if (keepaliveTimer) {
-                                clearInterval(keepaliveTimer);
-                                keepaliveTimer = null;
-                            }
-                            rounds++;
-                            continue;
-                        } else {
-                            // Collect all final response chunks
-                            let accumulatedFinalText = '';
-                            const finalChunks: Uint8Array[] = [];
-                            
-                            const collectChunk = (chunkVal: Uint8Array) => {
-                              finalChunks.push(chunkVal);
-                              const text = decoder.decode(chunkVal, { stream: true });
-                              const lines = text.split('\n');
-                              for (const line of lines) {
-                                if (!line.trim().startsWith('data: ')) continue;
-                                const dataStr = line.trim().slice(6);
-                                if (dataStr === '[DONE]') { finalSawDone = true; continue; }
-                                try {
-                                  const parsed = JSON.parse(dataStr);
-                                  if (parsed.usage) {
-                                    totalPromptTokens += parsed.usage.prompt_tokens || 0;
-                                    totalCompletionTokens += parsed.usage.completion_tokens || 0;
-                                    totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
-                                  }
-                                  if (parsed.error) {
-                                    finalStreamError = parsed.error.message ?? 'stream error';
-                                  }
-                                  const choice = parsed.choices?.[0];
-                                  const delta = choice?.delta;
-                                  if (delta) {
-                                    accumulatedFinalText += delta.content || delta.reasoning || 
-                                                            delta.reasoning_content || '';
-                                  }
-                                } catch { /* skip */ }
-                              }
-                            };
+                                                            } else {
+                            // Enable smooth streaming by writing chunks to the client immediately
+                            try {
+                                controller.enqueue(encoder.encode(
+                                    `event: content_start\ndata: ${JSON.stringify({ 
+                                        after_tool_calls: rounds > 0, model: effectiveModel 
+                                    })}\n\n`
+                                ));
+                            } catch { /* ignore */ }
 
-                            // Collect firstChunks that weren't already flushed
+                            // 1. Flush any buffered chunks from pre-detection of tool calls
                             for (let i = 0; i < firstChunks.length; i++) {
-                              if (!flushedChunks[i]) collectChunk(firstChunks[i]);
-                            }
-
-                            // Collect remaining stream
-                            while (true) {
-                              const { done, value } = await reader.read();
-                              if (done) break;
-                              if (value) collectChunk(value);
-                            }
-
-                            // Validate output
-                            const validation = validateModelOutput(accumulatedFinalText);
-
-                            if (validation.valid) {
-                              // Valid output — stream it
-                              if (validation.type === 'artifact') {
-                                // Artifact: stream raw chunks as-is (frontend handles parsing)
-                                controller.enqueue(encoder.encode(
-                                  `event: content_start\ndata: ${JSON.stringify({ 
-                                    after_tool_calls: rounds > 0, model: effectiveModel 
-                                  })}\n\n`
-                                ));
-                                for (const chunk of finalChunks) {
-                                  controller.enqueue(chunk);
+                                if (!flushedChunks[i]) {
+                                    try {
+                                        controller.enqueue(firstChunks[i]);
+                                    } catch { /* ignore */ }
+                                    flushedChunks[i] = true;
                                 }
-                              } else {
-                                // plain/final/raw: synthesize a clean single response chunk
-                                controller.enqueue(encoder.encode(
-                                  `event: content_start\ndata: ${JSON.stringify({ 
-                                    after_tool_calls: rounds > 0, model: effectiveModel 
-                                  })}\n\n`
-                                ));
-                                const cleanChunk = {
-                                  choices: [{
-                                    delta: { content: validation.content },
-                                    finish_reason: 'stop'
-                                  }]
-                                };
-                                controller.enqueue(encoder.encode(
-                                  `data: ${JSON.stringify(cleanChunk)}\n\n`
-                                ));
-                                controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-                              }
-                              break;
-
-                            } else if (!emergencyRetryUsed && rounds < maxRounds) {
-                              // Invalid output — one emergency retry
-                              emergencyRetryUsed = true;
-                              currentMessages.push({
-                                role: 'assistant',
-                                content: accumulatedFinalText || '[no response]'
-                              });
-                              currentMessages.push({
-                                role: 'system',
-                                content: 'Your previous response did not follow the required format. You MUST wrap your response in <lucen_response type="final">...</lucen_response> tags. Do NOT use any XML tool tags. Write your complete answer now.'
-                              });
-                              // Increment rounds to stay within maxRounds budget.
-                              // Without this, emergency retries cause extra API calls
-                              // beyond the configured limit, leading to unexpected charges.
-                              rounds++;
-                              continue;
-
-                            } else {
-                              // Both attempts failed — stream neutral fallback
-                              controller.enqueue(encoder.encode(
-                                `event: content_start\ndata: ${JSON.stringify({ 
-                                  after_tool_calls: rounds > 0, model: effectiveModel 
-                                })}\n\n`
-                              ));
-                              const fallbackContent = 'I apologize, but I encountered a formatting issue while generating my response. Please ask your question again and I\'ll try a different approach.';
-                              const fallbackChunk = {
-                                choices: [{
-                                  delta: { content: fallbackContent },
-                                  finish_reason: 'stop'
-                                }]
-                              };
-                              controller.enqueue(encoder.encode(
-                                `data: ${JSON.stringify(fallbackChunk)}\n\n`
-                              ));
-                              controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-                              break;
                             }
+
+                            // 2. Stream subsequent chunks directly from upstream reader
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                if (value) {
+                                    try {
+                                        controller.enqueue(value);
+                                    } catch { /* ignore */ }
+
+                                    // Parse value to track token usage metrics and detect stream errors
+                                    const text = decoder.decode(value, { stream: true });
+                                    const lines = text.split('\n');
+                                    for (const line of lines) {
+                                        if (!line.trim().startsWith('data: ')) continue;
+                                        const dataStr = line.trim().slice(6);
+                                        if (dataStr === '[DONE]') {
+                                            finalSawDone = true;
+                                            continue;
+                                        }
+                                        try {
+                                            const parsed = JSON.parse(dataStr);
+                                            if (parsed.usage) {
+                                                totalPromptTokens += parsed.usage.prompt_tokens || 0;
+                                                totalCompletionTokens += parsed.usage.completion_tokens || 0;
+                                                totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
+                                            }
+                                            if (parsed.error) {
+                                                finalStreamError = parsed.error.message ?? 'stream error';
+                                            }
+                                            const choice = parsed.choices?.[0];
+                                            const fr = choice?.finish_reason;
+                                            if (fr !== null && fr !== undefined) {
+                                                finishReason = String(fr);
+                                            }
+                                        } catch { /* skip */ }
+                                    }
+                                }
+                            }
+
+                            if (!finalSawDone) {
+                                try {
+                                    controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                                } catch { /* ignore */ }
+                            }
+                            break;
+                        }
                         }
                     }
 

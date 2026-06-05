@@ -312,7 +312,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     const rawCleanContent = parsed?.cleanContent ?? '';
     const artifacts = parsed?.artifacts ?? EMPTY_ARTIFACTS;
-    const cleanContent = rawCleanContent;
+    const cleanContent = useMemo(() => {
+        if (!rawCleanContent) return '';
+        return rawCleanContent
+            .replace(/<lucen_response\s+type="(plain|final)">/gi, '')
+            .replace(/<\/lucen_response>/gi, '');
+    }, [rawCleanContent]);
 
     const normalizedReasoning = useMemo(() => {
         const raw = (message.reasoning || '').trim();
