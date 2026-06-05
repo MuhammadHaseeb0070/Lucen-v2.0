@@ -665,21 +665,58 @@ except Exception:
 
     // 5b. Pre-flight: validate imports against available packages
     const AVAILABLE_PYODIDE_PACKAGES = new Set([
-      'openpyxl', 'docx', 'python_docx', 'matplotlib', 'pandas', 'numpy',
-      'scipy', 'PIL', 'pillow', 'sympy', 'lxml', 'bs4', 'beautifulsoup4',
-      'networkx', 'sklearn', 'scikit_learn', 'statsmodels', 'json', 'csv',
-      'os', 'io', 'math', 'datetime', 're', 'collections', 'itertools',
-      'functools', 'random', 'string', 'textwrap', 'hashlib', 'base64',
-      'struct', 'statistics', 'fractions', 'decimal', 'copy', 'pathlib',
-      'unicodedata', 'zipimport', 'micropip', 'pyodide',
+      // Precompiled/native packages and dynamic wheels in Pyodide
+      'openpyxl', 'docx', 'python_docx', 'python-docx', 'matplotlib', 'pandas', 'numpy',
+      'scipy', 'pil', 'pillow', 'sympy', 'lxml', 'bs4', 'beautifulsoup4',
+      'networkx', 'sklearn', 'scikit-learn', 'scikit_learn', 'statsmodels', 'seaborn',
+      'tabulate', 'xlsxwriter', 'reportlab', 'jinja2', 'yaml', 'pyyaml',
+      'jsonschema', 'micropip', 'pyodide',
+
+      // Python standard libraries (always available)
+      'json', 'csv', 'os', 'io', 'math', 'datetime', 're', 'collections', 'itertools',
+      'functools', 'random', 'string', 'textwrap', 'hashlib', 'base64', 'struct',
+      'statistics', 'fractions', 'decimal', 'copy', 'pathlib', 'unicodedata', 'zipimport',
+      'sys', 'time', 'uuid', 'xml', 'typing', 'enum', 'zipfile', 'tarfile', 'gzip', 'bz2',
+      'lzma', 'zlib', 'codecs', 'html', 'difflib', 'platform', 'logging', 'traceback',
+      'pprint', 'bisect', 'heapq', 'array', 'abc', 'types', 'warnings', 'contextlib',
+      'argparse', 'ctypes', 'shutil', 'tempfile', 'glob', 'pickle', 'hmac', 'secrets',
+      'colorsys', 'weakref', 'copyreg', 'fnmatch', 'linecache', 'stat', 'token', 'tokenize',
+      'locale', 'calendar', 'timeit', 'unittest', 'doctest', 'dbm', 'sqlite3', 'cgi',
+      'urllib', 'http', 'ftplib', 'smtplib', 'email', 'mailbox', 'nntplib', 'telnetlib',
+      'socket', 'select', 'selectors', 'asyncio', 'contextvars', 'threading', 'queue',
+      'multiprocessing', 'concurrent', 'subprocess', 'sched', 'pwd', 'grp', 'shlex',
+      'ast', 'symtable', 'parser', 'symbol', 'keyword', 'inspect', 'site',
+      'distutils', 'sysconfig', 'pkgutil', 'modulefinder', 'runpy', 'importlib'
     ]);
-    const importMatches = code.match(/^import\s+([\w,\s]+)|^from\s+(\w+)/gm) || [];
     const unavailable: string[] = [];
-    for (const imp of importMatches) {
-      const modules = imp.replace(/^import\s+|^from\s+/, '').split(',').map((s: string) => s.trim().split(/\s+as\s+/)[0].split('.')[0]);
-      for (const mod of modules) {
-        if (mod && !AVAILABLE_PYODIDE_PACKAGES.has(mod.toLowerCase()) && !AVAILABLE_PYODIDE_PACKAGES.has(mod)) {
-          unavailable.push(mod);
+    const lines = code.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      // Match: import a, b as c, d
+      if (/^\s*import\s+/.test(line)) {
+        const rest = line.replace(/^\s*import\s+/, '').split('#')[0];
+        const parts = rest.split(',');
+        for (const part of parts) {
+          const token = part.trim().split(/\s+/)[0];
+          if (token) {
+            const topLevel = token.split('.')[0].toLowerCase();
+            if (!AVAILABLE_PYODIDE_PACKAGES.has(topLevel)) {
+              unavailable.push(token);
+            }
+          }
+        }
+      }
+      // Match: from a.b import c
+      else if (/^\s*from\s+/.test(line)) {
+        const rest = line.replace(/^\s*from\s+/, '').split('#')[0].trim();
+        const match = rest.match(/^([a-zA-Z0-9_.]+)/);
+        if (match && match[1]) {
+          const topLevel = match[1].split('.')[0].toLowerCase();
+          if (!AVAILABLE_PYODIDE_PACKAGES.has(topLevel)) {
+            unavailable.push(match[1]);
+          }
         }
       }
     }
