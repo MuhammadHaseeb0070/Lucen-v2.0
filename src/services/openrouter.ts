@@ -517,6 +517,7 @@ export async function streamChat(
 
         if (!isSupabaseEnabled() || !supabase) {
             callbacks.onError('Please sign in to use chat.');
+            callbacks.onDone(false);
             return;
         }
 
@@ -524,10 +525,12 @@ export async function streamChat(
         const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
             callbacks.onError('Session expired. Please sign in again.');
+            callbacks.onDone(false);
             return;
         }
         if (!session?.access_token) {
             callbacks.onError('Please sign in to use chat.');
+            callbacks.onDone(false);
             return;
         }
 
@@ -646,6 +649,7 @@ export async function streamChat(
         console.error('[streamChat] top-level catch:', err);
         const msg = err instanceof Error ? err.message : String(err);
         callbacks.onError(msg);
+        callbacks.onDone(false);
     }
 }
 
@@ -682,7 +686,9 @@ function getMaxChunksForMode(mode: ResponseMode): number {
     const configured = mode === 'artifact'
         ? CONTINUATION_MAX_CHUNKS_ARTIFACT
         : CONTINUATION_MAX_CHUNKS_CHAT;
-    return Math.max(3, configured);
+    // Allow config of 0 to disable continuation entirely.
+    // Otherwise enforce a minimum of 3 chunks for production use.
+    return configured === 0 ? 0 : Math.max(3, configured);
 }
 
 /**
@@ -905,7 +911,7 @@ async function streamViaEdgeFunctionWrapper(
             const stalled = isReasoningOnlyPass
                 ? (continuationCount >= 1)
                 : (contentChunkCount === 0 && reasoningChunkCount === 0 ? true : passChars < STALL_MIN_CONTINUATION_CHARS);
-            const hitOutputCeiling = fullResponse.length >= ABSOLUTE_OUTPUT_CEILING * 8; // ~8 chars/token
+            const hitOutputCeiling = fullResponse.length >= ABSOLUTE_OUTPUT_CEILING * 4; // ~4 chars/token
             const hitTurnBudget = fullResponse.length >= PER_TURN_OUTPUT_CHAR_BUDGET;
             const repeating =
                 continuationCount > 0 &&
@@ -1278,6 +1284,7 @@ async function processStream(
     const reader = response.body?.getReader();
     if (!reader) {
         callbacks.onError('No response stream available');
+        callbacks.onDone(false);
         onFinalize?.({
             endedWith: 'error',
             truncated: false,
@@ -1512,6 +1519,7 @@ async function processStream(
                     if (parsed && parsed.error) {
                         console.error('[processStream] API error chunk:', parsed.error);
                         callbacks.onError(parsed.error.message ?? (typeof parsed.error === 'string' ? parsed.error : 'Stream error'));
+                        callbacks.onDone(false);
                         return;
                     }
                     const choice = parsed.choices?.[0];
@@ -1617,6 +1625,65 @@ async function processStream(
             }
         }
 
+        // ── Flush remaining buffer at EOF ──
+        // If the final TCP segment arrived without a trailing newline, the
+        // last data line stays in `buffer` and would be silently dropped.
+        // Process it now so the closing </lucen_artifact> tag (or any other
+        // final content) is not lost.
+        if (buffer.trim()) {
+            const finalLine = buffer.trim();
+            buffer = '';
+            if (finalLine.startsWith('data: ')) {
+                const data = finalLine.slice(6);
+                if (data === '[DONE]') {
+                    callbacks.onDone(wasTruncated);
+                    logStreamSummary('done');
+                    onFinalize?.({
+                        endedWith: 'done',
+                        truncated: wasTruncated,
+                        sawNaturalFinish,
+                        watchdogFired,
+                        chunkCount,
+                        reasoningChunkCount,
+                        contentChunkCount,
+                        content: accContent,
+                        reasoning: accReasoning,
+                    });
+                    return;
+                }
+                try {
+                    const parsed = JSON.parse(data);
+                    const choice = parsed.choices?.[0];
+                    if (choice) {
+                        if (choice.finish_reason === 'length') wasTruncated = true;
+                        else if (choice.finish_reason === 'stop' || choice.finish_reason === 'end_turn') sawNaturalFinish = true;
+                        const delta = choice.delta;
+                        if (delta?.content) {
+                            const chunk = sanitizeAssistantOutput(String(delta.content));
+                            if (chunk && typeof chunk === 'string') callbacks.onChunk(chunk);
+                            contentChunkCount++;
+                            if (accContent.length < FINALIZE_CONTENT_CAP) accContent += String(delta.content);
+                        }
+                        if (delta?.reasoning || delta?.reasoning_content) {
+                            const rawRc = String(delta.reasoning || delta.reasoning_content || '');
+                            const rc = sanitizeAssistantOutput(rawRc);
+                            if (rc && typeof rc === 'string') {
+                                if (treatReasoningAsContent || rawRc.includes('<lucen_artifact')) {
+                                    callbacks.onChunk(rc);
+                                    contentChunkCount++;
+                                    if (accContent.length < FINALIZE_CONTENT_CAP) accContent += rawRc;
+                                } else {
+                                    callbacks.onReasoning(rc);
+                                }
+                            }
+                            reasoningChunkCount++;
+                            if (accReasoning.length < FINALIZE_CONTENT_CAP) accReasoning += rawRc;
+                        }
+                    }
+                } catch { /* ignore malformed final chunk */ }
+            }
+        }
+
         // If we reached EOF without [DONE] AND without any natural-finish
         // signal, the socket was almost certainly cut mid-response. Surface
         // this as "truncated" so the continuation loop resumes instead of
@@ -1681,6 +1748,7 @@ async function processStream(
             console.error('[processStream] EXCEPTION:', err);
             const msg = err instanceof Error ? err.message : 'Unknown error';
             callbacks.onError(msg);
+            callbacks.onDone(false);
             logStreamSummary('error');
             onFinalize?.({
                 endedWith: 'error',

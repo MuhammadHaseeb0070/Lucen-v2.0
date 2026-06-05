@@ -74,7 +74,7 @@ async function getSvgMarkupForExport(content: string, type: ArtifactType): Promi
       mermaid.initialize({
         startOnLoad: false,
         theme: 'neutral',
-        securityLevel: 'loose',
+        securityLevel: 'strict',
         fontFamily: 'system-ui, -apple-system, sans-serif',
         flowchart: { htmlLabels: true, curve: 'basis' },
         sequence: { useMaxWidth: true },

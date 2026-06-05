@@ -221,7 +221,8 @@ export function attachErrorListener(
 export function injectIntoHtml(srcDoc: string): string {
   if (!srcDoc) return INJECT_SCRIPT;
   // Try the start of <head>...
-  const headOpen = srcDoc.match(/<head[^>]*>/i);
+  // Use negative lookahead to match only opening <head> tags, not closing </head>.
+  const headOpen = srcDoc.match(/<head(?![\/\t ])[^>]*>/i);
   if (headOpen && headOpen.index !== undefined) {
     const insertAt = headOpen.index + headOpen[0].length;
     return srcDoc.slice(0, insertAt) + INJECT_SCRIPT + srcDoc.slice(insertAt);

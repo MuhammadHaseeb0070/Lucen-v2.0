@@ -106,14 +106,17 @@ function getWorker(): Worker {
     worker.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
       const data = e.data;
       if (!data) return;
-      if (data.artifactId !== focusedArtifactId) return;
 
       if (data.type === 'status') {
+        // Progress updates: only show for the focused artifact to avoid UI confusion.
+        if (data.artifactId !== focusedArtifactId) return;
         const handler = pending.get(data.artifactId);
         if (handler?.onProgress) {
           handler.onProgress(data.message);
         }
       } else if (data.type === 'result') {
+        // Always resolve the pending promise — even for non-focused artifacts.
+        // This prevents memory leaks and ensures the result is cached properly.
         const handler = pending.get(data.artifactId);
         if (handler) {
           pending.delete(data.artifactId);

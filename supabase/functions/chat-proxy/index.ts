@@ -964,6 +964,7 @@ Deno.serve(async (req: Request) => {
                                             const fr = choice.finish_reason;
                                             if (fr !== null && fr !== undefined) {
                                                 isToolCall = (fr === 'tool_calls');
+                                                finishReason = String(fr);
                                                 break outerLoop;
                                             }
                                         }
@@ -1533,7 +1534,10 @@ Deno.serve(async (req: Request) => {
                                 role: 'system',
                                 content: 'Your previous response did not follow the required format. You MUST wrap your response in <lucen_response type="final">...</lucen_response> tags. Do NOT use any XML tool tags. Write your complete answer now.'
                               });
-                              // Do NOT increment rounds — this is a format correction, not a tool call
+                              // Increment rounds to stay within maxRounds budget.
+                              // Without this, emergency retries cause extra API calls
+                              // beyond the configured limit, leading to unexpected charges.
+                              rounds++;
                               continue;
 
                             } else {
@@ -1664,6 +1668,9 @@ Deno.serve(async (req: Request) => {
                     console.error('[chat-proxy] Stream internal execution error:', e);
                     try {
                         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: e.message })}\n\n`));
+                        // Always emit [DONE] after error so the client's processStream
+                        // exits cleanly instead of triggering infinite continuation retries.
+                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
                     } catch { /* skip */ }
                 } finally {
                     if (keepaliveTimer) {

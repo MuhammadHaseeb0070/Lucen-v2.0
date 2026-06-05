@@ -50,6 +50,20 @@ export function getUserFriendlyError(error: Error | string | null | undefined): 
         return "Network error. Please check your connection and try again.";
     }
 
+    // 7. 429 / rate limit / too many requests
+    if (
+        /429|rate.?limit|too many requests/i.test(errorStr)
+    ) {
+        return "Too many requests. Please wait a moment and try again.";
+    }
+
+    // 8. 503 / service unavailable / overloaded
+    if (
+        /503|service.?unavailable|overloaded|circuit.?breaker/i.test(errorStr)
+    ) {
+        return "Service temporarily unavailable. Please try again in a moment.";
+    }
+
     // Default fallback
     return "Something went wrong. Please try again.";
 }

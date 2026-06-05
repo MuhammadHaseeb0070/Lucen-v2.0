@@ -211,8 +211,28 @@ export function parseArtifacts(
     }
   }
 
+  // ── Strip orphaned closing HTML tags from cleanContent ──
+  // After artifact extraction, the remaining text may contain orphaned
+  // closing tags (e.g. </head>, </li>, </ul>) from malformed AI output.
+  // These would render as visible garbage in the chat bubble, so we
+  // strip lines that consist solely of HTML closing tags.
+  cleanContent = stripOrphanedClosingTags(cleanContent);
+
   return {
     cleanContent: cleanContent.trim(),
     artifacts,
   };
+}
+
+/**
+ * Remove lines/blocks that consist solely of HTML closing tags.
+ * These are artifacts of malformed AI output (e.g. the model emitting
+ * `</head></li></li></ul>` after an artifact block) and would render
+ * as visible garbage in the chat bubble.
+ */
+function stripOrphanedClosingTags(text: string): string {
+  // Match a line that is only whitespace + HTML closing tags (possibly multiple).
+  // Examples: "</head>", "</li></li></ul>", "  </body>  "
+  const orphanedLineRe = /^\s*(?:<\/\w+>\s*)+$/gm;
+  return text.replace(orphanedLineRe, '');
 }

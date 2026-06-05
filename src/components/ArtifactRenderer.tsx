@@ -24,6 +24,29 @@ interface RendererProps {
 // continues to update in real time.
 const STREAMING_PREVIEW_THROTTLE_MS = 1500;
 
+/**
+ * Sanitize SVG content before DOM insertion. Strips elements and attributes
+ * that could execute JavaScript or load external resources.
+ * This is a defense-in-depth measure — SVGs in the main DOM are NOT sandboxed.
+ */
+function sanitizeSvg(svg: string): string {
+  let cleaned = svg;
+  // Strip <script> tags and their contents
+  cleaned = cleaned.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Strip <foreignObject> tags (can contain arbitrary HTML+JS)
+  cleaned = cleaned.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
+  // Strip <iframe>, <object>, <embed> tags
+  cleaned = cleaned.replace(/<(iframe|object|embed)[\s\S]*?<\/\1>/gi, '');
+  cleaned = cleaned.replace(/<(iframe|object|embed)[^>]*\/?>/gi, '');
+  // Strip event handler attributes (onload, onerror, onclick, etc.)
+  cleaned = cleaned.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  // Strip javascript: URIs in href/xlink:href/src attributes
+  cleaned = cleaned.replace(/((?:href|xlink:href|src|action)\s*=\s*)(["'])javascript:[^"']*["']/gi, '$1$2$3');
+  // Strip <use> elements with external references
+  cleaned = cleaned.replace(/<use[^>]*(?:href|xlink:href)\s*=\s*(?:"https?:[^"]*"|'https?:[^']*')[^>]*\/?>/gi, '');
+  return cleaned;
+}
+
 // Custom hook: exposes a "previewContent" that only updates every N ms while
 // `isStreaming` is true. When streaming ends, the final content is flushed
 // immediately so the preview matches the complete artifact.
@@ -388,7 +411,7 @@ const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false, ar
         if (artifactId) setRuntimeError(artifactId, { message: errMsg, origin: 'svg', capturedAt: Date.now() });
         return;
       }
-      el.innerHTML = svgContent;
+      el.innerHTML = sanitizeSvg(svgContent);
       setRenderError(null);
       // Clear any prior SVG error on successful render.
       if (artifactId) setRuntimeError(artifactId, null);
@@ -466,7 +489,7 @@ function sanitizeMermaidSyntax(raw: string): string {
 async function tryRenderMermaid(text: string, id: string): Promise<string> {
   const mermaid = (await import('mermaid')).default;
   mermaid.initialize({
-    startOnLoad: false, theme: 'neutral', securityLevel: 'loose',
+    startOnLoad: false, theme: 'neutral', securityLevel: 'strict',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     flowchart: { htmlLabels: true, curve: 'basis' },
     sequence: { useMaxWidth: true },
@@ -798,7 +821,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
           if (res.error && !isLimitation) {
             setRuntimeError(artifact.id, {
               message: res.error,
-              origin: 'python' as any,
+              origin: 'python',
               capturedAt: Date.now(),
             });
           } else {
@@ -825,7 +848,7 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
 
           setRuntimeError(artifact.id, {
             message: errRes.error,
-            origin: 'python' as any,
+            origin: 'python',
             capturedAt: Date.now(),
           });
         });
