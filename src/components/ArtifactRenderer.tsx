@@ -730,6 +730,20 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
   const [fileDataMissing, setFileDataMissing] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'preview' | 'console'>('preview');
 
+  // Map raw status strings to user-friendly messages
+  const friendlyProgress = useMemo(() => {
+    if (!progress) return 'Initializing Python environment...';
+    if (progress.includes('Setting up Python')) return '⚙️  Setting up Python environment (first time: ~10-15 seconds)...';
+    if (progress.includes('Preparing package')) return '📦  Preparing package installer...';
+    if (progress.includes('Scanning imports')) return '🔍  Scanning required packages...';
+    if (progress.includes('Loading')) return `📥  ${progress}`;
+    if (progress.includes('Downloading')) return `⬇️  ${progress}`;
+    if (progress.includes('Executing')) return '▶️  Running your script...';
+    if (progress.includes('Reading spreadsheet') || progress.includes('extracting') || progress.includes('Extracting')) return '🔬  Analyzing spreadsheet for live preview...';
+    if (progress.includes('Reading document') || progress.includes('document structure')) return '🔬  Analyzing document structure for preview...';
+    return progress;
+  }, [progress]);
+
   // Sync activeTab when result updates or loads
   useEffect(() => {
     if (result) {
@@ -1052,20 +1066,6 @@ const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
       </div>
     );
   }
-
-  // Map raw status strings to user-friendly messages
-  const friendlyProgress = useMemo(() => {
-    if (!progress) return 'Initializing Python environment...';
-    if (progress.includes('Setting up Python')) return '⚙️  Setting up Python environment (first time: ~10-15 seconds)...';
-    if (progress.includes('Preparing package')) return '📦  Preparing package installer...';
-    if (progress.includes('Scanning imports')) return '🔍  Scanning required packages...';
-    if (progress.includes('Loading')) return `📥  ${progress}`;
-    if (progress.includes('Downloading')) return `⬇️  ${progress}`;
-    if (progress.includes('Executing')) return '▶️  Running your script...';
-    if (progress.includes('Reading spreadsheet') || progress.includes('extracting') || progress.includes('Extracting')) return '🔬  Analyzing spreadsheet for live preview...';
-    if (progress.includes('Reading document') || progress.includes('document structure')) return '🔬  Analyzing document structure for preview...';
-    return progress;
-  }, [progress]);
 
   if (isRunning) {
     return (
