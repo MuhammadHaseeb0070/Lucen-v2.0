@@ -1266,10 +1266,12 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
       messageId: '',
     };
     const currentArtifact = artifact || fallbackArtifact;
+    // Fix: use stable key to prevent hook lifecycle conflicts during streaming.
+    // Only remount when artifact ID changes, not on every content update.
     return (
       <RendererErrorBoundary content={content} language="python">
         <PythonRenderer
-          key={currentArtifact.isStreaming ? currentArtifact.id : `${currentArtifact.id}_${currentArtifact.content}`}
+          key={currentArtifact.id}
           artifact={currentArtifact}
         />
       </RendererErrorBoundary>

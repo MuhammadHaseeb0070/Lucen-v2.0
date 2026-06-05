@@ -663,6 +663,41 @@ except Exception:
       } catch { /* ignore */ }
     }
 
+    // 5b. Pre-flight: validate imports against available packages
+    const AVAILABLE_PYODIDE_PACKAGES = new Set([
+      'openpyxl', 'docx', 'python_docx', 'matplotlib', 'pandas', 'numpy',
+      'scipy', 'PIL', 'pillow', 'sympy', 'lxml', 'bs4', 'beautifulsoup4',
+      'networkx', 'sklearn', 'scikit_learn', 'statsmodels', 'json', 'csv',
+      'os', 'io', 'math', 'datetime', 're', 'collections', 'itertools',
+      'functools', 'random', 'string', 'textwrap', 'hashlib', 'base64',
+      'struct', 'statistics', 'fractions', 'decimal', 'copy', 'pathlib',
+      'unicodedata', 'zipimport', 'micropip', 'pyodide',
+    ]);
+    const importMatches = code.match(/^import\s+([\w,\s]+)|^from\s+(\w+)/gm) || [];
+    const unavailable: string[] = [];
+    for (const imp of importMatches) {
+      const modules = imp.replace(/^import\s+|^from\s+/, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].split('.')[0]);
+      for (const mod of modules) {
+        if (mod && !AVAILABLE_PYODIDE_PACKAGES.has(mod.toLowerCase()) && !AVAILABLE_PYODIDE_PACKAGES.has(mod)) {
+          unavailable.push(mod);
+        }
+      }
+    }
+    if (unavailable.length > 0) {
+      const uniqueUnavailable = [...new Set(unavailable)];
+      ctx.postMessage({
+        type: 'result',
+        artifactId,
+        stdout: '',
+        stderr: '',
+        files: [],
+        error: `Package${uniqueUnavailable.length > 1 ? 's' : ''} not available in browser Python: ${uniqueUnavailable.join(', ')}. To use these, download the .py file and run it locally with: pip install ${uniqueUnavailable.join(' ')}`,
+        xlsxSchema: null,
+        docxSchema: null,
+      });
+      return;
+    }
+
     // 6. Run the code
     let runError: string | null = null;
     try {
