@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
         const rateLimitResult = checkRateLimit(`chat:${userId}`, 30, 60_000);
         if (!rateLimitResult.allowed) {
             log.warn('Rate limit exceeded', { userId, retryAfterMs: rateLimitResult.retryAfterMs });
-            return await fail('rate_limited', 429, 'Too many requests. Please wait a moment and try again.');
+            return await fail('client_error', 429, 'Too many requests. Please wait a moment and try again.');
         }
         if (expiry && expiry < Math.floor(Date.now() / 1000)) {
             return await fail('auth_error', 401, 'Token expired');
@@ -593,7 +593,7 @@ Deno.serve(async (req: Request) => {
         // Circuit breaker: block requests if OpenRouter is consistently failing
         if (!circuitAllow('openrouter')) {
             log.warn('Circuit breaker OPEN — OpenRouter unavailable');
-            return await fail('upstream_unavailable', 503, 'AI service is temporarily unavailable. Please try again in a moment.');
+            return await fail('upstream_error', 503, 'AI service is temporarily unavailable. Please try again in a moment.');
         }
 
         // ─── Non-stream mode (generate-title, bg calls, etc.) ───────────
@@ -626,17 +626,14 @@ Deno.serve(async (req: Request) => {
                 const errBody = await openrouterResponse.text();
                 circuitFailure('openrouter');
                 log.error('OpenRouter upstream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
-            } else {
-                circuitSuccess('openrouter');
-            }
-
-            if (!openrouterResponse.ok) {
                 return await fail(
                     'upstream_error',
                     openrouterResponse.status,
                     `OpenRouter API Error ${openrouterResponse.status}`,
                     errBody.slice(0, 500),
                 );
+            } else {
+                circuitSuccess('openrouter');
             }
 
             const json = await openrouterResponse.json();
@@ -1430,7 +1427,20 @@ Deno.serve(async (req: Request) => {
                                         id: tc.id,
                                         type: 'function',
                                         function: {
-                                                            } else {
+                                            name: tc.name,
+                                            arguments: tc.arguments
+                                        }
+                                    }))
+                                });
+                                currentMessages.push(...toolResults);
+                            }
+                            if (keepaliveTimer) {
+                                clearInterval(keepaliveTimer);
+                                keepaliveTimer = null;
+                            }
+                            rounds++;
+                            continue;
+                        } else {
                             // Enable smooth streaming by writing chunks to the client immediately
                             try {
                                 controller.enqueue(encoder.encode(
@@ -1495,7 +1505,6 @@ Deno.serve(async (req: Request) => {
                                 } catch { /* ignore */ }
                             }
                             break;
-                        }
                         }
                     }
 
