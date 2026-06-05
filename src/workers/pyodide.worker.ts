@@ -676,7 +676,7 @@ except Exception:
     const importMatches = code.match(/^import\s+([\w,\s]+)|^from\s+(\w+)/gm) || [];
     const unavailable: string[] = [];
     for (const imp of importMatches) {
-      const modules = imp.replace(/^import\s+|^from\s+/, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].split('.')[0]);
+      const modules = imp.replace(/^import\s+|^from\s+/, '').split(',').map((s: string) => s.trim().split(/\s+as\s+/)[0].split('.')[0]);
       for (const mod of modules) {
         if (mod && !AVAILABLE_PYODIDE_PACKAGES.has(mod.toLowerCase()) && !AVAILABLE_PYODIDE_PACKAGES.has(mod)) {
           unavailable.push(mod);
