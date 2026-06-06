@@ -12,16 +12,6 @@ const NATIVE_PACKAGES = [
   'jinja2', 'pyyaml', 'jsonschema',
 ];
 
-// Standard library modules (always available, no install needed)
-const STDLIB_MODULES = new Set([
-  'os', 'sys', 'io', 'json', 'csv', 'math', 'datetime', 're', 'time',
-  'collections', 'itertools', 'functools', 'random', 'string', 'uuid',
-  'copy', 'pathlib', 'urllib', 'base64', 'zipfile', 'statistics',
-  'textwrap', 'hashlib', 'hmac', 'struct', 'array', 'bisect',
-  'heapq', 'queue', 'decimal', 'fractions', 'enum', 'dataclasses',
-  'typing', 'abc', 'contextlib', 'warnings', 'logging', 'traceback',
-]);
-
 function arrayBufferToBase64(bytes: Uint8Array): string {
   const chunkSize = 8192;
   let binary = '';
@@ -122,12 +112,12 @@ function extractPythonError(err: any): string {
     }
     // Try to find Python-specific error lines
     const lines = stack.split('\n');
-    const pythonLines = lines.filter(l =>
+    const pythonLines = lines.filter((l: string) =>
       l.includes('File "') && l.includes('.py')
     );
     if (pythonLines.length > 0) {
       // Get the last few meaningful lines
-      const lastLines = lines.slice(-5).filter(l => l.trim());
+      const lastLines = lines.slice(-5).filter((l: string) => l.trim());
       return lastLines.join('\n');
     }
     return stack;
@@ -178,7 +168,7 @@ function extractPythonError(err: any): string {
 
   if (err.message === 'PythonError' || err.type || (err.constructor && err.constructor.name === 'PythonError')) {
     // Last resort: try to extract from the full string
-    const lines = full.split('\n').filter(l => l.trim());
+    const lines = full.split('\n').filter((l: string) => l.trim());
     if (lines.length > 2) {
       return lines.slice(-3).join('\n');
     }
@@ -549,7 +539,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
 
-  const { code, artifactId, inputFiles, packages, mode } = d;
+  const { code, artifactId, inputFiles, packages } = d;
 
   try {
     const py = await initPyodide(artifactId);

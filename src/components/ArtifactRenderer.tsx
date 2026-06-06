@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback, Component } f
 import { highlightCode } from '../workers/highlighterWorkerClient';
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, XCircle, CheckCircle2, FileText } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
-import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage, type XlsxSchema } from '../workers/pyodideWorkerClient';
+import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
