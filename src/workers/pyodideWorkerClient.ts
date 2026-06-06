@@ -65,6 +65,7 @@ export interface ExcelResult {
   stderr: string;
   files: Array<{ name: string; data: string; mimeType: string }>;
   error: string | null;
+  xlsxSchema?: XlsxSchema | null;
 }
 
 export type ExcelRunStage = 'init' | 'packages' | 'input' | 'running' | 'ready';
@@ -77,7 +78,8 @@ export interface ExcelProgress {
 type WorkerMessage =
   | { type: 'status'; artifactId: string; stage: ExcelRunStage; message: string }
   | { type: 'result'; artifactId: string; stdout: string; stderr: string;
-      files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
+      files: Array<{ name: string; data: string; mimeType: string }>; error: string | null;
+      xlsxSchema?: XlsxSchema | null };
 
 let worker: Worker | undefined;
 
@@ -109,26 +111,49 @@ function getWorker(): Worker {
             stderr: data.stderr,
             files: data.files,
             error: data.error,
+            xlsxSchema: data.xlsxSchema ?? null,
           });
         }
       }
+    });
+    worker.addEventListener('error', (e: ErrorEvent) => {
+      for (const [id, handler] of pending.entries()) {
+        pending.delete(id);
+        handler.resolve({
+          stdout: '',
+          stderr: '',
+          files: [],
+          error: `Excel worker crashed: ${e.message || 'Unknown error (possibly out of memory)'}`,
+        });
+      }
+      worker = undefined;
     });
   }
   return worker;
 }
 
+/**
+ * Runs Excel Python code inside the Pyodide Web Worker.
+ * Resolves with stdout, stderr, written files, xlsx schema, and error state.
+ */
 export function runExcel(
   artifactId: string,
   code: string,
   inputFiles?: Array<{ name: string; data: string }>,
   onProgress?: (progress: ExcelProgress) => void,
+  packages?: string[],
+  mode?: string,
 ): Promise<ExcelResult> {
-  // Cancel any prior run for this artifact
-  pending.delete(artifactId);
-
   return new Promise((resolve) => {
     pending.set(artifactId, { resolve, onProgress });
-    getWorker().postMessage({ type: 'run', artifactId, code, inputFiles });
+    getWorker().postMessage({
+      type: 'run',
+      artifactId,
+      code,
+      inputFiles,
+      packages,
+      mode,
+    });
   });
 }
 

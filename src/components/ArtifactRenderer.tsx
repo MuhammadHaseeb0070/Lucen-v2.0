@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState, useMemo, useCallback, Component } f
 import { highlightCode } from '../workers/highlighterWorkerClient';
 import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, XCircle, CheckCircle2, FileText } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
-import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage } from '../workers/pyodideWorkerClient';
+import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage, type XlsxSchema } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import { useChatStore } from '../store/chatStore';
+import DocumentPreview from './ExcelDocumentPreview';
 
 interface RendererProps {
   content: string;
@@ -794,11 +795,20 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
       setProgress({ stage: 'init', message: 'Setting up Python environment...' });
 
       try {
+        // Parse packages from artifact meta
+        const metaPackages = artifact.meta?.packages;
+        const pkgs = metaPackages
+          ? metaPackages.split(',').map((p: string) => p.trim()).filter((p: string) => p.length > 0)
+          : [];
+        const mode = artifact.meta?.mode;
+
         const res = await runExcel(
           artifact.id,
           artifact.content,
           inputFiles,
-          (prog) => { if (isActive()) setProgress(prog); }
+          (prog) => { if (isActive()) setProgress(prog); },
+          pkgs,
+          mode,
         );
 
         if (!isActive()) return;
@@ -954,6 +964,9 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
           <summary>⚠ Warnings ({result.stderr.trim().split('\n').length})</summary>
           <pre>{result.stderr}</pre>
         </details>
+      )}
+      {result.xlsxSchema && (
+        <DocumentPreview xlsxSchema={result.xlsxSchema} hideDisclaimer={true} />
       )}
       {excelFiles.length > 0 && (
         <div className="excel-files-section">
