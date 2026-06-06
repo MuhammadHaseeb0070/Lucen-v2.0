@@ -104,78 +104,30 @@ function extractPythonError(err: any): string {
   const stack = err.stack || '';
   const full = typeof err.toString === 'function' ? err.toString() : String(err);
 
-  // If the message is just "PythonError" or similar, look for more details in the stack
-  if (msg.trim() === 'PythonError' && stack) {
-    const tbIdx = stack.indexOf('Traceback (most recent call last):');
-    if (tbIdx !== -1) {
-      return stack.substring(tbIdx);
-    }
-    // Try to find Python-specific error lines
-    const lines = stack.split('\n');
-    const pythonLines = lines.filter((l: string) =>
-      l.includes('File "') && l.includes('.py')
-    );
-    if (pythonLines.length > 0) {
-      // Get the last few meaningful lines
-      const lastLines = lines.slice(-5).filter((l: string) => l.trim());
-      return lastLines.join('\n');
-    }
-    return stack;
-  }
-
   // If we have a python traceback in the message, stack, or toString, use it
   if (msg.includes('Traceback')) return msg;
   if (stack.includes('Traceback')) return stack;
   if (full.includes('Traceback')) return full;
 
-  // Check for specific error types and format nicely
+  // Handle module not found gracefully
   if (msg.includes('ModuleNotFoundError') || msg.includes('No module named')) {
     const moduleName = msg.match(/No module named '?([^'"\s]+)'?/)?.[1] || 'unknown';
     return `ModuleNotFoundError: No module named '${moduleName}'\n\nThis package is not available in the browser Python environment. Available packages: ${NATIVE_PACKAGES.join(', ')}\n\nTo use this package, download the .py file and run it locally with: pip install ${moduleName}`;
   }
 
-  if (msg.includes('SyntaxError')) {
-    return `SyntaxError: ${msg}`;
-  }
-
-  if (msg.includes('NameError')) {
-    return `NameError: ${msg}`;
-  }
-
-  if (msg.includes('TypeError')) {
-    return `TypeError: ${msg}`;
-  }
-
-  if (msg.includes('ValueError')) {
-    return `ValueError: ${msg}`;
-  }
-
-  if (msg.includes('FileNotFoundError') || msg.includes('No such file')) {
-    return `FileNotFoundError: ${msg}\n\nThe file was not found in the working directory (/home/pyodide/). Make sure the file exists or check the filename.`;
-  }
-
-  if (msg.includes('KeyError')) {
-    return `KeyError: ${msg}`;
-  }
-
-  if (msg.includes('IndexError')) {
-    return `IndexError: ${msg}`;
-  }
-
-  if (msg.includes('AttributeError')) {
-    return `AttributeError: ${msg}`;
-  }
-
-  if (err.message === 'PythonError' || err.type || (err.constructor && err.constructor.name === 'PythonError')) {
-    // Last resort: try to extract from the full string
-    const lines = full.split('\n').filter((l: string) => l.trim());
-    if (lines.length > 2) {
-      return lines.slice(-3).join('\n');
+  // Fallback for generic "PythonError" or any error without a Python Traceback
+  if (msg.trim() === 'PythonError' || full.trim() === 'PythonError') {
+    let details = "PythonError (Traceback missing)";
+    if (stack && stack !== 'PythonError') {
+      details += "\n\nStack:\n" + stack;
     }
-    return full;
+    try {
+      details += "\n\nObject dump:\n" + JSON.stringify(err, Object.getOwnPropertyNames(err), 2);
+    } catch(e) {}
+    return details;
   }
 
-  return err.message || full;
+  return stack || msg || full;
 }
 
 async function initPyodide(artifactId: string) {
