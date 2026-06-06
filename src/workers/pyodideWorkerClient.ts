@@ -28,7 +28,7 @@ export interface XlsxSchema {
   data: Record<string, ExcelSheetSchema>;
 }
 
-// ── Word/docx schema ──────────────────────────────────────────────────────────
+// ── Word/docx schema (kept for ExcelDocumentPreview compatibility) ─────────────
 export interface DocxRun {
   text: string;
   bold?: boolean;
@@ -39,8 +39,8 @@ export interface DocxRun {
 }
 
 export interface DocxParagraph {
-  style: string;            // e.g. "Normal", "Heading 1"
-  text: string;             // full plain text
+  style: string;
+  text: string;
   runs?: DocxRun[];
   alignment?: string;
 }
@@ -60,43 +60,33 @@ export interface DocxSchema {
 }
 
 // ── Core result type ──────────────────────────────────────────────────────────
-export interface PythonResult {
+export interface ExcelResult {
   stdout: string;
   stderr: string;
   files: Array<{ name: string; data: string; mimeType: string }>;
   error: string | null;
-  xlsxSchema?: XlsxSchema | null;
-  docxSchema?: DocxSchema | null;
+}
+
+export type ExcelRunStage = 'init' | 'packages' | 'input' | 'running' | 'ready';
+
+export interface ExcelProgress {
+  stage: ExcelRunStage;
+  message: string;
 }
 
 type WorkerMessage =
-  | { type: 'status'; artifactId: string; status: string; message: string }
-  | { type: 'result'; artifactId: string; stdout: string; stderr: string; files: Array<{ name: string; data: string; mimeType: string }>; error: string | null; xlsxSchema?: XlsxSchema | null; docxSchema?: DocxSchema | null };
+  | { type: 'status'; artifactId: string; stage: ExcelRunStage; message: string }
+  | { type: 'result'; artifactId: string; stdout: string; stderr: string;
+      files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
 
 let worker: Worker | undefined;
-/** Only this artifact's run may update UI callbacks (the open workspace artifact). */
-let focusedArtifactId: string | null = null;
 
-const pending = new Map<
-  string,
-  {
-    resolve: (res: PythonResult) => void;
-    onProgress?: (message: string) => void;
-  }
->();
+const pending = new Map<string, {
+  resolve: (res: ExcelResult) => void;
+  onProgress?: (progress: ExcelProgress) => void;
+}>();
 
-const CANCELLED: PythonResult = {
-  stdout: '',
-  stderr: '',
-  files: [],
-  error: null,
-};
-
-export function setFocusedPythonArtifact(artifactId: string | null) {
-  focusedArtifactId = artifactId;
-}
-
-export function cancelPendingPythonRun(artifactId: string) {
+export function cancelExcelRun(artifactId: string) {
   pending.delete(artifactId);
 }
 
@@ -108,15 +98,9 @@ function getWorker(): Worker {
       if (!data) return;
 
       if (data.type === 'status') {
-        // Progress updates: only show for the focused artifact to avoid UI confusion.
-        if (data.artifactId !== focusedArtifactId) return;
         const handler = pending.get(data.artifactId);
-        if (handler?.onProgress) {
-          handler.onProgress(data.message);
-        }
+        handler?.onProgress?.({ stage: data.stage, message: data.message });
       } else if (data.type === 'result') {
-        // Always resolve the pending promise — even for non-focused artifacts.
-        // This prevents memory leaks and ensures the result is cached properly.
         const handler = pending.get(data.artifactId);
         if (handler) {
           pending.delete(data.artifactId);
@@ -125,86 +109,38 @@ function getWorker(): Worker {
             stderr: data.stderr,
             files: data.files,
             error: data.error,
-            xlsxSchema: data.xlsxSchema ?? null,
-            docxSchema: data.docxSchema ?? null,
           });
         }
       }
-    });
-    worker.addEventListener('error', (e: ErrorEvent) => {
-      for (const [id, handler] of pending.entries()) {
-        pending.delete(id);
-        handler.resolve({
-          stdout: '',
-          stderr: '',
-          files: [],
-          error: `Python worker crashed: ${e.message || 'Unknown error (possibly out of memory)'}`,
-        });
-      }
-      // Reset worker so next run spawns fresh
-      worker = undefined;
     });
   }
   return worker;
 }
 
-/**
- * Runs Python code inside the Pyodide Web Worker.
- * Resolves with the stdout, stderr, written files, and error state.
- */
-export function runPython(
+export function runExcel(
   artifactId: string,
   code: string,
-  packages: string[],
-  mode?: string,
   inputFiles?: Array<{ name: string; data: string }>,
-  onProgress?: (message: string) => void
-): Promise<PythonResult> {
-  focusedArtifactId = artifactId;
-
-  for (const id of pending.keys()) {
-    if (id !== artifactId) {
-      const stale = pending.get(id);
-      pending.delete(id);
-      stale?.resolve(CANCELLED);
-    }
-  }
+  onProgress?: (progress: ExcelProgress) => void,
+): Promise<ExcelResult> {
+  // Cancel any prior run for this artifact
+  pending.delete(artifactId);
 
   return new Promise((resolve) => {
-    if (focusedArtifactId !== artifactId) {
-      resolve(CANCELLED);
-      return;
-    }
-
     pending.set(artifactId, { resolve, onProgress });
-    getWorker().postMessage({
-      type: 'run',
-      artifactId,
-      code,
-      packages,
-      mode,
-      inputFiles,
-    });
+    getWorker().postMessage({ type: 'run', artifactId, code, inputFiles });
   });
 }
 
-/**
- * Terminate the active worker instance if spawned, reclaiming all WebAssembly memory.
- */
-export function terminateWorker() {
+export function terminateExcelWorker() {
   if (worker) {
     worker.terminate();
     worker = undefined;
     for (const [, handler] of pending.entries()) {
-      handler.resolve({
-        stdout: '',
-        stderr: '',
-        files: [],
-        error: 'Worker terminated unexpectedly.',
-      });
+      handler.resolve({ stdout: '', stderr: '', files: [], error: 'Worker terminated.' });
     }
     pending.clear();
   }
 }
 
-export default runPython;
+export default runExcel;

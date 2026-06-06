@@ -1,0 +1,924 @@
+I need to do a complete clean slate rebuild of the Python/Pyodide artifact 
+system in Lucen. The goal: remove ALL traces of the old Python system and 
+replace it with a focused, Excel-only Pyodide execution system. Do this in 
+the following exact order.
+
+═══════════════════════════════════════════════════════════════════
+TASK 1: AUDIT — find every file that references Python/Pyodide
+═══════════════════════════════════════════════════════════════════
+
+Search the entire codebase for these terms and list every file and 
+line number that references them:
+- "python" (case insensitive)
+- "pyodide" (case insensitive)  
+- "PythonRenderer"
+- "runPython"
+- "pyodideWorkerClient"
+- type === 'python'
+- type: 'python'
+- ArtifactType (show me what values it currently supports)
+
+List everything found. Do not change anything yet.
+
+═══════════════════════════════════════════════════════════════════
+TASK 2: CLEAN THE ARTIFACT TYPE SYSTEM
+═══════════════════════════════════════════════════════════════════
+
+2a. In src/types/index.ts (or wherever ArtifactType is defined):
+    Find the ArtifactType union/enum.
+    Remove 'python' from it.
+    Add 'excel' in its place.
+    Result should include: 'html' | 'svg' | 'mermaid' | 'file' | 'excel'
+
+2b. In src/lib/artifactParser.ts:
+    Find SUPPORTED_TYPES Set.
+    Remove 'python'.
+    Add 'excel'.
+    Result: new Set(['html', 'svg', 'mermaid', 'file', 'excel'])
+
+═══════════════════════════════════════════════════════════════════
+TASK 3: REPLACE THE WORKER FILES (complete rewrites)
+═══════════════════════════════════════════════════════════════════
+
+3a. COMPLETELY REPLACE src/workers/pyodide.worker.ts with this exact content:
+
+--- BEGIN FILE: src/workers/pyodide.worker.ts ---
+
+const ctx: Worker = self as any;
+
+let pyodide: any = null;
+
+// Only Excel-relevant output extensions are tracked
+const OUTPUT_EXTENSIONS = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'pdf', 'json', 'txt', 'zip'];
+
+// WHITELISTED libraries for Excel work — all are Pyodide-native, no micropip needed
+// openpyxl: read/write xlsx, full formatting, charts, images
+// xlsxwriter: write xlsx with advanced chart API (write-only)
+// pandas: data manipulation, CSV to Excel, transformations
+// numpy: numerical calculations
+// matplotlib: chart images to embed in Excel
+// Pillow: image processing before Excel embedding
+const EXCEL_NATIVE_PACKAGES = ['openpyxl', 'xlsxwriter', 'pandas', 'numpy', 'matplotlib', 'Pillow'];
+
+function arrayBufferToBase64(bytes: Uint8Array): string {
+  const chunkSize = 8192;
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.byteLength));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+interface FileMeta { mtime: number; size: number; }
+
+function listFilesRecursively(dir: string): string[] {
+  const result: string[] = [];
+  try {
+    const files = pyodide.FS.readdir(dir);
+    for (const file of files) {
+      if (file === '.' || file === '..') continue;
+      const fullPath = `${dir}/${file}`;
+      const stat = pyodide.FS.stat(fullPath);
+      if (pyodide.FS.isDir(stat.mode)) {
+        result.push(...listFilesRecursively(fullPath));
+      } else {
+        result.push(fullPath);
+      }
+    }
+  } catch { /* ignore */ }
+  return result;
+}
+
+function getFilesMeta(dir: string): Map<string, FileMeta> {
+  const meta = new Map<string, FileMeta>();
+  for (const p of listFilesRecursively(dir)) {
+    try {
+      const stat = pyodide.FS.stat(p);
+      meta.set(p, { mtime: stat.mtime, size: stat.size });
+    } catch { /* ignore */ }
+  }
+  return meta;
+}
+
+function clearWorkspace(py: any) {
+  const dir = '/home/pyodide';
+  try {
+    for (const name of py.FS.readdir(dir)) {
+      if (name === '.' || name === '..') continue;
+      const p = `${dir}/${name}`;
+      try {
+        const stat = py.FS.stat(p);
+        if (py.FS.isDir(stat.mode)) {
+          // recursively remove dirs
+          const rmRecursive = (path: string) => {
+            for (const n of py.FS.readdir(path)) {
+              if (n === '.' || n === '..') continue;
+              const fp = `${path}/${n}`;
+              const s = py.FS.stat(fp);
+              if (py.FS.isDir(s.mode)) rmRecursive(fp);
+              else py.FS.unlink(fp);
+            }
+            py.FS.rmdir(path);
+          };
+          rmRecursive(p);
+        } else {
+          py.FS.unlink(p);
+        }
+      } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+}
+
+async function initPyodide(artifactId: string) {
+  if (pyodide) return pyodide;
+
+  ctx.postMessage({ type: 'status', artifactId, stage: 'init', 
+    message: 'Setting up Python environment...' });
+
+  const pyodideModule = await (Function('u', 'return import(u)')(
+    'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs'
+  ));
+  pyodide = await pyodideModule.loadPyodide({
+    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/',
+  });
+
+  ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
+    message: 'Loading Excel libraries...' });
+
+  // Load all whitelisted packages upfront — these are Pyodide-native,
+  // no network download needed after first load
+  await pyodide.loadPackage(EXCEL_NATIVE_PACKAGES);
+
+  await pyodide.runPythonAsync(`
+import os
+os.makedirs('/home/pyodide', exist_ok=True)
+os.chdir('/home/pyodide')
+`);
+
+  ctx.postMessage({ type: 'status', artifactId, stage: 'ready', 
+    message: 'Ready.' });
+
+  return pyodide;
+}
+
+function getMimeType(ext: string): string {
+  const types: Record<string, string> = {
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    csv: 'text/csv',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    pdf: 'application/pdf',
+    json: 'application/json',
+    txt: 'text/plain',
+    zip: 'application/zip',
+  };
+  return types[ext] || 'application/octet-stream';
+}
+
+ctx.addEventListener('message', async (e: MessageEvent) => {
+  const d = e.data;
+  if (!d || d.type !== 'run') return;
+
+  const { code, artifactId, inputFiles } = d;
+
+  try {
+    const py = await initPyodide(artifactId);
+    clearWorkspace(py);
+
+    // Mount input files
+    if (inputFiles && Array.isArray(inputFiles)) {
+      for (const file of inputFiles) {
+        try {
+          py.FS.writeFile(`/home/pyodide/${file.name}`, base64ToUint8Array(file.data));
+          ctx.postMessage({ type: 'status', artifactId, stage: 'input',
+            message: `Loaded: ${file.name}` });
+        } catch (err: any) {
+          throw new Error(`Could not load input file "${file.name}": ${err.message}`);
+        }
+      }
+    }
+
+    ctx.postMessage({ type: 'status', artifactId, stage: 'running', 
+      message: 'Running script...' });
+
+    const beforeMeta = getFilesMeta('/home/pyodide');
+
+    // Redirect stdout/stderr
+    await py.runPythonAsync(`
+import sys, io
+sys.stdout = io.StringIO()
+sys.stderr = io.StringIO()
+`);
+
+    // Set matplotlib to headless mode
+    await py.runPythonAsync(`
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    plt.rcParams['figure.dpi'] = 150
+except Exception:
+    pass
+`);
+
+    // Execute with timeout
+    let runError: string | null = null;
+    const TIMEOUT_MS = 60000;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(
+          'Script timed out after 60 seconds. It may contain an infinite loop or process too much data.'
+        )), TIMEOUT_MS)
+      );
+      await Promise.race([py.runPythonAsync(code), timeoutPromise]);
+    } catch (err: any) {
+      runError = err.message || String(err);
+    }
+
+    // Capture stdout/stderr
+    let stdout = '';
+    let stderr = '';
+    try {
+      stdout = py.runPython('sys.stdout.getvalue()') ?? '';
+      stderr = py.runPython('sys.stderr.getvalue()') ?? '';
+    } catch { stdout = ''; }
+
+    // Restore streams
+    try {
+      await py.runPythonAsync(`
+import sys, io
+sys.stdout = sys.__stdout__ or io.StringIO()
+sys.stderr = sys.__stderr__ or io.StringIO()
+`);
+    } catch { /* ignore */ }
+
+    // Scan for output files
+    const outputFiles: Array<{ name: string; data: string; mimeType: string }> = [];
+    try {
+      const afterMeta = getFilesMeta('/home/pyodide');
+      for (const [p, meta] of afterMeta.entries()) {
+        const before = beforeMeta.get(p);
+        const isNew = !before || before.size !== meta.size || before.mtime !== meta.mtime;
+        if (!isNew) continue;
+        const ext = p.split('.').pop()?.toLowerCase() || '';
+        if (!OUTPUT_EXTENSIONS.includes(ext)) continue;
+        try {
+          const bytes = py.FS.readFile(p);
+          outputFiles.push({
+            name: p.replace('/home/pyodide/', ''),
+            data: arrayBufferToBase64(bytes),
+            mimeType: getMimeType(ext),
+          });
+        } catch { /* ignore single file read error */ }
+      }
+    } catch { /* ignore fs scan error */ }
+
+    ctx.postMessage({
+      type: 'result',
+      artifactId,
+      stdout,
+      stderr,
+      files: outputFiles,
+      error: runError,
+    });
+
+  } catch (err: any) {
+    ctx.postMessage({
+      type: 'result',
+      artifactId,
+      stdout: '',
+      stderr: '',
+      files: [],
+      error: err.message || String(err),
+    });
+  }
+});
+
+--- END FILE ---
+
+3b. COMPLETELY REPLACE src/workers/pyodideWorkerClient.ts with this exact content:
+
+--- BEGIN FILE: src/workers/pyodideWorkerClient.ts ---
+
+export interface ExcelResult {
+  stdout: string;
+  stderr: string;
+  files: Array<{ name: string; data: string; mimeType: string }>;
+  error: string | null;
+}
+
+export type ExcelRunStage = 'init' | 'packages' | 'input' | 'running' | 'ready';
+
+export interface ExcelProgress {
+  stage: ExcelRunStage;
+  message: string;
+}
+
+type WorkerMessage =
+  | { type: 'status'; artifactId: string; stage: ExcelRunStage; message: string }
+  | { type: 'result'; artifactId: string; stdout: string; stderr: string; 
+      files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
+
+let worker: Worker | undefined;
+
+const pending = new Map<string, {
+  resolve: (res: ExcelResult) => void;
+  onProgress?: (progress: ExcelProgress) => void;
+}>();
+
+const CANCELLED: ExcelResult = { stdout: '', stderr: '', files: [], error: null };
+
+export function cancelExcelRun(artifactId: string) {
+  pending.delete(artifactId);
+}
+
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(new URL('./pyodide.worker.ts', import.meta.url), { type: 'module' });
+    worker.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
+      const data = e.data;
+      if (!data) return;
+
+      if (data.type === 'status') {
+        const handler = pending.get(data.artifactId);
+        handler?.onProgress?.({ stage: data.stage, message: data.message });
+      } else if (data.type === 'result') {
+        const handler = pending.get(data.artifactId);
+        if (handler) {
+          pending.delete(data.artifactId);
+          handler.resolve({
+            stdout: data.stdout,
+            stderr: data.stderr,
+            files: data.files,
+            error: data.error,
+          });
+        }
+      }
+    });
+  }
+  return worker;
+}
+
+export function runExcel(
+  artifactId: string,
+  code: string,
+  inputFiles?: Array<{ name: string; data: string }>,
+  onProgress?: (progress: ExcelProgress) => void,
+): Promise<ExcelResult> {
+  // Cancel any prior run for this artifact
+  pending.delete(artifactId);
+
+  return new Promise((resolve) => {
+    pending.set(artifactId, { resolve, onProgress });
+    getWorker().postMessage({ type: 'run', artifactId, code, inputFiles });
+  });
+}
+
+export function terminateExcelWorker() {
+  if (worker) {
+    worker.terminate();
+    worker = undefined;
+    for (const [, handler] of pending.entries()) {
+      handler.resolve({ stdout: '', stderr: '', files: [], error: 'Worker terminated.' });
+    }
+    pending.clear();
+  }
+}
+
+export default runExcel;
+
+--- END FILE ---
+
+═══════════════════════════════════════════════════════════════════
+TASK 4: REPLACE THE ExcelRenderer IN ArtifactRenderer.tsx
+═══════════════════════════════════════════════════════════════════
+
+4a. In src/components/ArtifactRenderer.tsx:
+
+REMOVE: The entire PythonRenderer component (everything from 
+"const pythonCache" down to the closing "};")
+
+REMOVE: These imports:
+- import { runPython, cancelPendingPythonRun, type PythonResult } 
+  from '../workers/pyodideWorkerClient';
+- The clearPythonCache export function
+
+ADD these imports at the top:
+import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress } 
+  from '../workers/pyodideWorkerClient';
+
+ADD this helper function before the ExcelRenderer component:
+
+function parseExcelError(raw: string): { headline: string; detail: string; isTimeout: boolean; isPackage: boolean; isFile: boolean } {
+  const isTimeout = /timed out/i.test(raw);
+  const isPackage = /ModuleNotFoundError|No module named|ImportError/i.test(raw);
+  const isFile = /FileNotFoundError|No such file/i.test(raw);
+  const isSyntax = /SyntaxError/i.test(raw);
+  const isMemory = /MemoryError|out of memory/i.test(raw);
+
+  let headline = 'Script error';
+  if (isTimeout) headline = 'Script timed out';
+  else if (isPackage) headline = 'Missing library';
+  else if (isFile) headline = 'Input file not found';
+  else if (isSyntax) headline = 'Syntax error in generated code';
+  else if (isMemory) headline = 'Not enough memory';
+
+  // Extract just the last meaningful line for the detail
+  const lines = raw.trim().split('\n').filter(l => l.trim());
+  const detail = lines[lines.length - 1] || raw.slice(0, 120);
+
+  return { headline, detail, isTimeout, isPackage, isFile };
+}
+
+ADD this full ExcelRenderer component (replace PythonRenderer entirely):
+
+--- BEGIN ExcelRenderer ---
+
+const excelCache = new Map<string, ExcelResult>();
+
+export function clearExcelCache(artifactId: string) {
+  for (const key of Array.from(excelCache.keys())) {
+    if (key.startsWith(artifactId + '_')) excelCache.delete(key);
+  }
+  excelCache.delete(artifactId);
+}
+
+interface ExcelRendererProps {
+  artifact: Artifact;
+  onRetry?: () => void;
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  init: 'Setting up Python environment',
+  packages: 'Loading Excel libraries (openpyxl, pandas, matplotlib...)',
+  input: 'Loading your input file',
+  running: 'Running script',
+  ready: 'Ready',
+};
+
+const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
+  const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
+  const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
+
+  const inputFile = artifact.meta?.inputFile;
+  const conversations = useChatStore((s) => s.conversations);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const messages = useMemo(() => {
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    return conv?.messages || [];
+  }, [conversations, activeConversationId]);
+
+  const matchedAttachment = useMemo(() => {
+    if (!inputFile) return null;
+    const allAttachments = messages.flatMap((m) => m.attachments || []);
+    return allAttachments.find((a) => a.name.toLowerCase() === inputFile.toLowerCase()) || null;
+  }, [messages, inputFile]);
+
+  const cacheKey = `${artifact.id}_${artifact.content}`;
+  const [result, setResult] = useState<ExcelResult | null>(() => excelCache.get(cacheKey) || null);
+  const [progress, setProgress] = useState<ExcelProgress | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [showRawError, setShowRawError] = useState(false);
+  const [fileNotFound, setFileNotFound] = useState(false);
+
+  const ranRef = useRef<string | null>(excelCache.has(cacheKey) ? cacheKey : null);
+  const isRunningRef = useRef(false);
+
+  useEffect(() => {
+    if (activeArtifactId !== artifact.id) return;
+    if (ranRef.current === cacheKey || isRunningRef.current) return;
+
+    let isMounted = true;
+    const isActive = () => isMounted && useArtifactStore.getState().activeArtifact?.id === artifact.id;
+
+    setFileNotFound(false);
+    setShowRawError(false);
+
+    const run = async () => {
+      let inputFiles: Array<{ name: string; data: string }> | undefined;
+
+      if (inputFile) {
+        if (!matchedAttachment) {
+          if (isActive()) setFileNotFound(true);
+          return;
+        }
+        let fileData = matchedAttachment.rawBase64;
+        if (!fileData && matchedAttachment.storagePath) {
+          const { supabase } = await import('../lib/supabase');
+          if (isActive()) setProgress({ stage: 'input', message: 'Downloading your file...' });
+          try {
+            const { data, error } = await supabase!.storage
+              .from('attachments').download(matchedAttachment.storagePath);
+            if (error || !data) throw error || new Error('No data');
+            const base64 = await new Promise<string>((res, rej) => {
+              const reader = new FileReader();
+              reader.onload = () => res((reader.result as string).split(',')[1]);
+              reader.onerror = () => rej(new Error('Read failed'));
+              reader.readAsDataURL(data);
+            });
+            matchedAttachment.rawBase64 = base64;
+            fileData = base64;
+          } catch (err: any) {
+            if (isActive()) {
+              setResult({ stdout: '', stderr: '', files: [], 
+                error: `Could not download your file: ${err.message}` });
+              setIsRunning(false);
+              isRunningRef.current = false;
+            }
+            return;
+          }
+        }
+        if (!fileData) {
+          if (isActive()) setFileNotFound(true);
+          return;
+        }
+        inputFiles = [{ name: matchedAttachment.name, data: fileData }];
+      }
+
+      if (!isActive()) return;
+      setIsRunning(true);
+      isRunningRef.current = true;
+      setResult(null);
+      setProgress({ stage: 'init', message: 'Setting up Python environment...' });
+
+      try {
+        const res = await runExcel(
+          artifact.id,
+          artifact.content,
+          inputFiles,
+          (prog) => { if (isActive()) setProgress(prog); }
+        );
+
+        if (!isActive()) return;
+        excelCache.set(cacheKey, res);
+        setResult(res);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = cacheKey;
+
+        if (res.error) {
+          setRuntimeError(artifact.id, {
+            message: res.error,
+            origin: 'python' as any,
+            capturedAt: Date.now(),
+          });
+        } else {
+          const cur = useArtifactStore.getState().runtimeErrors[artifact.id];
+          if (cur) setRuntimeError(artifact.id, null);
+        }
+      } catch (err: any) {
+        if (!isActive()) return;
+        const errRes: ExcelResult = { 
+          stdout: '', stderr: '', files: [], 
+          error: err.message || String(err) 
+        };
+        excelCache.set(cacheKey, errRes);
+        setResult(errRes);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = cacheKey;
+        setRuntimeError(artifact.id, {
+          message: errRes.error!,
+          origin: 'python' as any,
+          capturedAt: Date.now(),
+        });
+      }
+    };
+
+    run();
+    return () => {
+      isMounted = false;
+      isRunningRef.current = false;
+      cancelExcelRun(artifact.id);
+    };
+  }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey]);
+
+  // ── File not found state ──
+  if (fileNotFound) {
+    return (
+      <div className="excel-output excel-output--notice">
+        <div className="excel-notice excel-notice--warn">
+          <AlertTriangle size={16} />
+          <div>
+            <strong>Input file not found</strong>
+            <p>This script needs <code>{inputFile}</code> but it wasn't found in the conversation. Please upload the file and try again.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Loading state ──
+  if (isRunning) {
+    const stage = progress?.stage || 'init';
+    const stages: ExcelRunStage[] = ['init', 'packages', 'input', 'running'];
+    const currentIdx = stages.indexOf(stage as ExcelRunStage);
+    return (
+      <div className="excel-output excel-output--loading">
+        <div className="excel-loading-icon">
+          <Terminal size={28} style={{ color: '#22c55e' }} />
+        </div>
+        <p className="excel-loading-label">{progress?.message || 'Starting...'}</p>
+        <div className="excel-loading-stages">
+          {stages.map((s, i) => (
+            <div key={s} className={`excel-stage ${i < currentIdx ? 'excel-stage--done' : i === currentIdx ? 'excel-stage--active' : 'excel-stage--waiting'}`}>
+              <div className="excel-stage-dot" />
+              <span>{STAGE_LABELS[s]}</span>
+            </div>
+          ))}
+        </div>
+        <p className="excel-loading-hint">First run loads the Python environment (~5-10s). Subsequent runs are instant.</p>
+      </div>
+    );
+  }
+
+  if (!result) return null;
+
+  // ── Error state ──
+  if (result.error) {
+    const { headline, detail, isTimeout, isPackage, isFile } = parseExcelError(result.error);
+    return (
+      <div className="excel-output excel-output--error">
+        <div className="excel-error-header">
+          <XCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <strong>{headline}</strong>
+        </div>
+        <p className="excel-error-detail">{detail}</p>
+        {isPackage && (
+          <p className="excel-error-hint">A required library wasn't available. Click Regenerate below to try again with a fix.</p>
+        )}
+        {isFile && (
+          <p className="excel-error-hint">The script expected <code>{inputFile || 'an input file'}</code>. Make sure it's uploaded in this conversation.</p>
+        )}
+        {isTimeout && (
+          <p className="excel-error-hint">The script ran too long. Try asking for a simpler version or with a smaller dataset.</p>
+        )}
+        <div className="excel-error-actions">
+          {onRetry && (
+            <button className="excel-btn excel-btn--primary" onClick={onRetry}>
+              ↺ Regenerate
+            </button>
+          )}
+          <button className="excel-btn excel-btn--ghost" onClick={() => setShowRawError(!showRawError)}>
+            {showRawError ? 'Hide' : 'Show'} technical details
+          </button>
+        </div>
+        {showRawError && (
+          <pre className="excel-error-raw">{result.error}</pre>
+        )}
+      </div>
+    );
+  }
+
+  const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
+  const excelFiles = uniqueFiles.filter(f => f.mimeType.includes('spreadsheet') || f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
+  const imageFiles = uniqueFiles.filter(f => f.mimeType.startsWith('image/'));
+  const otherFiles = uniqueFiles.filter(f => !excelFiles.includes(f) && !imageFiles.includes(f));
+
+  const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
+    const binary = atob(file.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="excel-output excel-output--success">
+      {result.stdout && (
+        <div className="excel-stdout">
+          <div className="excel-stdout-bar">
+            <Terminal size={12} /><span>Output</span>
+          </div>
+          <pre>{result.stdout}</pre>
+        </div>
+      )}
+      {result.stderr && (
+        <details className="excel-warnings">
+          <summary>⚠ Warnings ({result.stderr.trim().split('\n').length})</summary>
+          <pre>{result.stderr}</pre>
+        </details>
+      )}
+      {excelFiles.length > 0 && (
+        <div className="excel-files-section">
+          <div className="excel-files-heading">Generated Files</div>
+          {excelFiles.map((file) => (
+            <div key={file.name} className="excel-file-card">
+              <div className="excel-file-card-icon">
+                <FileText size={20} />
+              </div>
+              <div className="excel-file-card-info">
+                <div className="excel-file-card-name">{file.name}</div>
+                <div className="excel-file-card-type">
+                  {file.name.endsWith('.xlsx') ? 'Excel Spreadsheet' : 
+                   file.name.endsWith('.csv') ? 'CSV File' : 'File'}
+                </div>
+              </div>
+              <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)}>
+                <Download size={13} /> Download
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {imageFiles.length > 0 && (
+        <div className="excel-images-section">
+          {imageFiles.map((file) => (
+            <div key={file.name} className="excel-image-wrap">
+              <img src={`data:${file.mimeType};base64,${file.data}`} alt={file.name} />
+              <button className="excel-image-download" onClick={() => handleDownload(file)} title={`Download ${file.name}`}>
+                <Download size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {otherFiles.map((file) => (
+        <div key={file.name} className="excel-file-card">
+          <div className="excel-file-card-icon"><FileText size={20} /></div>
+          <div className="excel-file-card-info">
+            <div className="excel-file-card-name">{file.name}</div>
+          </div>
+          <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)}>
+            <Download size={13} /> Download
+          </button>
+        </div>
+      ))}
+      {uniqueFiles.length === 0 && !result.stdout && (
+        <div className="excel-success-empty">
+          <CheckCircle2 size={20} style={{ color: '#22c55e' }} />
+          <span>Ran successfully (no output files)</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+--- END ExcelRenderer ---
+
+4b. In the RENDERERS registry and the ArtifactRenderer switch/if block:
+    - Remove the 'python' case completely
+    - Add 'excel' case that renders ExcelRenderer
+    - Update LANGUAGE_MAP: remove python entry, add excel: 'python'
+    - The ExcelRenderer receives artifact and onRetry props
+
+4c. The onRetry function should send a message back to chat:
+    When user clicks Regenerate, it should call a function that sends
+    the error context back into the chat input. Check if there is a 
+    useChatStore action for sending a system message or pre-filling 
+    the input, and use the most appropriate one. The message should be:
+    "The Excel script failed with this error: [error text]. Please fix it."
+
+═══════════════════════════════════════════════════════════════════
+TASK 5: CLEAN THE SYSTEM PROMPT in src/config/prompts.ts
+═══════════════════════════════════════════════════════════════════
+
+5a. Find the entire python artifact section inside <artifacts> in 
+    BASE_SYSTEM_PROMPT. It starts with:
+    "python   - The python artifact section must communicate..."
+    and ends before "STRICT RULES:"
+    
+    COMPLETELY REPLACE that entire python section with this:
+
+excel    - Generates a real downloadable Excel file (.xlsx) using Python
+           running in a browser-based sandbox (Pyodide/WebAssembly).
+           The user will see a progress indicator while it runs, then
+           a Download button when it's ready. If it fails, they see a
+           clear error message and a Regenerate button.
+
+           ── WHEN TO USE ──────────────────────────────────────────
+           Generate an excel artifact when the user asks for:
+           - An Excel file, spreadsheet, or .xlsx file
+           - Data organized into rows and columns they can download
+           - Charts or graphs saved as Excel charts or image files
+           - A CSV file from data or calculations
+           - Analysis, calculations, or summaries they want in Excel
+           - Modifying an uploaded Excel file (.xlsx) they shared
+
+           DO NOT use excel artifact for:
+           - Simple tables shown in chat (use markdown)
+           - Data analysis shown as text (answer in chat)
+           - Anything requiring internet access
+           - PDF documents (not yet supported)
+           - Word documents (not yet supported)
+
+           ── FORMAT ───────────────────────────────────────────────
+           <lucen_artifact type="excel" title="Descriptive Title">
+           [python code here]
+           </lucen_artifact>
+
+           For files requiring an uploaded input:
+           <lucen_artifact type="excel" title="Updated Report" inputFile="data.xlsx">
+           [python code here]
+           </lucen_artifact>
+
+           ── ENVIRONMENT ──────────────────────────────────────────
+           - Working directory: /home/pyodide/
+           - Save ALL output files to /home/pyodide/filename.xlsx
+           - Use relative paths ('report.xlsx') or absolute ('/home/pyodide/report.xlsx')
+           - NO internet access. NO subprocess. NO GUI. NO file system outside /home/pyodide/
+           - When inputFile is set, that file is already at /home/pyodide/filename.ext
+
+           ── APPROVED LIBRARIES (use ONLY these) ──────────────────
+           openpyxl   - Read/write .xlsx, formatting, charts, images, formulas
+           xlsxwriter - Write .xlsx with advanced charts (write-only, can't read)
+           pandas     - Data manipulation, CSV loading, DataFrames to Excel
+           numpy      - Numerical calculations
+           matplotlib - Charts saved as PNG images (use Agg backend, already set)
+           Pillow     - Image processing, embed logos/images into Excel
+
+           DO NOT USE: requests, httpx, urllib, torch, tensorflow, cv2,
+           sklearn (use scikit-learn if needed but prefer numpy/pandas),
+           tkinter, PyQt, subprocess, sqlite3, psycopg2
+
+           ── RULES ────────────────────────────────────────────────
+           1. Always save output to /home/pyodide/filename.xlsx (or .csv/.png)
+           2. NEVER call matplotlib.use() — Agg backend is already set
+           3. Always call plt.savefig('/home/pyodide/chart.png') then plt.close()
+              NEVER call plt.show()
+           4. For input files: load from /home/pyodide/filename.ext, 
+              save result as a NEW descriptive filename like 'data_updated.xlsx'
+           5. Use print() freely — all output is shown to the user
+           6. Standard library modules need no import declarations in packages:
+              json, math, re, datetime, os, sys, io, csv, base64, pathlib, 
+              zipfile, random, string, itertools, collections, statistics
+
+           ── WHAT THE USER SEES ───────────────────────────────────
+           - A live progress bar with stages: Setting up → Loading libraries
+             → Running script → Done
+           - On success: Download button(s) for each generated file
+           - On error: A clear plain-English description of what went wrong
+             plus a Regenerate button that sends the error back to you
+           - Warnings (non-fatal) are shown in a collapsible section
+           So if something goes wrong the user can regenerate immediately.
+           Guide them: "I'll generate an Excel file you can download" so
+           they know what to expect.
+
+           ── EXCEL CAPABILITIES (reference when choosing approach) ─
+           STRUCTURE: multiple sheets, named ranges, auto-filters, freeze 
+             panes, merged cells, grouped rows/columns, data validation
+           FORMATTING: cell colors, fonts, borders, number formats, 
+             conditional formatting, color scales, data bars, icon sets
+           CHARTS: bar, column, line, area, pie, doughnut, scatter, 
+             radar, stock (OHLC), 3D variants, combination charts, 
+             dual-axis, trendlines, data labels, chart sheets
+           DATA: formulas embedded as strings (=SUM, =VLOOKUP, =IF etc),
+             calculated columns, pivot-style summaries, running totals
+           IMAGES: embed PNG/logo into cells, QR codes via qrcode library,
+             matplotlib charts embedded as images inside the sheet
+           TEMPLATES: invoices, budgets, grade trackers, dashboards,
+             financial models, reports with multiple chart+data sheets
+
+5b. In STRICT RULES section, find rule 3:
+    "For file type: <lucen_artifact type="file" filename="example.json">"
+    Add after it:
+    "For excel type: <lucen_artifact type="excel" title="My Report"> 
+     or with input: <lucen_artifact type="excel" title="Updated" inputFile="data.xlsx">"
+
+5c. Scan the rest of BASE_SYSTEM_PROMPT for any remaining mentions of 
+    "python artifact", "pyodide", "WebAssembly", "runPython", 
+    "/home/pyodide" outside the excel section, or "python" as an 
+    artifact type. Remove or update each one to reference "excel" instead.
+
+═══════════════════════════════════════════════════════════════════
+TASK 6: FINAL CLEANUP
+═══════════════════════════════════════════════════════════════════
+
+6a. Search for any remaining imports of the old 
+    runPython / cancelPendingPythonRun / PythonResult / clearPythonCache
+    across ALL files. Remove or update each one.
+
+6b. Check src/store/artifactStore.ts — if it has any python-specific 
+    state or handlers, update them to use 'excel' instead.
+
+6c. Check src/types/index.ts — confirm ArtifactType no longer contains 
+    'python' and now contains 'excel'.
+
+6d. Run a final search for the string "python" across all src/ files 
+    (case insensitive). List every remaining hit so we can decide 
+    whether each is intentional or a leftover. Do NOT auto-remove — 
+    just list them.
+
+═══════════════════════════════════════════════════════════════════
+After all tasks are complete, report:
+1. Every file modified
+2. Any TypeScript errors introduced that need resolving
+3. The list from 6d (remaining "python" references)
+4. Whether the worker file change requires a Vite dev server restart
+═══════════════════════════════════════════════════════════════════

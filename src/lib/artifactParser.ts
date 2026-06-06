@@ -1,6 +1,6 @@
 import type { Artifact, ArtifactType } from '../types';
 
-const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 'python']);
+const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 'excel']);
 
 // Matches complete artifact tags with any attributes.
 const COMPLETE_ARTIFACT_RE =

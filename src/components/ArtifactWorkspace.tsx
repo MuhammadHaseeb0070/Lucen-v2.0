@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, RotateCcw, Terminal } from 'lucide-react';
-import ArtifactRenderer, { clearPythonCache } from './ArtifactRenderer';
-import { setFocusedPythonArtifact } from '../workers/pyodideWorkerClient';
+import ArtifactRenderer, { clearExcelCache } from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
@@ -14,7 +13,7 @@ const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> 
   svg: { label: 'SVG', icon: <Image size={14} /> },
   mermaid: { label: 'Diagram', icon: <GitBranch size={14} /> },
   file: { label: 'File', icon: <FileCode2 size={14} /> },
-  python: { label: 'Python', icon: <Terminal size={14} /> },
+  excel: { label: 'Excel', icon: <Terminal size={14} /> },
 };
 
 const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: string; width: string | null }[] = [
@@ -25,7 +24,7 @@ const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: str
 ];
 
 const DOWNLOAD_EXTENSION_MAP: Record<string, string> = {
-  python: 'py',
+  excel: 'py',
   file: 'txt',
 };
 
@@ -145,10 +144,6 @@ const ArtifactWorkspace: React.FC = () => {
 
 
   const prevStreamingRef = useRef(false);
-
-  useEffect(() => {
-    setFocusedPythonArtifact(activeArtifact?.id ?? null);
-  }, [activeArtifact?.id]);
 
   useEffect(() => {
     if (!activeArtifact) return;
@@ -316,11 +311,11 @@ const ArtifactWorkspace: React.FC = () => {
               <span>Code</span>
             </button>
           </div>
-          {activeArtifact.type === 'python' && !activeArtifact.isStreaming && (
+          {activeArtifact.type === 'excel' && !activeArtifact.isStreaming && (
             <button
               className="artifact-action-btn"
               onClick={() => {
-                clearPythonCache(activeArtifact.id);
+                clearExcelCache(activeArtifact.id);
                 setReRunKey((prev) => prev + 1);
               }}
               title="Re-run code"
@@ -331,7 +326,7 @@ const ArtifactWorkspace: React.FC = () => {
           <button className="artifact-action-btn" onClick={handleCopy} title="Copy code">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
-          {!(activeArtifact.type === 'python' && viewMode === 'preview') && (
+          {!(activeArtifact.type === 'excel' && viewMode === 'preview') && (
             <div style={{ position: 'relative' }}>
               <button className="artifact-action-btn" onClick={() => setDownloadOpen(!downloadOpen)} title="Download artifact">
                 <Download size={15} />

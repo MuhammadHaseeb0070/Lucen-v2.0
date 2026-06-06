@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, XCircle, CheckCircle2, TableProperties, FileType } from 'lucide-react';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, XCircle, CheckCircle2, FileText } from 'lucide-react';
 import type { ArtifactType, Artifact } from '../types';
-import { runPython, cancelPendingPythonRun, type PythonResult } from '../workers/pyodideWorkerClient';
+import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage } from '../workers/pyodideWorkerClient';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import { useChatStore } from '../store/chatStore';
-import { supabase } from '../lib/supabase';
-import DocumentPreview from './ExcelDocumentPreview';
 
 interface RendererProps {
   content: string;
@@ -665,586 +663,347 @@ const FileRenderer: React.FC<RendererProps> = ({ content, title, isStreaming }) 
   );
 };
 
-// ── Python Renderer ──
+// ── Excel Renderer ──
 
-const pythonCache = new Map<string, PythonResult>();
+function parseExcelError(raw: string): { headline: string; detail: string; isTimeout: boolean; isPackage: boolean; isFile: boolean } {
+  const isTimeout = /timed out/i.test(raw);
+  const isPackage = /ModuleNotFoundError|No module named|ImportError/i.test(raw);
+  const isFile = /FileNotFoundError|No such file/i.test(raw);
+  const isSyntax = /SyntaxError/i.test(raw);
+  const isMemory = /MemoryError|out of memory/i.test(raw);
 
-export function clearPythonCache(artifactId: string) {
-  for (const key of Array.from(pythonCache.keys())) {
-    if (key.startsWith(artifactId + '_')) {
-      pythonCache.delete(key);
-    }
+  let headline = 'Script error';
+  if (isTimeout) headline = 'Script timed out';
+  else if (isPackage) headline = 'Missing library';
+  else if (isFile) headline = 'Input file not found';
+  else if (isSyntax) headline = 'Syntax error in generated code';
+  else if (isMemory) headline = 'Not enough memory';
+
+  // Extract just the last meaningful line for the detail
+  const lines = raw.trim().split('\n').filter(l => l.trim());
+  const detail = lines[lines.length - 1] || raw.slice(0, 120);
+
+  return { headline, detail, isTimeout, isPackage, isFile };
+}
+
+const excelCache = new Map<string, ExcelResult>();
+
+export function clearExcelCache(artifactId: string) {
+  for (const key of Array.from(excelCache.keys())) {
+    if (key.startsWith(artifactId + '_')) excelCache.delete(key);
   }
-  pythonCache.delete(artifactId);
+  excelCache.delete(artifactId);
 }
 
-interface PythonRendererProps {
+interface ExcelRendererProps {
   artifact: Artifact;
+  onRetry?: () => void;
 }
 
+const STAGE_LABELS: Record<string, string> = {
+  init: 'Setting up Python environment',
+  packages: 'Loading Excel libraries (openpyxl, pandas, matplotlib...)',
+  input: 'Loading your input file',
+  running: 'Running script',
+  ready: 'Ready',
+};
 
-
-const PythonRenderer: React.FC<PythonRendererProps> = ({ artifact }) => {
+const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
-  const metaPackages = artifact.meta?.packages;
-  const mode = artifact.meta?.mode;
-  const packages = useMemo(() => {
-    if (!metaPackages) return [];
-    return metaPackages
-      .split(',')
-      .map((p: string) => p.trim())
-      .filter((p: string) => p.length > 0);
-  }, [metaPackages]);
-
-  const conversations = useChatStore((s) => s.conversations);
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const activeConversation = useMemo(() => {
-    return conversations.find((c) => c.id === activeConversationId);
-  }, [conversations, activeConversationId]);
-  const messages = activeConversation?.messages || [];
-
-  const attachments = useMemo(() => {
-    return messages.flatMap((msg) => msg.attachments || []);
-  }, [messages]);
 
   const inputFile = artifact.meta?.inputFile;
+  const conversations = useChatStore((s) => s.conversations);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const messages = useMemo(() => {
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    return conv?.messages || [];
+  }, [conversations, activeConversationId]);
 
   const matchedAttachment = useMemo(() => {
     if (!inputFile) return null;
-    return attachments.find(
-      (att) => att.name.toLowerCase() === inputFile.toLowerCase()
-    );
-  }, [attachments, inputFile]);
+    const allAttachments = messages.flatMap((m) => m.attachments || []);
+    return allAttachments.find((a) => a.name.toLowerCase() === inputFile.toLowerCase()) || null;
+  }, [messages, inputFile]);
 
   const cacheKey = `${artifact.id}_${artifact.content}`;
+  const [result, setResult] = useState<ExcelResult | null>(() => excelCache.get(cacheKey) || null);
+  const [progress, setProgress] = useState<ExcelProgress | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [showRawError, setShowRawError] = useState(false);
+  const [fileNotFound, setFileNotFound] = useState(false);
 
-  const [result, setResult] = useState<PythonResult | null>(() => {
-    return pythonCache.get(cacheKey) || null;
-  });
-  const [progress, setProgress] = useState<string>('');
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [showStderr, setShowStderr] = useState<boolean>(false);
-  const [unsupportedFile, setUnsupportedFile] = useState<boolean>(false);
-  const [fileNotFound, setFileNotFound] = useState<boolean>(false);
-  const [fileDataMissing, setFileDataMissing] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'preview' | 'console'>('preview');
-
-  // Map raw status strings to user-friendly messages
-  const friendlyProgress = useMemo(() => {
-    if (!progress) return 'Initializing Python environment...';
-    if (progress.includes('Setting up Python')) return '⚙️  Setting up Python environment (first time: ~10-15 seconds)...';
-    if (progress.includes('Preparing package')) return '📦  Preparing package installer...';
-    if (progress.includes('Scanning imports')) return '🔍  Scanning required packages...';
-    if (progress.includes('Loading')) return `📥  ${progress}`;
-    if (progress.includes('Downloading')) return `⬇️  ${progress}`;
-    if (progress.includes('Executing')) return '▶️  Running your script...';
-    if (progress.includes('Reading spreadsheet') || progress.includes('extracting') || progress.includes('Extracting')) return '🔬  Analyzing spreadsheet for live preview...';
-    if (progress.includes('Reading document') || progress.includes('document structure')) return '🔬  Analyzing document structure for preview...';
-    return progress;
-  }, [progress]);
-
-  // Sync activeTab when result updates or loads
-  useEffect(() => {
-    if (result) {
-      const hasPreview = !!(result.xlsxSchema || result.docxSchema);
-      setActiveTab(hasPreview ? 'preview' : 'console');
-    }
-  }, [result]);
-
-  const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
-  const isRunningRef = useRef<boolean>(false);
+  const ranRef = useRef<string | null>(excelCache.has(cacheKey) ? cacheKey : null);
+  const isRunningRef = useRef(false);
 
   useEffect(() => {
-    if (activeArtifactId !== artifact.id) {
-      return;
-    }
-
-    const cacheKey = `${artifact.id}_${artifact.content}`;
-    if (ranRef.current === cacheKey || isRunningRef.current) {
-      return;
-    }
+    if (activeArtifactId !== artifact.id) return;
+    if (ranRef.current === cacheKey || isRunningRef.current) return;
 
     let isMounted = true;
+    const isActive = () => isMounted && useArtifactStore.getState().activeArtifact?.id === artifact.id;
 
-    const isStillActive = () =>
-      isMounted &&
-      useArtifactStore.getState().activeArtifact?.id === artifact.id;
-
-    setUnsupportedFile(false);
     setFileNotFound(false);
-    setFileDataMissing(false);
+    setShowRawError(false);
 
-    // Step 1: Find attachment by filename
-    if (inputFile) {
-      if (!matchedAttachment) {
-        setFileNotFound(true);
-        setIsRunning(false);
-        isRunningRef.current = false;
-        return;
-      }
+    const run = async () => {
+      let inputFiles: Array<{ name: string; data: string }> | undefined;
 
-      // Step 2: Check extension (.xlsx/.xls/.docx/.doc) — if NOT supported → show amber unsupported card
-      const ext = matchedAttachment.name.split('.').pop()?.toLowerCase() || '';
-      const isSupported = ['xlsx', 'xls', 'docx', 'doc'].includes(ext);
-      if (!isSupported) {
-        setUnsupportedFile(true);
-        setIsRunning(false);
-        isRunningRef.current = false;
-        return;
-      }
-    }
-
-    // Step 4: Proceed to runPython once rawBase64 is verified/loaded
-    const executeWithData = (base64Content?: string) => {
-      if (!isStillActive()) return;
-
-      setIsRunning(true);
-      isRunningRef.current = true;
-      setProgress('Initializing Python worker...');
-      setResult(null);
-
-      const inputFiles = base64Content
-        ? [{ name: matchedAttachment!.name, data: base64Content }]
-        : undefined;
-
-      runPython(
-        artifact.id,
-        artifact.content,
-        packages,
-        mode,
-        inputFiles,
-        (msg) => {
-          if (isStillActive()) {
-            setProgress(msg);
-          }
-        }
-      )
-        .then((res) => {
-          if (!isStillActive()) return;
-
-          pythonCache.set(cacheKey, res);
-          setResult(res);
-          setIsRunning(false);
-          isRunningRef.current = false;
-          ranRef.current = cacheKey;
-
-          const isLimitation =
-            !!res.error && /not supported|cannot run in browser/i.test(res.error);
-
-          if (res.error && !isLimitation) {
-            setRuntimeError(artifact.id, {
-              message: res.error,
-              origin: 'python',
-              capturedAt: Date.now(),
-            });
-          } else {
-            const currentErr = useArtifactStore.getState().runtimeErrors[artifact.id];
-            if (currentErr) {
-              setRuntimeError(artifact.id, null);
-            }
-          }
-        })
-        .catch((err) => {
-          if (!isStillActive()) return;
-
-          const errRes = {
-            stdout: '',
-            stderr: '',
-            files: [],
-            error: err.message || String(err),
-          };
-          pythonCache.set(cacheKey, errRes);
-          setResult(errRes);
-          setIsRunning(false);
-          isRunningRef.current = false;
-          ranRef.current = cacheKey;
-
-          setRuntimeError(artifact.id, {
-            message: errRes.error,
-            origin: 'python',
-            capturedAt: Date.now(),
-          });
-        });
-    };
-
-    if (inputFile && matchedAttachment) {
-      if (matchedAttachment.rawBase64) {
-        // Step 4: rawBase64 present → proceed to runPython
-        executeWithData(matchedAttachment.rawBase64);
-      } else if (matchedAttachment.storagePath) {
-        // Step 3: If extension IS supported but rawBase64 missing, and storagePath exists → fetch from Supabase Storage
-        if (!supabase) {
-          setFileDataMissing(true);
-          setIsRunning(false);
-          isRunningRef.current = false;
+      if (inputFile) {
+        if (!matchedAttachment) {
+          if (isActive()) setFileNotFound(true);
           return;
         }
-        setIsRunning(true);
-        isRunningRef.current = true;
-        setProgress('Fetching file content from storage...');
-
-        supabase.storage
-          .from('attachments')
-          .download(matchedAttachment.storagePath)
-          .then(({ data, error }) => {
-            if (error || !data) {
-              console.error('Storage download failed:', error);
-              if (isStillActive()) {
-                setFileDataMissing(true);
-                setIsRunning(false);
-                isRunningRef.current = false;
-              }
-              return;
-            }
-            // convert blob to base64
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              if (!isStillActive()) return;
-              const resultStr = reader.result as string;
-              const commaIndex = resultStr.indexOf(',');
-              const base64 = commaIndex >= 0 ? resultStr.slice(commaIndex + 1) : resultStr;
-
-              // Cache it on the matchedAttachment object to avoid re-fetching
-              matchedAttachment.rawBase64 = base64;
-
-              // Proceed to runPython
-              executeWithData(base64);
-            };
-            reader.onerror = () => {
-              if (isStillActive()) {
-                setFileDataMissing(true);
-                setIsRunning(false);
-                isRunningRef.current = false;
-              }
-            };
-            reader.readAsDataURL(data);
-          })
-          .catch((err) => {
-            console.error('Storage download error:', err);
-            if (isStillActive()) {
-              setFileDataMissing(true);
+        let fileData = matchedAttachment.rawBase64;
+        if (!fileData && matchedAttachment.storagePath) {
+          const { supabase } = await import('../lib/supabase');
+          if (isActive()) setProgress({ stage: 'input', message: 'Downloading your file...' });
+          try {
+            const { data, error } = await supabase!.storage
+              .from('attachments').download(matchedAttachment.storagePath);
+            if (error || !data) throw error || new Error('No data');
+            const base64 = await new Promise<string>((res, rej) => {
+              const reader = new FileReader();
+              reader.onload = () => res((reader.result as string).split(',')[1]);
+              reader.onerror = () => rej(new Error('Read failed'));
+              reader.readAsDataURL(data);
+            });
+            matchedAttachment.rawBase64 = base64;
+            fileData = base64;
+          } catch (err: any) {
+            if (isActive()) {
+              setResult({ stdout: '', stderr: '', files: [],
+                error: `Could not download your file: ${err.message}` });
               setIsRunning(false);
               isRunningRef.current = false;
             }
-          });
-      } else {
-        // If no storagePath → show amber "Please re-upload the file"
-        setFileDataMissing(true);
+            return;
+          }
+        }
+        if (!fileData) {
+          if (isActive()) setFileNotFound(true);
+          return;
+        }
+        inputFiles = [{ name: matchedAttachment.name, data: fileData }];
+      }
+
+      if (!isActive()) return;
+      setIsRunning(true);
+      isRunningRef.current = true;
+      setResult(null);
+      setProgress({ stage: 'init', message: 'Setting up Python environment...' });
+
+      try {
+        const res = await runExcel(
+          artifact.id,
+          artifact.content,
+          inputFiles,
+          (prog) => { if (isActive()) setProgress(prog); }
+        );
+
+        if (!isActive()) return;
+        excelCache.set(cacheKey, res);
+        setResult(res);
         setIsRunning(false);
         isRunningRef.current = false;
-      }
-    } else {
-      executeWithData();
-    }
+        ranRef.current = cacheKey;
 
+        if (res.error) {
+          setRuntimeError(artifact.id, {
+            message: res.error,
+            origin: 'excel' as any,
+            capturedAt: Date.now(),
+          });
+        } else {
+          const cur = useArtifactStore.getState().runtimeErrors[artifact.id];
+          if (cur) setRuntimeError(artifact.id, null);
+        }
+      } catch (err: any) {
+        if (!isActive()) return;
+        const errRes: ExcelResult = {
+          stdout: '', stderr: '', files: [],
+          error: err.message || String(err)
+        };
+        excelCache.set(cacheKey, errRes);
+        setResult(errRes);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = cacheKey;
+        setRuntimeError(artifact.id, {
+          message: errRes.error!,
+          origin: 'excel' as any,
+          capturedAt: Date.now(),
+        });
+      }
+    };
+
+    run();
     return () => {
       isMounted = false;
       isRunningRef.current = false;
-      cancelPendingPythonRun(artifact.id);
+      cancelExcelRun(artifact.id);
     };
-  }, [activeArtifactId, artifact.id, artifact.content, packages, mode, setRuntimeError, inputFile, matchedAttachment]);
+  }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey]);
 
-  const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
-    const binaryString = atob(file.data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const blob = new Blob([bytes], { type: file.mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  if (fileDataMissing) {
-    return (
-      <div className="python-output">
-        <div className="python-output-unsupported-file">
-          <div className="python-output-unsupported-file-header">
-            <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-            <span>Please re-upload the file</span>
-          </div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-            The file <strong>{inputFile}</strong> is supported, but its binary content was not found in storage.
-            Please re-upload the file to edit it dynamically.
-          </p>
-        </div>
-        <style>{`
-          .python-output-unsupported-file {
-            background: rgba(245, 158, 11, 0.08);
-            border: 1px solid rgba(245, 158, 11, 0.25);
-            border-radius: var(--r-md);
-            padding: 16px;
-            margin: 16px;
-          }
-          .python-output-unsupported-file-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #d97706;
-            font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  if (unsupportedFile) {
-    return (
-      <div className="python-output">
-        <div className="python-output-unsupported-file">
-          <div className="python-output-unsupported-file-header">
-            <AlertTriangle size={16} />
-            <span>Unsupported File Type for Python Editing</span>
-          </div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-            The file <strong>{inputFile}</strong> was matched, but dynamic editing is only supported for Excel (<code>.xlsx</code>, <code>.xls</code>) and Word (<code>.docx</code>) files.
-            Other file types like PDFs cannot be safely modified inside the browser Python sandbox.
-          </p>
-        </div>
-        <style>{`
-          .python-output-unsupported-file {
-            background: rgba(245, 158, 11, 0.08);
-            border: 1px solid rgba(245, 158, 11, 0.25);
-            border-radius: var(--r-md);
-            padding: 16px;
-            margin: 16px;
-          }
-          .python-output-unsupported-file-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #d97706;
-            font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-          }
-        `}</style>
-      </div>
-    );
-  }
-
+  // ── File not found state ──
   if (fileNotFound) {
     return (
-      <div className="python-output">
-        <div className="python-output-unsupported-file">
-          <div className="python-output-unsupported-file-header">
-            <AlertTriangle size={16} />
-            <span>Input File Not Found</span>
+      <div className="excel-output excel-output--notice">
+        <div className="excel-notice excel-notice--warn">
+          <AlertTriangle size={16} />
+          <div>
+            <strong>Input file not found</strong>
+            <p>This script needs <code>{inputFile}</code> but it wasn't found in the conversation. Please upload the file and try again.</p>
           </div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-            The Python script requested the input file <strong>{inputFile}</strong>, but no matching attachment was found in the conversation history.
-            Please upload the file first.
-          </p>
         </div>
-        <style>{`
-          .python-output-unsupported-file {
-            background: rgba(245, 158, 11, 0.08);
-            border: 1px solid rgba(245, 158, 11, 0.25);
-            border-radius: var(--r-md);
-            padding: 16px;
-            margin: 16px;
-          }
-          .python-output-unsupported-file-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #d97706;
-            font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-          }
-        `}</style>
       </div>
     );
   }
 
+  // ── Loading state ──
   if (isRunning) {
+    const stage = progress?.stage || 'init';
+    const stages: ExcelRunStage[] = ['init', 'packages', 'input', 'running'];
+    const currentIdx = stages.indexOf(stage as ExcelRunStage);
     return (
-      <div className="python-output python-output--loading">
-        <div className="python-output-spinner-wrap">
-          <Terminal size={32} style={{ color: '#818cf8' }} />
+      <div className="excel-output excel-output--loading">
+        <div className="excel-loading-icon">
+          <Terminal size={28} style={{ color: '#22c55e' }} />
         </div>
-        <p className="python-output-progress">{friendlyProgress}</p>
-        <div className="python-output-progress-bar">
-          <div className="python-output-progress-bar-fill" />
+        <p className="excel-loading-label">{progress?.message || 'Starting...'}</p>
+        <div className="excel-loading-stages">
+          {stages.map((s, i) => (
+            <div key={s} className={`excel-stage ${i < currentIdx ? 'excel-stage--done' : i === currentIdx ? 'excel-stage--active' : 'excel-stage--waiting'}`}>
+              <div className="excel-stage-dot" />
+              <span>{STAGE_LABELS[s]}</span>
+            </div>
+          ))}
         </div>
-        <div className="python-output-powered">Powered by Pyodide • Please wait, this may take a moment</div>
+        <p className="excel-loading-hint">First run loads the Python environment (~5-10s). Subsequent runs are instant.</p>
       </div>
     );
   }
 
   if (!result) return null;
 
-  const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
-  const isLimitationError =
-    !!result.error && /not supported|cannot run in browser/i.test(result.error);
-  const hasOutput =
-    result.stdout || result.stderr || result.error || uniqueFiles.length > 0;
-  const stderrLineCount = result.stderr ? result.stderr.trim().split('\n').length : 0;
+  // ── Error state ──
+  if (result.error) {
+    const { headline, detail, isTimeout, isPackage, isFile } = parseExcelError(result.error);
+    return (
+      <div className="excel-output excel-output--error">
+        <div className="excel-error-header">
+          <XCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <strong>{headline}</strong>
+        </div>
+        <p className="excel-error-detail">{detail}</p>
+        {isPackage && (
+          <p className="excel-error-hint">A required library wasn't available. Click Regenerate below to try again with a fix.</p>
+        )}
+        {isFile && (
+          <p className="excel-error-hint">The script expected <code>{inputFile || 'an input file'}</code>. Make sure it's uploaded in this conversation.</p>
+        )}
+        {isTimeout && (
+          <p className="excel-error-hint">The script ran too long. Try asking for a simpler version or with a smaller dataset.</p>
+        )}
+        <div className="excel-error-actions">
+          {onRetry && (
+            <button className="excel-btn excel-btn--primary" onClick={onRetry}>
+              ↺ Regenerate
+            </button>
+          )}
+          <button className="excel-btn excel-btn--ghost" onClick={() => setShowRawError(!showRawError)}>
+            {showRawError ? 'Hide' : 'Show'} technical details
+          </button>
+        </div>
+        {showRawError && (
+          <pre className="excel-error-raw">{result.error}</pre>
+        )}
+      </div>
+    );
+  }
 
-  const hasPreview = !!(result.xlsxSchema || result.docxSchema);
-  const showHeader = hasPreview || uniqueFiles.length > 0;
+  const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
+  const excelFiles = uniqueFiles.filter(f => f.mimeType.includes('spreadsheet') || f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
+  const imageFiles = uniqueFiles.filter(f => f.mimeType.startsWith('image/'));
+  const otherFiles = uniqueFiles.filter(f => !excelFiles.includes(f) && !imageFiles.includes(f));
+
+  const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
+    const binary = atob(file.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="python-output">
-      {showHeader && (
-        <div className="python-output-header-bar">
-          {hasPreview ? (
-            <div className="python-output-tabs">
-              <button
-                type="button"
-                className={`python-output-tab-btn ${activeTab === 'preview' ? 'python-output-tab-btn--active' : ''}`}
-                onClick={() => setActiveTab('preview')}
-              >
-                {result.xlsxSchema ? (
-                  <>
-                    <TableProperties size={14} />
-                    <span>Spreadsheet Preview</span>
-                  </>
-                ) : (
-                  <>
-                    <FileType size={14} />
-                    <span>Document Preview</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                className={`python-output-tab-btn ${activeTab === 'console' ? 'python-output-tab-btn--active' : ''}`}
-                onClick={() => setActiveTab('console')}
-              >
-                <Terminal size={14} />
-                <span>Console & Output</span>
-              </button>
-            </div>
-          ) : (
-            <div className="python-output-terminal-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#e4e4e7' }}>
-              <Terminal size={14} />
-              <span>Console & Output</span>
-            </div>
-          )}
-
-          {uniqueFiles.length > 0 && (
-            <div className="python-output-header-downloads">
-              {uniqueFiles.map((file) => (
-                <button
-                  key={file.name}
-                  type="button"
-                  className="python-output-header-download-btn"
-                  onClick={() => handleDownload(file)}
-                  title={`Download ${file.name}`}
-                >
-                  <Download size={12} />
-                  <span>{file.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+    <div className="excel-output excel-output--success">
+      {result.stdout && (
+        <div className="excel-stdout">
+          <div className="excel-stdout-bar">
+            <Terminal size={12} /><span>Output</span>
+          </div>
+          <pre>{result.stdout}</pre>
         </div>
       )}
-
-      {activeTab === 'preview' && hasPreview ? (
-        <DocumentPreview
-          xlsxSchema={result.xlsxSchema}
-          docxSchema={result.docxSchema}
-          hideDisclaimer={true}
-        />
-      ) : (
-        <div className="python-output-console-content">
-          {result.stdout && (
-            <div className="python-output-terminal">
-              {!showHeader && (
-                <div className="python-output-terminal-bar">
-                  <div className="python-output-terminal-dots">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <span className="python-output-terminal-label">stdout</span>
+      {result.stderr && (
+        <details className="excel-warnings">
+          <summary>⚠ Warnings ({result.stderr.trim().split('\n').length})</summary>
+          <pre>{result.stderr}</pre>
+        </details>
+      )}
+      {excelFiles.length > 0 && (
+        <div className="excel-files-section">
+          <div className="excel-files-heading">Generated Files</div>
+          {excelFiles.map((file) => (
+            <div key={file.name} className="excel-file-card">
+              <div className="excel-file-card-icon">
+                <FileText size={20} />
+              </div>
+              <div className="excel-file-card-info">
+                <div className="excel-file-card-name">{file.name}</div>
+                <div className="excel-file-card-type">
+                  {file.name.endsWith('.xlsx') ? 'Excel Spreadsheet' :
+                   file.name.endsWith('.csv') ? 'CSV File' : 'File'}
                 </div>
-              )}
-              <pre className="python-output-terminal-body">
-                <code>{result.stdout}</code>
-              </pre>
-            </div>
-          )}
-
-          {result.error && isLimitationError && (
-            <div className="python-output-limitation">
-              <div className="python-output-limitation-header">
-                <AlertTriangle size={14} />
-                <span>Cannot run in browser</span>
               </div>
-              <p>
-                This script needs capabilities that are not available in the browser Python
-                environment (no network, disk access, databases, or system calls). Run the
-                code locally instead.
-              </p>
-              <pre>{result.error}</pre>
-            </div>
-          )}
-
-          {result.error && !isLimitationError && (
-            <div className="python-output-error">
-              <div className="python-output-error-header">
-                <XCircle size={14} />
-                <span>Execution Error</span>
-              </div>
-              <pre>{result.error}</pre>
-            </div>
-          )}
-
-          {result.stderr && !result.error && (
-            <>
-              <button
-                type="button"
-                className="python-output-stderr-toggle"
-                onClick={() => setShowStderr(!showStderr)}
-              >
-                {showStderr ? 'Hide warnings' : `Show warnings (${stderrLineCount})`}
+              <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)}>
+                <Download size={13} /> Download
               </button>
-              {showStderr && <div className="python-output-stderr-body">{result.stderr}</div>}
-            </>
-          )}
-
-          {uniqueFiles.map((file) => {
-            const isImage = file.mimeType.startsWith('image/');
-            if (isImage) {
-              return (
-                <div key={file.name} className="python-output-image">
-                  <img
-                    src={`data:${file.mimeType};base64,${file.data}`}
-                    alt={file.name}
-                  />
-                  <button
-                    type="button"
-                    className="python-output-image-download"
-                    onClick={() => handleDownload(file)}
-                    title={`Download ${file.name}`}
-                  >
-                    <Download size={16} />
-                  </button>
-                </div>
-              );
-            }
-            return null;
-          })}
-
-          {!hasOutput && (
-            <div className="python-output-success">
-              <CheckCircle2 size={20} />
-              <span>Ran successfully</span>
             </div>
-          )}
+          ))}
+        </div>
+      )}
+      {imageFiles.length > 0 && (
+        <div className="excel-images-section">
+          {imageFiles.map((file) => (
+            <div key={file.name} className="excel-image-wrap">
+              <img src={`data:${file.mimeType};base64,${file.data}`} alt={file.name} />
+              <button className="excel-image-download" onClick={() => handleDownload(file)} title={`Download ${file.name}`}>
+                <Download size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {otherFiles.map((file) => (
+        <div key={file.name} className="excel-file-card">
+          <div className="excel-file-card-icon"><FileText size={20} /></div>
+          <div className="excel-file-card-info">
+            <div className="excel-file-card-name">{file.name}</div>
+          </div>
+          <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)}>
+            <Download size={13} /> Download
+          </button>
+        </div>
+      ))}
+      {uniqueFiles.length === 0 && !result.stdout && (
+        <div className="excel-success-empty">
+          <CheckCircle2 size={20} style={{ color: '#22c55e' }} />
+          <span>Ran successfully (no output files)</span>
         </div>
       )}
     </div>
@@ -1259,7 +1018,7 @@ const RENDERERS: Record<string, React.FC<RendererProps>> = {
   mermaid: MermaidRenderer,
   file: FileRenderer,
 };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', python: 'python' };
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python' };
 
 interface ArtifactRendererProps {
   content: string;
@@ -1280,11 +1039,11 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
   if (viewMode === 'code')
     return <CodeFallback content={content} language={LANGUAGE_MAP[type] || 'text'} isStreaming={isStreaming} />;
 
-  if (type === 'python') {
+  if (type === 'excel') {
     const fallbackArtifact: Artifact = {
       id: artifactId || '',
-      type: 'python',
-      title: title || 'Python Script',
+      type: 'excel',
+      title: title || 'Excel Script',
       content: content,
       messageId: '',
     };
@@ -1293,7 +1052,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     // Only remount when artifact ID changes, not on every content update.
     return (
       <RendererErrorBoundary content={content} language="python">
-        <PythonRenderer
+        <ExcelRenderer
           key={currentArtifact.id}
           artifact={currentArtifact}
         />

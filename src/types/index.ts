@@ -110,7 +110,7 @@ export interface SideChatState {
 
 
 
-export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file' | 'python';
+export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file' | 'excel';
 
 export type GenerationStatus =
   | 'idle'
@@ -160,7 +160,7 @@ export interface ArtifactRuntimeError {
   /** Source URL/file when known. Often the iframe srcDoc origin. */
   source?: string;
   /** Where the error originated. */
-  origin: 'iframe' | 'mermaid' | 'svg' | 'patch' | 'python';
+  origin: 'iframe' | 'mermaid' | 'svg' | 'patch' | 'excel';
   /** For iframe origin: the specific capture mechanism (window.onerror, unhandledrejection, console.error). */
   sourceOrigin?: string;
   /** Timestamp (ms) when captured. */

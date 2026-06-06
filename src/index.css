@@ -4733,6 +4733,415 @@ h4 {
     flex-shrink: 0;
 }
 
+/* ─── Excel output ─── */
+
+.excel-output {
+    display: flex;
+    flex-direction: column;
+    min-height: 300px;
+    border-radius: var(--r-md);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #0a0a0b;
+    overflow: auto;
+}
+
+.excel-output--loading {
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px 48px;
+    position: relative;
+    min-height: 320px;
+}
+
+.excel-output--error,
+.excel-output--notice {
+    padding: 20px;
+}
+
+.excel-output--success {
+    padding: 0;
+}
+
+.excel-loading-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    padding: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(34, 197, 94, 0.35);
+    animation: excel-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes excel-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(1.03); }
+}
+
+.excel-loading-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    color: #d4d4d8;
+    text-align: center;
+    max-width: 90%;
+}
+
+.excel-loading-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 20px;
+    width: 100%;
+    max-width: 280px;
+}
+
+.excel-stage {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.75rem;
+    color: #52525b;
+}
+
+.excel-stage--active {
+    color: #22c55e;
+}
+
+.excel-stage--done {
+    color: #71717a;
+}
+
+.excel-stage-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #27272a;
+    flex-shrink: 0;
+}
+
+.excel-stage--active .excel-stage-dot {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
+.excel-stage--done .excel-stage-dot {
+    background: #52525b;
+}
+
+.excel-loading-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.6875rem;
+    color: #52525b;
+    user-select: none;
+}
+
+.excel-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--r-md);
+}
+
+.excel-notice--warn {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+}
+
+.excel-notice p {
+    margin: 4px 0 0;
+    font-size: 0.8125rem;
+    color: #a1a1aa;
+    line-height: 1.5;
+}
+
+.excel-error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.excel-error-header strong {
+    font-size: 0.875rem;
+    color: #f87171;
+}
+
+.excel-error-detail {
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: #fca5a5;
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+
+.excel-error-hint {
+    font-size: 0.8125rem;
+    color: #a1a1aa;
+    margin: 0 0 8px;
+    line-height: 1.5;
+}
+
+.excel-error-hint code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+}
+
+.excel-error-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.excel-error-raw {
+    margin-top: 12px;
+    padding: 12px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: #fca5a5;
+    background: rgba(127, 29, 29, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: var(--r-sm);
+    white-space: pre-wrap;
+    overflow-y: auto;
+    max-height: 12rem;
+}
+
+.excel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.excel-btn--primary {
+    background: #4f46e5;
+    color: #fff;
+}
+
+.excel-btn--primary:hover {
+    background: #6366f1;
+}
+
+.excel-btn--ghost {
+    background: transparent;
+    color: #71717a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.excel-btn--ghost:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #a1a1aa;
+}
+
+.excel-btn--download {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #4f46e5;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.excel-btn--download:hover {
+    background: #6366f1;
+}
+
+.excel-stdout {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.excel-stdout-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #18181b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.6875rem;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.excel-stdout pre {
+    margin: 0;
+    padding: 16px 20px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: #6ee7b7;
+    background: #09090b;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    max-height: 18rem;
+}
+
+.excel-warnings {
+    margin: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.excel-warnings summary {
+    padding: 8px 16px;
+    font-size: 0.75rem;
+    color: #f59e0b;
+    cursor: pointer;
+    background: rgba(120, 53, 15, 0.15);
+}
+
+.excel-warnings pre {
+    margin: 0;
+    padding: 12px 16px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: #fcd34d;
+    background: rgba(120, 53, 15, 0.2);
+    white-space: pre-wrap;
+    overflow-y: auto;
+    max-height: 9rem;
+}
+
+.excel-files-section {
+    padding: 16px;
+}
+
+.excel-files-heading {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #71717a;
+    margin-bottom: 12px;
+}
+
+.excel-file-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #18181b;
+    margin-bottom: 8px;
+    transition: background 0.15s;
+}
+
+.excel-file-card:hover {
+    background: #1f1f23;
+}
+
+.excel-file-card-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(20, 83, 45, 0.35);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    color: #4ade80;
+}
+
+.excel-file-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.excel-file-card-name {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8125rem;
+    color: #e4e4e7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.excel-file-card-type {
+    font-size: 0.6875rem;
+    color: #71717a;
+    margin-top: 2px;
+}
+
+.excel-images-section {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.excel-image-wrap {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #18181b;
+}
+
+.excel-image-wrap img {
+    display: block;
+    width: 100%;
+    max-height: 20rem;
+    object-fit: contain;
+    background: #09090b;
+    padding: 8px;
+}
+
+.excel-image-download {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(24, 24, 27, 0.9);
+    color: #e4e4e7;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.excel-image-download:hover {
+    background: #27272a;
+    color: #fff;
+}
+
+.excel-success-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 48px 24px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.875rem;
+    color: #71717a;
+}
+
 .artifact-react-shell {
     position: relative;
     min-height: 420px;
