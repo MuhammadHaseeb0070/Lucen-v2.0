@@ -28,3 +28,8 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# Testing
+coverage/
+playwright-report/
+test-results/
