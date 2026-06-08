@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, RotateCcw, Terminal } from 'lucide-react';
+import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2 } from 'lucide-react';
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
@@ -137,7 +137,6 @@ const ArtifactWorkspace: React.FC = () => {
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isPublishLoading, setIsPublishLoading] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
-  const [reRunKey, setReRunKey] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
 
@@ -367,7 +366,7 @@ const ArtifactWorkspace: React.FC = () => {
           />
         )}
         <ArtifactRenderer
-          key={`${activeArtifact.id}-${reRunKey}`}
+          key={`${activeArtifact.id}`}
           content={activeArtifact.content}
           title={activeArtifact.title}
           type={activeArtifact.type}
@@ -375,7 +374,6 @@ const ArtifactWorkspace: React.FC = () => {
           viewport={previewViewport}
           isStreaming={!!activeArtifact.isStreaming}
           artifactId={activeArtifact.id}
-          artifact={activeArtifact}
         />
       </div>
 

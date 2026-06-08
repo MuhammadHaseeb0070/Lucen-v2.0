@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, Terminal, XCircle, CheckCircle2, FileText } from 'lucide-react';
-import type { ArtifactType, Artifact } from '../types';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X } from 'lucide-react';
+import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
@@ -681,10 +681,9 @@ interface ArtifactRendererProps {
   isStreaming?: boolean;
   /** Artifact id used to route runtime errors back into artifactStore. */
   artifactId?: string;
-  artifact?: Artifact;
 }
 
-const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming, artifactId, artifact }) => {
+const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming, artifactId }) => {
   if (!content || !content.trim())
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
