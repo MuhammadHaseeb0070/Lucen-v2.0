@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2, RotateCcw, Terminal } from 'lucide-react';
-import ArtifactRenderer, { clearExcelCache } from './ArtifactRenderer';
+import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
@@ -13,7 +13,6 @@ const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> 
   svg: { label: 'SVG', icon: <Image size={14} /> },
   mermaid: { label: 'Diagram', icon: <GitBranch size={14} /> },
   file: { label: 'File', icon: <FileCode2 size={14} /> },
-  excel: { label: 'Excel', icon: <Terminal size={14} /> },
 };
 
 const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: string; width: string | null }[] = [
@@ -24,7 +23,6 @@ const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: str
 ];
 
 const DOWNLOAD_EXTENSION_MAP: Record<string, string> = {
-  excel: 'py',
   file: 'txt',
 };
 
@@ -311,23 +309,11 @@ const ArtifactWorkspace: React.FC = () => {
               <span>Code</span>
             </button>
           </div>
-          {activeArtifact.type === 'excel' && !activeArtifact.isStreaming && (
-            <button
-              className="artifact-action-btn"
-              onClick={() => {
-                clearExcelCache(activeArtifact.id);
-                setReRunKey((prev) => prev + 1);
-              }}
-              title="Re-run code"
-            >
-              <RotateCcw size={15} />
-            </button>
-          )}
+
           <button className="artifact-action-btn" onClick={handleCopy} title="Copy code">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
-          {!(activeArtifact.type === 'excel' && viewMode === 'preview') && (
-            <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
               <button className="artifact-action-btn" onClick={() => setDownloadOpen(!downloadOpen)} title="Download artifact">
                 <Download size={15} />
               </button>
@@ -347,7 +333,6 @@ const ArtifactWorkspace: React.FC = () => {
                 </div>
               )}
             </div>
-          )}
           {/* Publish / Hub button — visible when not streaming and not a raw import */}
           {!activeArtifact.isStreaming && !activeArtifact.isImported && (
             <button

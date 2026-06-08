@@ -96,22 +96,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
       lines.push('');
       lines.push('SVG constraints: Only the <svg>...</svg> element is supported. No script tags, no external font loads, no HTML inside SVG.');
       lines.push(`Error: ${runtimeError.message}`);
-    } else if (origin === 'excel') {
-      // Excel execution error in Pyodide.
-      lines.push('Fix the following Excel execution error in this browser-based Excel artifact.');
-      lines.push('');
-      lines.push('Pyodide environment constraints:');
-      lines.push('- NO internet access (no requests, urllib, httpx, aiohttp)');
-      lines.push('- NO subprocess, threading (limited), tkinter, PyQt, Flask, Django');
-      lines.push('- Available packages: openpyxl, xlsxwriter, matplotlib, pandas, numpy, Pillow');
-      lines.push('- plt.show() does NOT work - use plt.savefig("chart.png") + plt.close()');
-      lines.push('- For Excel: ALWAYS load_workbook(), NEVER Workbook() (load first, never create)');
-      lines.push('- Use EXCEL FORMULAS (=SUM, =AVERAGE) not hardcoded Python calculations');
-      lines.push(`Error message: ${runtimeError.message}`);
-      if (runtimeError.stack) {
-        lines.push('Stack trace (first 8 lines):');
-        lines.push(runtimeError.stack.split('\n').slice(0, 8).join('\n'));
-      }
+
     } else {
       // Generic fallback for unknown origins.
       lines.push('Fix the following runtime error in this artifact.');
@@ -144,13 +129,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
       c === '"' ? '&quot;' : c === "'" ? '&#39;' : c === '<' ? '&lt;' : '&gt;'
     );
     // Build artifact opening tag with all preserved attributes.
-    let artifactTag = `<lucen_artifact type="${artifact.type}" title="${safeTitle}"`;
-    if (artifact.type === 'excel') {
-      // Preserve inputFile attribute for Excel artifacts.
-      const meta = artifact.meta;
-      if (meta?.inputFile) artifactTag += ` inputFile="${meta.inputFile}"`;
-    }
-    artifactTag += '>';
+    let artifactTag = `<lucen_artifact type="${artifact.type}" title="${safeTitle}">`;
     lines.push(`IMPORTANT: Output the COMPLETE fixed artifact wrapped in ${artifactTag}...</lucen_artifact> tags. Do not explain the changes - just output the corrected artifact.`);
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);
 

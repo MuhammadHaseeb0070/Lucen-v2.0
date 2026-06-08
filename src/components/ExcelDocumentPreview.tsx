@@ -1,5 +1,62 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import type { XlsxSchema, DocxSchema, DocxParagraph } from '../workers/pyodideWorkerClient';
+export interface ExcelCellSchema {
+  v: string | number | boolean | null;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  bg?: string;
+  fg?: string;
+  align?: 'left' | 'center' | 'right' | 'general';
+  valign?: 'top' | 'middle' | 'bottom';
+  fontSize?: number;
+  numFmt?: string;
+  wrap?: boolean;
+}
+
+export interface ExcelSheetSchema {
+  dims: { maxRow: number; maxCol: number };
+  colWidths: number[];
+  rowHeights: number[];
+  cells: Record<string, ExcelCellSchema>;
+  merges: Array<[string, string]>;
+}
+
+export interface XlsxSchema {
+  sheets: string[];
+  totalSheets: number;
+  activeSheet: string;
+  data: Record<string, ExcelSheetSchema>;
+}
+
+export interface DocxRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fontSize?: number;
+  color?: string;
+}
+
+export interface DocxParagraph {
+  style: string;
+  text: string;
+  runs?: DocxRun[];
+  alignment?: string;
+}
+
+export interface DocxTableCell {
+  text: string;
+  bold?: boolean;
+}
+
+export interface DocxTable {
+  rows: DocxTableCell[][];
+}
+
+export interface DocxSchema {
+  paragraphs: DocxParagraph[];
+  tables: DocxTable[];
+}
 import { AlertTriangle } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

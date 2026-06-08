@@ -1,6 +1,6 @@
 import type { Artifact, ArtifactType } from '../types';
 
-const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 'excel']);
+const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file']);
 
 // Matches complete artifact tags with any attributes.
 const COMPLETE_ARTIFACT_RE =
@@ -29,7 +29,7 @@ function parseArtifactAttrs(attrs: string): {
   parentId?: string;
   version?: number;
   isHead?: boolean;
-  meta?: { packages?: string; mode?: string; inputFile?: string };
+  meta?: { mode?: string };
 } {
   const typeRaw = getAttr(attrs, 'type');
   const titleRaw = getAttr(attrs, 'title');
@@ -40,9 +40,7 @@ function parseArtifactAttrs(attrs: string): {
   const parentIdRaw = getAttr(attrs, 'parent_id');
   const versionRaw = getAttr(attrs, 'version_no') || getAttr(attrs, 'version');
   const isHeadRaw = getAttr(attrs, 'is_head');
-  const packagesRaw = getAttr(attrs, 'packages');
   const modeRaw = getAttr(attrs, 'mode');
-  const inputFileRaw = getAttr(attrs, 'inputFile') || getAttr(attrs, 'input_file');
 
   const type = (typeRaw || 'html').trim().toLowerCase();
   const filename = filenameRaw?.trim();
@@ -68,11 +66,9 @@ function parseArtifactAttrs(attrs: string): {
     parentId: parentIdRaw?.trim() || undefined,
     version,
     isHead,
-    meta: (packagesRaw || modeRaw || inputFileRaw)
+    meta: modeRaw
       ? {
-          packages: packagesRaw?.trim(),
           mode: modeRaw?.trim().toLowerCase(),
-          inputFile: inputFileRaw?.trim(),
         }
       : undefined,
   };

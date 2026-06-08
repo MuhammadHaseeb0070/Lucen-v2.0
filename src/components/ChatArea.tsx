@@ -1286,7 +1286,7 @@ const ChatArea: React.FC = () => {
                         <h1 className="welcome-title">Welcome to Lucen</h1>
                         <p className="welcome-subtitle">Your intelligent AI assistant. Start a conversation below.</p>
                         <div className="welcome-suggestions">
-                            {['Explain quantum computing simply', 'Write a Python sorting algorithm', 'Help me draft an email', 'What are the best coding practices?'].map((s) => (
+                            {['Explain quantum computing simply', 'Write a JavaScript sorting algorithm', 'Help me draft an email', 'What are the best coding practices?'].map((s) => (
                                 <button key={s} className="suggestion-chip" onClick={() => handleSend(s)}>{s}</button>
                             ))}
                         </div>

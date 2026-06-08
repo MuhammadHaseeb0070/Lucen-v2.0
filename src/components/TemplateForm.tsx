@@ -218,7 +218,7 @@ const TemplateForm: React.FC<TemplateFormProps> = ({ mode, onSubmit, onCancel })
                                     type="text"
                                     value={language}
                                     onChange={(e) => setLanguage(e.target.value)}
-                                    placeholder="e.g. TypeScript, Python, Next.js"
+                                    placeholder="e.g. TypeScript, React, Next.js"
                                 />
                             </div>
                         </div>

@@ -110,7 +110,7 @@ export interface SideChatState {
 
 
 
-export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file' | 'excel';
+export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file';
 
 export type GenerationStatus =
   | 'idle'
@@ -160,7 +160,7 @@ export interface ArtifactRuntimeError {
   /** Source URL/file when known. Often the iframe srcDoc origin. */
   source?: string;
   /** Where the error originated. */
-  origin: 'iframe' | 'mermaid' | 'svg' | 'patch' | 'excel';
+  origin: 'iframe' | 'mermaid' | 'svg' | 'patch';
   /** For iframe origin: the specific capture mechanism (window.onerror, unhandledrejection, console.error). */
   sourceOrigin?: string;
   /** Timestamp (ms) when captured. */
@@ -232,7 +232,7 @@ export interface Artifact {
   runtimeError?: ArtifactRuntimeError | null;
   /** Frontend pipeline status (drives the status overlay). Defaults to 'idle' when omitted. */
   patchStatus?: ArtifactPatchStatus;
-  meta?: { packages?: string; mode?: string; inputFile?: string };
+  meta?: { mode?: string };
 }
 
 export interface ModelInfo {
