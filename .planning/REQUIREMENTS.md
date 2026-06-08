@@ -123,8 +123,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TD-06 | Phase 1 | Pending |
 | BUG-05 | Phase 1 | Pending |
 | SEC-06 | Phase 1 | Pending |
-| VERIFY-01 | Phase 1 (and ongoing) | Pending |
-| VERIFY-02 | Phase 1 (and ongoing) | Pending |
+| VERIFY-01 | Phase 1 (ongoing) | Pending |
+| VERIFY-02 | Phase 1 (ongoing) | Pending |
 | TD-01 | Phase 2 | Pending |
 | TD-02 | Phase 2 | Pending |
 | TD-07 | Phase 2 | Pending |
@@ -146,9 +146,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROD-03 | Phase 3 | Pending |
 | PROD-04 | Phase 3 | Pending |
 | PERF-05 | Phase 3 | Pending |
-| BUG-05 (webhook side) | Phase 3 | Pending |
 | SEC-01 | Phase 4 | Pending |
-| SEC-02 | Phase 4 | Pending |
 | SEC-03 | Phase 4 | Pending |
 | SEC-05 | Phase 4 | Pending |
 | BUG-03 | Phase 4 | Pending |
@@ -156,8 +154,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROD-01 | Phase 5 | Pending |
 | PROD-05 | Phase 5 | Pending |
 | PROD-06 | Phase 5 | Pending |
+| SEC-02 | Phase 5 | Pending |
 | BUG-06 | Phase 5 | Pending |
-| BUG-08 (regression test) | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 41 total
@@ -166,4 +164,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-08*
-*Last updated: 2026-06-08 after initial definition*
+*Last updated: 2026-06-08 after roadmap creation*
