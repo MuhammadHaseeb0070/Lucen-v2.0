@@ -4,6 +4,7 @@
 // No imports from themeStore to avoid circular deps.
 
 import { supabase, isSupabaseEnabled, hasActiveSession } from '../lib/supabase';
+import { logger } from '../lib/logger';
 
 export interface AppearanceSettingsPayload {
     themeSource: 'preset' | 'custom';
@@ -27,7 +28,7 @@ export async function fetchUserSettingsRow(): Promise<{
     const { data, error } = await supabase.from('user_settings').select('active_theme, settings').maybeSingle();
 
     if (error) {
-        console.warn('[userSettings] fetch failed', error.message);
+        logger.warn('[userSettings] fetch failed', error.message);
         return null;
     }
     if (!data) return null;
@@ -59,7 +60,7 @@ export async function upsertUserSettingsRow(payload: {
     );
 
     if (error) {
-        console.warn('[userSettings] upsert failed', error.message);
+        logger.warn('[userSettings] upsert failed', error.message);
     }
 }
 

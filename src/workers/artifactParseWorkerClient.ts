@@ -42,3 +42,13 @@ export function parseArtifactsOffThread(
     getWorker().postMessage({ type: 'parse', requestId, content, messageId, forceClose });
   });
 }
+
+/** Resets the parser worker and terminates the thread, clearing pending tasks (BUG-10). */
+export function resetParseWorker() {
+  if (worker) {
+    worker.terminate();
+    worker = undefined;
+  }
+  pending.clear();
+}
+

@@ -222,7 +222,7 @@ export function injectIntoHtml(srcDoc: string): string {
   if (!srcDoc) return INJECT_SCRIPT;
   // Try the start of <head>...
   // Use negative lookahead to match only opening <head> tags, not closing </head>.
-  const headOpen = srcDoc.match(/<head(?![\/\t ])[^>]*>/i);
+  const headOpen = srcDoc.match(/<head\b[^>]*>/i);
   if (headOpen && headOpen.index !== undefined) {
     const insertAt = headOpen.index + headOpen[0].length;
     return srcDoc.slice(0, insertAt) + INJECT_SCRIPT + srcDoc.slice(insertAt);

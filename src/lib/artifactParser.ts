@@ -121,7 +121,12 @@ export function parseArtifacts(
   messageId: string,
   forceClose = false
 ): ParseResult {
-  if (!content || !content.includes('<lucen_artifact')) {
+  if (
+    !content ||
+    (!content.includes('<lucen_artifact') &&
+     !content.includes('<lucen_patch') &&
+     !content.includes('</'))
+  ) {
     return { cleanContent: content, artifacts: [] };
   }
 
@@ -220,15 +225,19 @@ export function parseArtifacts(
   };
 }
 
-/**
- * Remove lines/blocks that consist solely of HTML closing tags.
- * These are artifacts of malformed AI output (e.g. the model emitting
- * `</head></li></li></ul>` after an artifact block) and would render
- * as visible garbage in the chat bubble.
- */
 function stripOrphanedClosingTags(text: string): string {
+  // First strip all remaining lucen_artifact and lucen_patch closing tags
+  text = text.replace(/<\/lucen_artifact>/gi, '');
+  text = text.replace(/<\/lucen_patch>/gi, '');
+
   // Match a line that is only whitespace + HTML closing tags (possibly multiple).
   // Examples: "</head>", "</li></li></ul>", "  </body>  "
   const orphanedLineRe = /^\s*(?:<\/\w+>\s*)+$/gm;
-  return text.replace(orphanedLineRe, '');
+  text = text.replace(orphanedLineRe, '');
+
+  // Also strip any HTML closing tags at the very end of the text
+  const trailingClosingTagsRe = /(?:\s*<\/\w+>\s*)+$/g;
+  text = text.replace(trailingClosingTagsRe, '');
+
+  return text;
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { schedulePersistUserSettings, parseAppearanceFromSettings } from '../services/userSettings';
 
 export interface ThemeColors {
@@ -654,11 +654,39 @@ function scheduleAppearanceSyncToServer(): void {
     }, SYNC_DEBOUNCE_MS);
 }
 
+let lastThemeSource: any = null;
+let lastActiveThemeId: any = null;
+let lastCustomBasePresetId: any = null;
+let lastCustomColors: any = null;
+let lastChatSizeStep: any = null;
+let cachedFingerprint = '';
+
 export function buildThemeApplyFingerprint(): string {
     const s = useThemeStore.getState();
+    
+    // Quick check if customColors changed by reference or string value
+    const customColorsChanged = s.customColors !== lastCustomColors && 
+        JSON.stringify(s.customColors) !== JSON.stringify(lastCustomColors);
+
+    if (
+        s.themeSource === lastThemeSource &&
+        s.activeThemeId === lastActiveThemeId &&
+        s.customBasePresetId === lastCustomBasePresetId &&
+        s.chatSizeStep === lastChatSizeStep &&
+        !customColorsChanged
+    ) {
+        return cachedFingerprint;
+    }
+
+    lastThemeSource = s.themeSource;
+    lastActiveThemeId = s.activeThemeId;
+    lastCustomBasePresetId = s.customBasePresetId;
+    lastCustomColors = s.customColors;
+    lastChatSizeStep = s.chatSizeStep;
+
     const t = s.getResolvedTheme();
     const c = t.colors;
-    return JSON.stringify({
+    cachedFingerprint = JSON.stringify({
         themeSource: s.themeSource,
         activeThemeId: s.activeThemeId,
         customBasePresetId: s.customBasePresetId,
@@ -685,6 +713,8 @@ export function buildThemeApplyFingerprint(): string {
         aiBubbleBg: c.aiBubbleBg,
         aiBubbleBorder: c.aiBubbleBorder,
     });
+
+    return cachedFingerprint;
 }
 
 let lastThemeApplyFingerprint = '';
@@ -739,8 +769,9 @@ function resolveThemeFromState(state: {
 }
 
 export const useThemeStore = create<ThemeStore>()(
-    persist(
-        (set, get) => ({
+    subscribeWithSelector(
+        persist(
+            (set, get) => ({
             activeThemeId: 'washi',
             themeSource: 'preset' as ThemeSource,
             customBasePresetId: 'washi',
@@ -909,7 +940,8 @@ export const useThemeStore = create<ThemeStore>()(
                 customColors: s.customColors,
                 chatSizeStep: s.chatSizeStep,
             }),
-        }
+        },
+        )
     )
 );
 

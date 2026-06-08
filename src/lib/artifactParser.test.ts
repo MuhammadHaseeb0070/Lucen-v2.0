@@ -63,4 +63,10 @@ describe('parseArtifacts', () => {
 
     expect(result.cleanContent).toBe('Here is the app:');
   });
+
+  it('should strip orphaned closing tags at the end of a line or text, and orphaned lucen_artifact closing tags', () => {
+    const content = 'Here is the app: </lucen_artifact> </div> </li>';
+    const result = parseArtifacts(content, 'msg-7');
+    expect(result.cleanContent).toBe('Here is the app:');
+  });
 });

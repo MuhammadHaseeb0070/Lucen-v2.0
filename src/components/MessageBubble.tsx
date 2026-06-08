@@ -40,7 +40,7 @@ const ARTIFACT_PARSE_WORKER_MIN_CHARS = 12_000;
 /** Stable empty list so `artifacts` dependency / `?? []` does not allocate a new [] every render. */
 const EMPTY_ARTIFACTS: ParseResult['artifacts'] = [];
 
-const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
+const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     message,
     onDelete,
     onRetry,
@@ -760,6 +760,39 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             )}
         </div>
     );
+};
+
+const MessageBubble = React.memo(MessageBubbleComponent, (prevProps, nextProps) => {
+    if (prevProps.isLinked !== nextProps.isLinked) return false;
+    if (prevProps.showDelete !== nextProps.showDelete) return false;
+    if (prevProps.showRetry !== nextProps.showRetry) return false;
+    if (prevProps.searchQuery !== nextProps.searchQuery) return false;
+    if (prevProps.disableReasoning !== nextProps.disableReasoning) return false;
+    if (prevProps.disableArtifacts !== nextProps.disableArtifacts) return false;
+
+    const pm = prevProps.message;
+    const nm = nextProps.message;
+
+    if (pm.id !== nm.id) return false;
+    if (pm.content !== nm.content) return false;
+    if (pm.reasoning !== nm.reasoning) return false;
+    if (pm.isStreaming !== nm.isStreaming) return false;
+    if (pm.isPinned !== nm.isPinned) return false;
+    if (pm.generationStatus !== nm.generationStatus) return false;
+    if (pm.generationStatusDetail !== nm.generationStatusDetail) return false;
+    if (pm.isTruncated !== nm.isTruncated) return false;
+
+    if ((pm.toolSteps?.length ?? 0) !== (nm.toolSteps?.length ?? 0)) return false;
+    if (pm.toolSteps && nm.toolSteps) {
+        for (let i = 0; i < pm.toolSteps.length; i++) {
+            if (pm.toolSteps[i].status !== nm.toolSteps[i].status) return false;
+            if (pm.toolSteps[i].label !== nm.toolSteps[i].label) return false;
+        }
+    }
+
+    if ((pm.webSearchUrls?.length ?? 0) !== (nm.webSearchUrls?.length ?? 0)) return false;
+
+    return true;
 });
 
 MessageBubble.displayName = 'MessageBubble';

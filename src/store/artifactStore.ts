@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type {
   Artifact,
   ArtifactPatchStatus,
@@ -74,7 +75,8 @@ interface ArtifactStore {
   pruneLineages: (keepLineageIds: Set<string>) => void;
 }
 
-export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
+export const useArtifactStore = create<ArtifactStore>()(
+  subscribeWithSelector((set, get) => ({
   activeArtifact: null,
   viewMode: 'preview',
   panelWidthPercent: 50,
@@ -275,4 +277,4 @@ export const useArtifactStore = create<ArtifactStore>()((set, get) => ({
       return { lineages: nextLineages, currentVersionByLineage: nextVersions };
     });
   },
-}));
+})));

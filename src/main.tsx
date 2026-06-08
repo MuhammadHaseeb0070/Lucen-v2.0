@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/react'
 import './index.css'
 import './artifact-hub.css'
 import './powertools.css'
+import './store/orchestration'
 import App from './App.tsx'
 
 // Sentry error monitoring — only initialize when DSN is configured

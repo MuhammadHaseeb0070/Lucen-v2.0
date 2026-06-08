@@ -29,6 +29,13 @@ describe('iframeErrorBridge', () => {
       expect(result.startsWith(INJECT_SCRIPT)).toBe(true);
       expect(result.endsWith('<h1>Simple text only</h1>')).toBe(true);
     });
+
+    it('should not match <header> as <head>', () => {
+      const srcDoc = '<html><header>Site Header</header><body><h1>Hi</h1></body></html>';
+      const result = injectIntoHtml(srcDoc);
+      // It should fall back to injecting before </body> since <header> is not <head>
+      expect(result.includes(INJECT_SCRIPT + '</body>')).toBe(true);
+    });
   });
 
   describe('attachErrorListener', () => {

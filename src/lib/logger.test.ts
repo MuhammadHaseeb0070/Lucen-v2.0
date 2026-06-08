@@ -50,4 +50,10 @@ describe('logger', () => {
     expect(warnSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
   });
+
+  it('should format message with correlation ID when passed in metadata', () => {
+    logger.setLevel('info');
+    logger.info('hello', { correlationId: 'test-123' });
+    expect(infoSpy).toHaveBeenCalledWith('[Lucen] [corr:test-123]', 'hello');
+  });
 });

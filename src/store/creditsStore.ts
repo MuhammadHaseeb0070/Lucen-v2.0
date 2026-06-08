@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { FREE_CREDITS, formatLC } from '../config/subscriptionConfig';
 import type { PlanId } from '../config/subscriptionConfig';
 import { hasActiveSessionSync } from '../lib/supabase';
@@ -28,63 +28,33 @@ interface CreditsStore {
 }
 
 export const useCreditsStore = create<CreditsStore>()(
-    persist(
-        (set, get) => ({
-            remainingCredits: FREE_CREDITS,
-            totalUsed: 0,
-            subscriptionStatus: 'free',
-            subscriptionPlan: 'free',
-            customerPortalUrl: null,
-            renewsAt: null,
-            billingCycleUsage: 0,
-            ledgers: [],
-            isSynced: false,
-            isLoading: false,
+    subscribeWithSelector(
+        persist(
+            (set, get) => ({
+                remainingCredits: FREE_CREDITS,
+                totalUsed: 0,
+                subscriptionStatus: 'free',
+                subscriptionPlan: 'free',
+                customerPortalUrl: null,
+                renewsAt: null,
+                billingCycleUsage: 0,
+                ledgers: [],
+                isSynced: false,
+                isLoading: false,
 
-            getFormattedCredits: () => {
-                return formatLC(get().remainingCredits);
-            },
+                getFormattedCredits: () => {
+                    return formatLC(get().remainingCredits);
+                },
 
-            hasEnoughCredits: () => {
-                // Credits > 0 means at least one more request is allowed.
-                // Server-side deduction uses actual token cost, so we just
-                // check for a positive balance here.
-                return get().remainingCredits > 0;
-            },
+                hasEnoughCredits: () => {
+                    // Credits > 0 means at least one more request is allowed.
+                    // Server-side deduction uses actual token cost, so we just
+                    // check for a positive balance here.
+                    return get().remainingCredits > 0;
+                },
 
-            syncFromServer: async () => {
-                if (!hasActiveSessionSync()) return;
-
-                set({ isLoading: true });
-                const result = await db.fetchCredits();
-                if (result) {
-                    set({
-                        remainingCredits: result.remaining,
-                        totalUsed: result.used,
-                        billingCycleUsage: result.billingCycleUsage,
-                        subscriptionStatus: result.subscriptionStatus,
-                        subscriptionPlan: result.subscriptionPlan,
-                        customerPortalUrl: result.customerPortalUrl,
-                        renewsAt: result.renewsAt,
-                        ledgers: result.ledgers,
-                        isSynced: true,
-                    });
-                }
-                set({ isLoading: false });
-            },
-
-            syncWithRetry: async () => {
-                if (!hasActiveSessionSync()) return;
-
-                // Graduated delays cover webhook processing latency.
-                // Payment webhooks can take several seconds to arrive and be processed.
-                // We sync immediately, then retry at 2.5s, 5s, and 10s.
-                const delays = [0, 2500, 5000, 10000];
-
-                for (let i = 0; i < delays.length; i++) {
-                    if (delays[i] > 0) {
-                        await new Promise(r => setTimeout(r, delays[i]));
-                    }
+                syncFromServer: async () => {
+                    if (!hasActiveSessionSync()) return;
 
                     set({ isLoading: true });
                     const result = await db.fetchCredits();
@@ -100,26 +70,70 @@ export const useCreditsStore = create<CreditsStore>()(
                             ledgers: result.ledgers,
                             isSynced: true,
                         });
-
-                        // Once we see an active paid subscription AND the credits > free tier amount, credits are confirmed.
-                        // Stop polling early — no need to waste network requests.
-                        if (result.subscriptionStatus === 'active' &&
-                            (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro') &&
-                            result.remaining > 100) {
-                            set({ isLoading: false });
-                            return;
-                        }
                     }
                     set({ isLoading: false });
-                }
-            },
-        }),
-        {
-            name: 'lucen-credits-storage',
-            partialize: (state) => ({
-                ...state,
-                isSynced: false, // Don't persist sync flag
+                },
+
+                syncWithRetry: async () => {
+                    if (!hasActiveSessionSync()) return;
+
+                    // Graduated delays cover webhook processing latency.
+                    // Payment webhooks can take several seconds to arrive and be processed.
+                    // We sync immediately, then retry at 2.5s, 5s, and 10s.
+                    const delays = [0, 2500, 5000, 10000];
+
+                    for (let i = 0; i < delays.length; i++) {
+                        if (delays[i] > 0) {
+                            await new Promise(r => setTimeout(r, delays[i]));
+                        }
+
+                        set({ isLoading: true });
+                        const result = await db.fetchCredits();
+                        if (result) {
+                            set({
+                                remainingCredits: result.remaining,
+                                totalUsed: result.used,
+                                billingCycleUsage: result.billingCycleUsage,
+                                subscriptionStatus: result.subscriptionStatus,
+                                subscriptionPlan: result.subscriptionPlan,
+                                customerPortalUrl: result.customerPortalUrl,
+                                renewsAt: result.renewsAt,
+                                ledgers: result.ledgers,
+                                isSynced: true,
+                            });
+
+                            // Once we see an active paid subscription AND the credits > free tier amount, credits are confirmed.
+                            // Stop polling early — no need to waste network requests.
+                            if (result.subscriptionStatus === 'active' &&
+                                (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro') &&
+                                result.remaining > 100) {
+                                set({ isLoading: false });
+                                return;
+                            }
+                        }
+                        set({ isLoading: false });
+                    }
+                },
             }),
-        }
+            {
+                name: 'lucen-credits-storage',
+                version: 1,
+                migrate: (persistedState: any, version: number) => {
+                    if (version < 1) {
+                        const state = { ...persistedState };
+                        delete state.user;
+                        delete state.email;
+                        delete state.name;
+                        delete state.username;
+                        return state;
+                    }
+                    return persistedState;
+                },
+                partialize: (state) => ({
+                    ...state,
+                    isSynced: false, // Don't persist sync flag
+                }),
+            }
+        )
     )
 );

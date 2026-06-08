@@ -1,16 +1,10 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import type { AppUser } from '../services/auth';
 import { getUser } from '../services/auth';
-import { useChatStore } from './chatStore';
-import { useCreditsStore } from './creditsStore';
-import { useThemeStore } from './themeStore';
-import { fetchUserSettingsRow } from '../services/userSettings';
-import { initializeModelConfig } from '../config/models';
 
 let initPromise: Promise<void> | null = null;
-let syncInFlight: Promise<void> | null = null;
-let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let authSubscription: { unsubscribe: () => void } | null = null;
 
 /** Cleanup function exposed for HMR / external lifecycle use. */
@@ -20,11 +14,6 @@ export function disposeAuthStore() {
         authSubscription = null;
     }
     initPromise = null;
-    syncInFlight = null;
-    if (syncTimer !== null) {
-        clearTimeout(syncTimer);
-        syncTimer = null;
-    }
 }
 
 interface AuthStore {
@@ -52,7 +41,8 @@ interface AuthStore {
     clearOtpVerified: () => void;
 }
 
-export const useAuthStore = create<AuthStore>()((set, get) => ({
+export const useAuthStore = create<AuthStore>()(
+    subscribeWithSelector((set, get) => ({
     user: null,
     isLoading: true,
     isInitialized: false,
@@ -90,12 +80,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
                     const prevUser = get().user;
 
                     if (event === 'SIGNED_OUT') {
-                        // C3 fix: Clear all chat data on sign-out to prevent cross-tab data leak.
-                        // When user signs out in another tab, the SIGNED_OUT event fires here.
-                        // We must clear chats so the next login doesn't see stale data.
-                        useChatStore.getState().clearChats();
-                        // Also clear theme sync timer (M12 fix)
-                        import('./themeStore').then(m => m.clearThemeSyncTimer()).catch(() => {});
                         if (prevUser) {
                             set({ sessionExpired: true });
                         }
@@ -108,11 +92,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
                             name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
                         };
                         set({ user: appUser });
-
-                        // If user just logged in or this is the initial session restore on refresh
-                        if (!prevUser || event === 'INITIAL_SESSION') {
-                            syncDataOnLogin();
-                        }
                     } else {
                         set({ user: null });
                     }
@@ -151,7 +130,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
                 name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
             };
             set({ user: appUser, isLoading: false });
-            syncDataOnLogin();
         } else {
             // H3 fix: explicitly set isLoading false + error on unexpected response
             set({ isLoading: false, error: 'Unexpected response from server — no session or user returned. Please try again.' });
@@ -188,7 +166,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
                 name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
             };
             set({ user: appUser, isLoading: false });
-            syncDataOnLogin();
         } else {
             // OTP email sent — caller should navigate to OTP verify screen
             set({ isLoading: false });
@@ -234,7 +211,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
                     name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User',
                 };
                 set({ user: appUser, isLoading: false });
-                syncDataOnLogin();
             } else {
                 set({ isLoading: false });
             }
@@ -277,21 +253,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     signOut: async () => {
         if (!isSupabaseEnabled() || !supabase) return;
 
-        // H2 fix: cancel any pending sync timer before signing out
-        if (syncTimer !== null) {
-            clearTimeout(syncTimer);
-            syncTimer = null;
-        }
-        syncInFlight = null;
-
-        // M12 fix: clear theme sync timer to prevent post-signout DB writes
-        const { clearThemeSyncTimer } = await import('./themeStore');
-        clearThemeSyncTimer();
-
         // Clear user preemptively so SIGNED_OUT event doesn't trigger sessionExpired flag
         set({ user: null, sessionExpired: false, otpVerified: false });
         await supabase.auth.signOut();
-        useChatStore.getState().clearChats();
     },
 
     resetPasswordForEmail: async (email) => {
@@ -366,52 +330,4 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
     clearError: () => set({ error: null }),
     clearOtpVerified: () => set({ otpVerified: false }),
-}));
-
-/**
- * Sync local stores with Supabase after successful login.
- * Loads conversations and credits from the server.
- */
-function syncDataOnLogin() {
-    // H2 fix: deduplicate — only one sync at a time
-    if (syncInFlight) return;
-
-    // Cancel any previously pending timer
-    if (syncTimer !== null) {
-        clearTimeout(syncTimer);
-        syncTimer = null;
-    }
-
-    syncInFlight = new Promise<void>((resolve) => {
-        // Small delay to ensure auth state is propagated to session cache
-        syncTimer = setTimeout(async () => {
-            syncTimer = null;
-            try {
-                useChatStore.getState().loadFromSupabase();
-                initializeModelConfig();
-
-                const row = await fetchUserSettingsRow();
-                if (row) {
-                    useThemeStore.getState().hydrateFromServerRow(row);
-                }
-
-                // Detect post-checkout redirect (payment provider sends user back with this param).
-                const url = new URL(window.location.href);
-                const isPostCheckout = url.searchParams.has('subscription_updated');
-
-                if (isPostCheckout) {
-                    // Clean up the URL parameter so it doesn't persist on refresh.
-                    url.searchParams.delete('subscription_updated');
-                    window.history.replaceState({}, '', url.toString());
-                    // Graduated retry: webhooks may still be processing when the user lands.
-                    useCreditsStore.getState().syncWithRetry();
-                } else {
-                    useCreditsStore.getState().syncFromServer();
-                }
-            } finally {
-                syncInFlight = null;
-                resolve();
-            }
-        }, 500);
-    });
-}
+})));

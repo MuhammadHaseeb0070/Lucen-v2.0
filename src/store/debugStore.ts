@@ -19,7 +19,8 @@
 
 import { create } from 'zustand';
 
-const MAX_ENTRIES = 200;
+const MAX_ENTRIES = 50;
+const TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 // M8 fix: Only enable payload capture when BOTH dev mode AND the env var is set.
 // Previously this was just `!import.meta.env.PROD` which enabled capture in ALL
@@ -67,19 +68,31 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
     push: (entry) => {
         if (!DEBUG_CAPTURE_ENABLED) return;
         set((state) => {
-            const next = [entry, ...state.entries];
+            const now = Date.now();
+            const filtered = state.entries.filter((e) => now - e.timestamp < TTL_MS);
+            const next = [entry, ...filtered];
             if (next.length > MAX_ENTRIES) next.length = MAX_ENTRIES;
             return { entries: next };
         });
     },
     update: (id, patch) => {
         if (!DEBUG_CAPTURE_ENABLED) return;
-        set((state) => ({
-            entries: state.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)),
-        }));
+        set((state) => {
+            const now = Date.now();
+            const filtered = state.entries.filter((e) => now - e.timestamp < TTL_MS);
+            return {
+                entries: filtered.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+            };
+        });
     },
-    getById: (id) => get().entries.find((e) => e.id === id),
-    getByParent: (parentId) => get().entries.filter((e) => e.parentId === parentId),
+    getById: (id) => {
+        const now = Date.now();
+        return get().entries.find((e) => e.id === id && now - e.timestamp < TTL_MS);
+    },
+    getByParent: (parentId) => {
+        const now = Date.now();
+        return get().entries.filter((e) => e.parentId === parentId && now - e.timestamp < TTL_MS);
+    },
     clear: () => set({ entries: [] }),
 }));
 

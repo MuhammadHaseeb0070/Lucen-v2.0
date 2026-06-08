@@ -17,27 +17,27 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 
 ### Tech Debt — Structural
 
-- [ ] **TD-01**: `src/services/openrouter.ts` (1,770 lines) is decomposed into `messages/`, `rag/`, `streaming/`, `continuation/` modules with a facade re-export so no other file needs to change
-- [ ] **TD-02**: `supabase/functions/chat-proxy/index.ts` (1,668 lines) is decomposed into `auth.ts`, `streamHandler.ts`, `billing.ts`, with a thin orchestrator index
+- [x] **TD-01**: `src/services/openrouter.ts` (1,770 lines) is decomposed into `messages/`, `rag/`, `streaming/`, `continuation/` modules with a facade re-export so no other file needs to change
+- [x] **TD-02**: `supabase/functions/chat-proxy/index.ts` (1,668 lines) is decomposed into `auth.ts`, `streamHandler.ts`, `billing.ts`, with a thin orchestrator index
 - [ ] **TD-03**: The three key names for the web-search flag (`web_search_enabled`, `webSearchEnabled`, `enableWebSearch`) are unified to `web_search_enabled` everywhere; legacy keys emit a deprecation warning
 - [ ] **TD-04**: Color palettes are extracted from `src/store/themeStore.ts` to `src/config/themes.ts`; theme store becomes pure state + actions
 - [ ] **TD-05**: `setViewerFile` in `uiStore.ts` is typed with a proper `ViewerFile` interface (no more `any`)
 - [x] **TD-06**: A shared types package (Zod 4.x schemas + inferred types) lives in `src/shared/` and is consumable from edge functions via path alias; type drift between FE and BE is now a compile error
-- [ ] **TD-07**: All 50+ raw `console.log/warn/error` calls in `src/services/`, `src/store/`, `src/components/` are migrated to `src/lib/logger.ts` with correlation IDs (`crypto.randomUUID()`)
-- [ ] **TD-08**: Cross-store `getState()` coupling in `authStore`, `chatStore`, `themeStore` is replaced with Zustand `subscribeWithSelector` via a single `orchestration.ts` module; stores import nothing from other stores
-- [ ] **TD-09**: All 4 persisted Zustand stores (`chatStore`, `uiStore`, `creditsStore`, `sideChatStore`) have a `version` field and a `migrate` function; PII in persisted slices is audited and removed
+- [x] **TD-07**: All 50+ raw `console.log/warn/error` calls in `src/services/`, `src/store/`, `src/components/` are migrated to `src/lib/logger.ts` with correlation IDs (`crypto.randomUUID()`)
+- [x] **TD-08**: Cross-store `getState()` coupling in `authStore`, `chatStore`, `themeStore` is replaced with Zustand `subscribeWithSelector` via a single `orchestration.ts` module; stores import nothing from other stores
+- [x] **TD-09**: All 4 persisted Zustand stores (`chatStore`, `uiStore`, `creditsStore`, `sideChatStore`) have a `version` field and a `migrate` function; PII in persisted slices is audited and removed
 
 ### Known Bugs
 
-- [ ] **BUG-01**: In `src/services/openrouter.ts:processStream`, `onDone` is always called after `onError` (so the UI exits loading state)
-- [ ] **BUG-02**: `src/lib/artifactParser.ts` strips orphaned closing tags, not just opening tags, after an incomplete `<lucen_artifact>` boundary
+- [x] **BUG-01**: In `src/services/openrouter.ts:processStream`, `onDone` is always called after `onError` (so the UI exits loading state)
+- [x] **BUG-02**: `src/lib/artifactParser.ts` strips orphaned closing tags, not just opening tags, after an incomplete `<lucen_artifact>` boundary
 - [ ] **BUG-03**: `src/components/ArtifactRenderer.tsx` validates that HTML artifact content is non-empty and has a `<body>` before injecting into `srcdoc`; otherwise shows a "this artifact is empty" placeholder
-- [ ] **BUG-04**: `src/lib/iframeErrorBridge.ts:injectIntoHtml` regex is fixed to match only `<head>` (not `</head>`); injection script lands inside `<head>` reliably
+- [x] **BUG-04**: `src/lib/iframeErrorBridge.ts:injectIntoHtml` regex is fixed to match only `<head>` (not `</head>`); injection script lands inside `<head>` reliably
 - [x] **BUG-05**: `supabase/functions/chat-proxy/index.ts` always assigns `finishReason` in every streaming path; Sentry breadcrumb fires when billing is computed against a null `finishReason`
 - [ ] **BUG-06**: `chat-proxy` always emits `[DONE]` after an internal error so the frontend continuation loop terminates
 - [ ] **BUG-07**: All SVG rendering paths in `src/components/ArtifactRenderer.tsx` (both `<svg>` in main DOM and SVG in iframes) call sanitization — verified by a test that enumerates every code path
 - [ ] **BUG-08** *(regression-only — already fixed)*: Mermaid config in `ArtifactRenderer.tsx` and `ArtifactWorkspace.tsx` uses `securityLevel: 'strict'`. A regression test asserts this on every CI run
-- [ ] **BUG-10**: `src/store/artifactStore.ts` and the artifact worker properly reset state when `focusedArtifactId` changes — old results never bleed into the new artifact
+- [x] **BUG-10**: `src/store/artifactStore.ts` and the artifact worker properly reset state when `focusedArtifactId` changes — old results never bleed into the new artifact
 
 ### Security
 
@@ -50,10 +50,10 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 
 ### Performance
 
-- [ ] **PERF-01**: `buildThemeApplyFingerprint` in `themeStore.ts` is memoized — no `JSON.stringify` per state change; output only when input changes (deep compare)
-- [ ] **PERF-02**: `React.memo` is applied to `ChatArea`, `MessageBubble`, `FileLibrary` (and other large presentational components) with stable props verified
-- [ ] **PERF-03**: Debug store ring buffer has a TTL eviction (entries older than 30 min are purged) and a max-bytes threshold
-- [ ] **PERF-04**: The continuation engine in `src/services/openrouter.ts` is loaded via dynamic `import()` so the initial bundle excludes it
+- [x] **PERF-01**: `buildThemeApplyFingerprint` in `themeStore.ts` is memoized — no `JSON.stringify` per state change; output only when input changes (deep compare)
+- [x] **PERF-02**: `React.memo` is applied to `ChatArea`, `MessageBubble`, `FileLibrary` (and other large presentational components) with stable props verified
+- [x] **PERF-03**: Debug store ring buffer has a TTL eviction (entries older than 30 min are purged) and a max-bytes threshold
+- [x] **PERF-04**: The continuation engine in `src/services/openrouter.ts` is loaded via dynamic `import()` so the initial bundle excludes it
 - [ ] **PERF-05**: Circuit-breaker state moves to Upstash Redis (HTTP REST client) with TTL auto-expiry; in-memory `Map` stays only as a dev fallback
 
 ### Phase 5 Production Hardening
@@ -125,19 +125,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SEC-06 | Phase 1 | Complete |
 | VERIFY-01 | Phase 1 (ongoing) | Complete |
 | VERIFY-02 | Phase 1 (ongoing) | Complete |
-| TD-01 | Phase 2 | Pending |
-| TD-02 | Phase 2 | Pending |
-| TD-07 | Phase 2 | Pending |
-| TD-08 | Phase 2 | Pending |
-| TD-09 | Phase 2 | Pending |
-| BUG-01 | Phase 2 | Pending |
-| BUG-02 | Phase 2 | Pending |
-| BUG-04 | Phase 2 | Pending |
-| BUG-10 | Phase 2 | Pending |
-| PERF-01 | Phase 2 | Pending |
-| PERF-02 | Phase 2 | Pending |
-| PERF-03 | Phase 2 | Pending |
-| PERF-04 | Phase 2 | Pending |
+| TD-01 | Phase 2 | Complete |
+| TD-02 | Phase 2 | Complete |
+| TD-07 | Phase 2 | Complete |
+| TD-08 | Phase 2 | Complete |
+| TD-09 | Phase 2 | Complete |
+| BUG-01 | Phase 2 | Complete |
+| BUG-02 | Phase 2 | Complete |
+| BUG-04 | Phase 2 | Complete |
+| BUG-10 | Phase 2 | Complete |
+| PERF-01 | Phase 2 | Complete |
+| PERF-02 | Phase 2 | Complete |
+| PERF-03 | Phase 2 | Complete |
+| PERF-04 | Phase 2 | Complete |
 | TD-03 | Phase 3 | Pending |
 | TD-04 | Phase 3 | Pending |
 | TD-05 | Phase 3 | Pending |
