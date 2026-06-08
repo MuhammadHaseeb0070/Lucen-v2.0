@@ -1,6 +1,8 @@
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus } from '../_shared/usage.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isKillSwitched } from '../_shared/featureFlags.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
@@ -88,6 +90,25 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+
+    // Feature flag kill switch — return 503 if classify-intent is disabled
+    if (isKillSwitched('CLASSIFY_INTENT')) {
+        return new Response(JSON.stringify({ error: 'Service temporarily unavailable.' }), {
+            status: 503,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+        });
+    }
+
+    // Edge-level rate limiting — 60 req/min per IP (before auth overhead)
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rlResult = await checkRateLimit(`classify-intent:${clientIp}`, 60, 60_000);
+    if (!rlResult.allowed) {
+        const retryAfterSec = Math.ceil((rlResult.retryAfterMs ?? 60_000) / 1000);
+        return new Response(JSON.stringify({ error: 'Too many requests. Please slow down.' }), {
+            status: 429,
+            headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSec) },
+        });
+    }
 
     // Accounting for the classify_intent call itself.
     const startedAt = Date.now();

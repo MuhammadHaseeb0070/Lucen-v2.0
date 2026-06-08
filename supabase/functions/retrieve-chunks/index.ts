@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus } from '../_shared/usage.ts';
+import { isKillSwitched } from '../_shared/featureFlags.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/embeddings';
 // Embedding model — env-driven. Must match EMBEDDING_MODEL used by the
@@ -13,6 +15,25 @@ const EMBED_INPUT_COST_PER_1M = Number(
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+
+    // Feature flag kill switch
+    if (isKillSwitched('RETRIEVE_CHUNKS')) {
+        return new Response(JSON.stringify({ error: 'Service temporarily unavailable.' }), {
+            status: 503,
+            headers: { ...cors, 'Content-Type': 'application/json' },
+        });
+    }
+
+    // Edge-level rate limiting — 60 req/min per IP
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rlResult = await checkRateLimit(`retrieve-chunks:${clientIp}`, 60, 60_000);
+    if (!rlResult.allowed) {
+        const retryAfterSec = Math.ceil((rlResult.retryAfterMs ?? 60_000) / 1000);
+        return new Response(JSON.stringify({ error: 'Too many requests. Please slow down.' }), {
+            status: 429,
+            headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSec) },
+        });
+    }
 
     const startedAt = Date.now();
     const accounting = {

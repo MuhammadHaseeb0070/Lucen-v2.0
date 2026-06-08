@@ -2,6 +2,19 @@ import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
 import type { TemplateMode } from '../types';
 
+/**
+ * Typed shape for files opened in the file viewer panel.
+ * All fields are optional except id and name.
+ */
+export interface ViewerFile {
+    id: string;
+    name: string;
+    type: string;
+    url?: string;
+    textContent?: string;
+    aiDescription?: string;
+}
+
 interface UIStore {
     sidebarCollapsed: boolean;
     sideChatOpen: boolean;
@@ -13,14 +26,7 @@ interface UIStore {
     billingOpen: boolean;
     fileLibraryOpen: boolean;
     viewerOpen: boolean;
-    viewerFile: { 
-        id: string; 
-        name: string; 
-        type: string; 
-        url?: string; 
-        textContent?: string;
-        aiDescription?: string;
-    } | null;
+    viewerFile: ViewerFile | null;
     pendingMessageJumpId: string | null;
 
     toggleSidebar: () => void;
@@ -35,7 +41,7 @@ interface UIStore {
     setBillingOpen: (open: boolean) => void;
     setFileLibraryOpen: (open: boolean) => void;
     setViewerOpen: (open: boolean) => void;
-    setViewerFile: (file: any) => void;
+    setViewerFile: (file: ViewerFile | null) => void;
     setPendingMessageJumpId: (id: string | null) => void;
 }
 
@@ -74,7 +80,7 @@ export const useUIStore = create<UIStore>()(
                 setBillingOpen: (open: boolean) => set({ billingOpen: open }),
                 setFileLibraryOpen: (open: boolean) => set({ fileLibraryOpen: open }),
                 setViewerOpen: (open: boolean) => set({ viewerOpen: open }),
-                setViewerFile: (file: any) => set({ viewerFile: file }),
+                setViewerFile: (file: ViewerFile | null) => set({ viewerFile: file }),
                 setPendingMessageJumpId: (id) => set({ pendingMessageJumpId: id }),
             }),
             {

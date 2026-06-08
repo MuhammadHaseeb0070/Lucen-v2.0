@@ -204,6 +204,17 @@ Deno.serve(async (req: Request) => {
     const imageCount = countImagesInMessages(messages);
     accounting.imageTokens = imageCount;
 
+    // Deprecation: log warning when legacy camelCase web search keys are used
+    if (webSearchEnabled !== undefined || enableWebSearch !== undefined) {
+      log.warn('[DEPRECATED] Legacy web search key detected', {
+        keys: [
+          webSearchEnabled !== undefined ? 'webSearchEnabled' : null,
+          enableWebSearch !== undefined ? 'enableWebSearch' : null,
+        ].filter(Boolean),
+        recommendation: 'Use web_search_enabled (snake_case) instead',
+      });
+    }
+
     const legacyPluginRequested = hasWebPlugin(plugins);
     const webSearchRequested = !!(web_search_enabled || webSearchEnabled || enableWebSearch);
     const webSearchFallback = !!web_search_fallback_requested;
@@ -322,7 +333,7 @@ Deno.serve(async (req: Request) => {
 
     const shouldStream = stream !== false;
 
-    if (!circuitAllow('openrouter')) {
+    if (!await circuitAllow('openrouter')) {
       log.warn('Circuit breaker OPEN — OpenRouter unavailable');
       return await fail('upstream_error', 503, 'AI service is temporarily unavailable. Please try again in a moment.');
     }
@@ -352,7 +363,7 @@ Deno.serve(async (req: Request) => {
 
       if (!openrouterResponse.ok) {
         const errBody = await openrouterResponse.text();
-        circuitFailure('openrouter');
+        await circuitFailure('openrouter');
         log.error('OpenRouter upstream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
         return await fail(
           'upstream_error',
@@ -361,7 +372,7 @@ Deno.serve(async (req: Request) => {
           errBody.slice(0, 500),
         );
       } else {
-        circuitSuccess('openrouter');
+        await circuitSuccess('openrouter');
       }
 
       const json = await openrouterResponse.json();

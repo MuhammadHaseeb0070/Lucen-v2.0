@@ -22,6 +22,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { isKillSwitched } from "../_shared/featureFlags.ts";
+import { checkRateLimit } from "../_shared/rateLimit.ts";
 
 type Json = Record<string, unknown>;
 
@@ -126,6 +128,23 @@ serve(async (req: Request) => {
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, { status: 405, headers: cors });
+  }
+
+  // Feature flag kill switch
+  if (isKillSwitched('LS_CHECKOUT')) {
+    return jsonResponse({ error: 'Checkout is temporarily unavailable.' }, { status: 503, headers: cors });
+  }
+
+  // Edge-level rate limiting — 30 req/min per IP (billing-sensitive)
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const rlResult = await checkRateLimit(`ls-checkout:${clientIp}`, 30, 60_000);
+  if (!rlResult.allowed) {
+    const retryAfterSec = Math.ceil((rlResult.retryAfterMs ?? 60_000) / 1000);
+    return jsonResponse(
+      { error: 'Too many requests. Please slow down.' },
+      { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
+      cors,
+    );
   }
 
   try {

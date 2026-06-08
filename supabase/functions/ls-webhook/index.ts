@@ -31,6 +31,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isKillSwitched } from "../_shared/featureFlags.ts";
 
 type Json = Record<string, unknown>;
 
@@ -400,6 +401,13 @@ function shouldSetCancelledForUpdate(payload: any): boolean {
 serve(async (req: Request) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  // Feature flag kill switch — emergency stop for webhook processing
+  // Note: no rate limiting on webhooks as Lemon Squeezy must be able to retry freely
+  if (isKillSwitched('LS_WEBHOOK')) {
+    console.warn('ls-webhook: kill switch ACTIVE — returning 503');
+    return jsonResponse({ error: 'Service temporarily unavailable.' }, { status: 503 });
   }
 
   // ── Signature verification (MANDATORY) ──

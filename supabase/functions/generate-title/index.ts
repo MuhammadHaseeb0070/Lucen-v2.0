@@ -1,6 +1,9 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { recordUsage } from '../_shared/usage.ts';
+import { isKillSwitched } from '../_shared/featureFlags.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -14,6 +17,25 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  // Feature flag kill switch — return 503 if generate-title is disabled
+  if (isKillSwitched('GENERATE_TITLE')) {
+    return new Response(JSON.stringify({ error: 'Service temporarily unavailable.' }), {
+      status: 503,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Edge-level rate limiting — 60 req/min per IP
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const rlResult = await checkRateLimit(`generate-title:${clientIp}`, 60, 60_000);
+  if (!rlResult.allowed) {
+    const retryAfterSec = Math.ceil((rlResult.retryAfterMs ?? 60_000) / 1000);
+    return new Response(JSON.stringify({ error: 'Too many requests. Please slow down.' }), {
+      status: 429,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSec) },
+    });
   }
 
   const startedAt = Date.now();

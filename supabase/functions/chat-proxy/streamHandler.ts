@@ -257,11 +257,11 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
 
           if (!openrouterResponse.ok) {
             const errBody = await openrouterResponse.text().catch(() => '');
-            circuitFailure('openrouter');
+            await circuitFailure('openrouter');
             log.error('OpenRouter stream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
             throw new Error(`OpenRouter upstream error ${openrouterResponse.status}: ${errBody}`);
           }
-          circuitSuccess('openrouter');
+          await circuitSuccess('openrouter');
 
           const reader = openrouterResponse.body!.getReader();
           
