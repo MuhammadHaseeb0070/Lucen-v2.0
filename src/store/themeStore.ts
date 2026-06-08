@@ -654,7 +654,7 @@ function scheduleAppearanceSyncToServer(): void {
     }, SYNC_DEBOUNCE_MS);
 }
 
-function buildThemeApplyFingerprint(): string {
+export function buildThemeApplyFingerprint(): string {
     const s = useThemeStore.getState();
     const t = s.getResolvedTheme();
     const c = t.colors;

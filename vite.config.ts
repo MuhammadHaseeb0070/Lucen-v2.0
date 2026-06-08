@@ -22,6 +22,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
+      include: [
+        'src/shared/index.ts',
+        'src/lib/artifactParser.ts',
+        'src/lib/logger.ts',
+        'src/lib/iframeErrorBridge.ts',
+        'src/store/themeStore.ts',
+        'src/store/creditsStore.ts',
+        'src/store/authStore.ts'
+      ],
       thresholds: {
         lines: 50,
         branches: 40,
