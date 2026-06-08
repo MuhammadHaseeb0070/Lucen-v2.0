@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as Sentry from 'https://esm.sh/@sentry/deno@10.56.0';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus, type UsageCallKind } from '../_shared/usage.ts';
 import { TOOLS, getOpenRouterTools } from '../_shared/toolRegistry.ts';
@@ -6,6 +7,11 @@ import { createLogger } from '../_shared/logging.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { circuitAllow, circuitSuccess, circuitFailure } from '../_shared/circuitBreaker.ts';
 import { isKillSwitched } from '../_shared/featureFlags.ts';
+
+Sentry.init({
+  dsn: Deno.env.get("SENTRY_DSN") || "",
+  environment: Deno.env.get("SENTRY_ENV") || "development",
+});
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const WEB_PLUGIN_ID = 'web';
@@ -764,6 +770,7 @@ Deno.serve(async (req: Request) => {
                 let finalStreamError: string | null = null;
                 let finalSawDone = false;
                 let finishReason: string | null = null;
+                let jwtVerifiedMidStream = false;
                 
                 // Tools executed history for logging and client receipt
                 const toolsExecuted: Array<{
@@ -809,6 +816,7 @@ Deno.serve(async (req: Request) => {
                             try {
                                 controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'Insufficient credits to continue.' })}\n\n`));
                             } catch { /* ignore */ }
+                            finishReason = 'insufficient_credits';
                             break;
                         }
 
@@ -1462,6 +1470,22 @@ Deno.serve(async (req: Request) => {
 
                             // 2. Stream subsequent chunks directly from upstream reader
                             while (true) {
+                                // SEC-06 mid-stream expiration check
+                                const currentSecs = Math.floor(Date.now() / 1000);
+                                if (expiry && currentSecs >= expiry && !jwtVerifiedMidStream) {
+                                    jwtVerifiedMidStream = true;
+                                    const { data: midUser, error: midErr } = await supabaseAdmin.auth.admin.getUserById(userId);
+                                    if (midErr || !midUser?.user) {
+                                        try {
+                                            controller.enqueue(encoder.encode(
+                                                `event: error\ndata: ${JSON.stringify({ error: "Session expired. Please sign in again.", code: 401 })}\n\n`
+                                            ));
+                                            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                                        } catch { /* ignore */ }
+                                        throw new Error('JWT expired mid-stream and refresh validation failed');
+                                    }
+                                }
+
                                 const { done, value } = await reader.read();
                                 if (done) break;
                                 if (value) {
@@ -1508,6 +1532,17 @@ Deno.serve(async (req: Request) => {
                         }
                     }
 
+                    const originalFinishReasonIsNull = finishReason === null;
+                    if (!finishReason) {
+                        if (finalStreamError) {
+                            finishReason = 'error';
+                        } else if (!finalSawDone) {
+                            finishReason = 'abort';
+                        } else {
+                            finishReason = 'stop';
+                        }
+                    }
+
                     if (finalStreamError) {
                         finalStatus = 'upstream_error';
                         finalStatusReason = finalStreamError.slice(0, 500);
@@ -1532,6 +1567,14 @@ Deno.serve(async (req: Request) => {
                     const shouldCharge =
                         finalStatus === 'completed' || finalStatus === 'truncated' || totalTokensNum > 0;
                     const totalCost = shouldCharge ? (textCost + totalSearchCost) : 0;
+
+                    if (originalFinishReasonIsNull) {
+                        Sentry.addBreadcrumb({
+                            category: 'billing',
+                            message: `Billing calculated with null finishReason for user ${user.id}, status: ${finalStatus}`,
+                            level: 'warning',
+                        });
+                    }
 
                     try {
                         if (shouldCharge && totalCost > 0) {
@@ -1611,6 +1654,9 @@ Deno.serve(async (req: Request) => {
 
                 } catch (e: any) {
                     console.error('[chat-proxy] Stream internal execution error:', e);
+                    if (!finishReason) {
+                        finishReason = 'error';
+                    }
                     try {
                         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: e.message })}\n\n`));
                         // Always emit [DONE] after error so the client's processStream
