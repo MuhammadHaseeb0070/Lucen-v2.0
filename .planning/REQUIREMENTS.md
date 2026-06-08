@@ -9,11 +9,11 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 
 ### Test Infrastructure
 
-- [ ] **TEST-01**: Vitest is installed and configured (jsdom 29, Vite-shared config) with a "run" npm script
-- [ ] **TEST-02**: Playwright is installed and configured for E2E with a "e2e" npm script and at least one smoke test
-- [ ] **TEST-03**: Coverage thresholds configured (initial: Lines 50%, Branches 40%, Functions 45%, Statements 50%)
-- [ ] **TEST-04**: Unit tests exist for `src/lib/artifactParser.ts`, `src/lib/logger.ts`, `src/lib/iframeErrorBridge.ts`, and the theme fingerprint helper
-- [ ] **TEST-05**: Regression test exists for the Mermaid `securityLevel: 'strict'` config (guards BUG-08 against regression)
+- [x] **TEST-01**: Vitest is installed and configured (jsdom 29, Vite-shared config) with a "run" npm script
+- [x] **TEST-02**: Playwright is installed and configured for E2E with a "e2e" npm script and at least one smoke test
+- [x] **TEST-03**: Coverage thresholds configured (initial: Lines 50%, Branches 40%, Functions 45%, Statements 50%)
+- [x] **TEST-04**: Unit tests exist for `src/lib/artifactParser.ts`, `src/lib/logger.ts`, `src/lib/iframeErrorBridge.ts`, and the theme fingerprint helper
+- [x] **TEST-05**: Regression test exists for the Mermaid `securityLevel: 'strict'` config (guards BUG-08 against regression)
 
 ### Tech Debt — Structural
 
@@ -22,7 +22,7 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 - [ ] **TD-03**: The three key names for the web-search flag (`web_search_enabled`, `webSearchEnabled`, `enableWebSearch`) are unified to `web_search_enabled` everywhere; legacy keys emit a deprecation warning
 - [ ] **TD-04**: Color palettes are extracted from `src/store/themeStore.ts` to `src/config/themes.ts`; theme store becomes pure state + actions
 - [ ] **TD-05**: `setViewerFile` in `uiStore.ts` is typed with a proper `ViewerFile` interface (no more `any`)
-- [ ] **TD-06**: A shared types package (Zod 4.x schemas + inferred types) lives in `src/shared/` and is consumable from edge functions via path alias; type drift between FE and BE is now a compile error
+- [x] **TD-06**: A shared types package (Zod 4.x schemas + inferred types) lives in `src/shared/` and is consumable from edge functions via path alias; type drift between FE and BE is now a compile error
 - [ ] **TD-07**: All 50+ raw `console.log/warn/error` calls in `src/services/`, `src/store/`, `src/components/` are migrated to `src/lib/logger.ts` with correlation IDs (`crypto.randomUUID()`)
 - [ ] **TD-08**: Cross-store `getState()` coupling in `authStore`, `chatStore`, `themeStore` is replaced with Zustand `subscribeWithSelector` via a single `orchestration.ts` module; stores import nothing from other stores
 - [ ] **TD-09**: All 4 persisted Zustand stores (`chatStore`, `uiStore`, `creditsStore`, `sideChatStore`) have a `version` field and a `migrate` function; PII in persisted slices is audited and removed
@@ -33,7 +33,7 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 - [ ] **BUG-02**: `src/lib/artifactParser.ts` strips orphaned closing tags, not just opening tags, after an incomplete `<lucen_artifact>` boundary
 - [ ] **BUG-03**: `src/components/ArtifactRenderer.tsx` validates that HTML artifact content is non-empty and has a `<body>` before injecting into `srcdoc`; otherwise shows a "this artifact is empty" placeholder
 - [ ] **BUG-04**: `src/lib/iframeErrorBridge.ts:injectIntoHtml` regex is fixed to match only `<head>` (not `</head>`); injection script lands inside `<head>` reliably
-- [ ] **BUG-05**: `supabase/functions/chat-proxy/index.ts` always assigns `finishReason` in every streaming path; Sentry breadcrumb fires when billing is computed against a null `finishReason`
+- [x] **BUG-05**: `supabase/functions/chat-proxy/index.ts` always assigns `finishReason` in every streaming path; Sentry breadcrumb fires when billing is computed against a null `finishReason`
 - [ ] **BUG-06**: `chat-proxy` always emits `[DONE]` after an internal error so the frontend continuation loop terminates
 - [ ] **BUG-07**: All SVG rendering paths in `src/components/ArtifactRenderer.tsx` (both `<svg>` in main DOM and SVG in iframes) call sanitization — verified by a test that enumerates every code path
 - [ ] **BUG-08** *(regression-only — already fixed)*: Mermaid config in `ArtifactRenderer.tsx` and `ArtifactWorkspace.tsx` uses `securityLevel: 'strict'`. A regression test asserts this on every CI run
@@ -46,7 +46,7 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 - [ ] **SEC-03**: Sentry alert fires in `chat-proxy` when `decodeJwtPayload` succeeds but `admin.getUserById` fails (forged-JWT signal)
 - [ ] **SEC-04**: All 11 edge functions call `checkRateLimit` at entry; per-function limits configured; consistent 429 response shape with `Retry-After` header
 - [ ] **SEC-05**: `src/services/fileProcessor.ts` rejects 0-byte files with a friendly error; deduplicates by content hash; surfaces a clear error for encrypted/protected PDFs and DOCX
-- [ ] **SEC-06**: Chat stream pipeline refreshes the JWT mid-stream and rejects with 401 if it expires during a long generation; no silent failure on the deduction call
+- [x] **SEC-06**: Chat stream pipeline refreshes the JWT mid-stream and rejects with 401 if it expires during a long generation; no silent failure on the deduction call
 
 ### Performance
 
@@ -67,8 +67,8 @@ Requirements for this stabilization milestone. Each maps to roadmap phases.
 
 ### Verification Support (per user direction)
 
-- [ ] **VERIFY-01**: For every change that touches runtime behavior, the executor writes either (a) a unit/E2E test, OR (b) exact manual steps to repeat and what to expect — based on which is easier/more important
-- [ ] **VERIFY-02**: At every phase boundary, the user is given a summary of: files changed, what to test, expected behavior, and how to roll back
+- [x] **VERIFY-01**: For every change that touches runtime behavior, the executor writes either (a) a unit/E2E test, OR (b) exact manual steps to repeat and what to expect — based on which is easier/more important
+- [x] **VERIFY-02**: At every phase boundary, the user is given a summary of: files changed, what to test, expected behavior, and how to roll back
 
 ## v2 Requirements
 
@@ -115,16 +115,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | Phase 1 | Pending |
-| TEST-02 | Phase 1 | Pending |
-| TEST-03 | Phase 1 | Pending |
-| TEST-04 | Phase 1 | Pending |
-| TEST-05 | Phase 1 | Pending |
-| TD-06 | Phase 1 | Pending |
-| BUG-05 | Phase 1 | Pending |
-| SEC-06 | Phase 1 | Pending |
-| VERIFY-01 | Phase 1 (ongoing) | Pending |
-| VERIFY-02 | Phase 1 (ongoing) | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
+| TEST-03 | Phase 1 | Complete |
+| TEST-04 | Phase 1 | Complete |
+| TEST-05 | Phase 1 | Complete |
+| TD-06 | Phase 1 | Complete |
+| BUG-05 | Phase 1 | Complete |
+| SEC-06 | Phase 1 | Complete |
+| VERIFY-01 | Phase 1 (ongoing) | Complete |
+| VERIFY-02 | Phase 1 (ongoing) | Complete |
 | TD-01 | Phase 2 | Pending |
 | TD-02 | Phase 2 | Pending |
 | TD-07 | Phase 2 | Pending |
@@ -158,6 +158,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BUG-06 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 41 total
 - Mapped to phases: 41
 - Unmapped: 0 ✓
