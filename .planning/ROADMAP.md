@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation + Finance-Critical Fixes** — Test infrastructure (Vitest + Playwright), shared types package, fix finishReason billing drift (BUG-05) and JWT expiry mid-stream (SEC-06), initial unit tests (completed 2026-06-08)
 - [x] **Phase 2: Structural Decomposition** — Split both monoliths into focused modules, migrate to structured logging, replace cross-store getState() with subscribeWithSelector, fix bugs inside decomposed modules, apply performance memoization/lazy-loading (completed 2026-06-08)
-- [ ] **Phase 3: Billing Hardening + Production Shared State** — Rate limit all 11 edge functions, Redis-backed circuit breaker and rate limiter, kill switches on every entry point, unify web-search flag, extract themes, type ViewerFile
+- [x] **Phase 3: Billing Hardening + Production Shared State** — Rate limit all 11 edge functions, Redis-backed circuit breaker and rate limiter, kill switches on every entry point, unify web-search flag, extract themes, type ViewerFile (completed 2026-06-08)
 - [x] **Phase 4: Security Hardening** — Replace regex SVG sanitization with DOMPurify, add Sentry alert on forged-JWT signal, file-upload content security, validate empty HTML artifacts, audit all SVG rendering paths (completed 2026-06-09)
 - [ ] **Phase 5: CSP Enforce + E2E + Final Verification** — Switch CSP from Report-Only to enforce with strict-dynamic, wire Sentry fully (release + env + breadcrumbs), Playwright E2E tests for 6 core flows, tighten iframe sandbox, fix trailing [DONE] sentinel bug, final verification summaries
 
@@ -110,6 +110,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation + Finance-Critical Fixes | 3/3 | Complete    | 2026-06-08 |
 | 2. Structural Decomposition | 1/1 | Complete    | 2026-06-08 |
-| 3. Billing Hardening + Production Shared State | 0/0 | Not started | - |
+| 3. Billing Hardening + Production Shared State | 1/1 | Complete    | 2026-06-08 |
 | 4. Security Hardening | 3/3 | Complete    | 2026-06-09 |
 | 5. CSP Enforce + E2E + Final Verification | 0/0 | Not started | - |
