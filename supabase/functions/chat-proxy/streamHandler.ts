@@ -3,7 +3,7 @@ import * as Sentry from 'https://esm.sh/@sentry/deno@10.56.0';
 import { recordUsage } from '../_shared/usage.ts';
 import { TOOLS } from '../_shared/toolRegistry.ts';
 import { circuitSuccess, circuitFailure } from '../_shared/circuitBreaker.ts';
-import { buildResponseFormatContract } from './utils.ts';
+import { buildResponseFormatContract, WEBSEARCH_DEFAULT_MAX_RESULTS } from './utils.ts';
 import { computeWebSearchCredits, LC_PER_USD, WEBSEARCH_USD_PER_1K_RESULTS, CREDITS_PER_1K_TOKENS } from './billing.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
