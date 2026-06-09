@@ -28,7 +28,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     }
     return {
         'Access-Control-Allow-Origin': allowOrigin,
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
     };
 }
@@ -36,6 +36,6 @@ export function getCorsHeaders(req: Request): Record<string, string> {
 /** @deprecated Use getCorsHeaders(req) for production. Kept for backwards compatibility. */
 export const corsHeaders: Record<string, string> = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
