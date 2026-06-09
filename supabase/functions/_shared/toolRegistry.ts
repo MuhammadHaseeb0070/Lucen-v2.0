@@ -66,7 +66,7 @@ export const TOOLS: Record<string, ToolDefinition> = {
                 required: ['query']
             }
         },
-        parallelizable: false,
+        parallelizable: true,
         userFacingLabel: 'Searching the web'
     },
     process_file: {

@@ -3,6 +3,7 @@
 ## Milestones
 
 - ✅ **v2.3 Stabilization** — Phases 1-5 (shipped 2026-06-09)
+- 🔄 **v2.4 Web Search Optimization** — Phase 6 (In progress)
 
 ## Phases
 
@@ -17,6 +18,10 @@
 
 </details>
 
+### active: v2.4 Web Search Optimization (Phase 6)
+
+- [/] Phase 6: Web Search Optimization & Hardening (1/1 plans) — In progress
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -26,3 +31,4 @@
 | 3. Billing Hardening + Production Shared State | v2.3 | 1/1 | Complete | 2026-06-08 |
 | 4. Security Hardening | v2.3 | 3/3 | Complete | 2026-06-09 |
 | 5. CSP Enforce + E2E + Final Verification | v2.3 | 1/1 | Complete | 2026-06-09 |
+| 6. Web Search Optimization & Hardening | v2.4 | 0/1 | In progress | — |

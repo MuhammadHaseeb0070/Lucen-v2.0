@@ -85,10 +85,9 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
       
       let currentMessages = [...messages];
       let rounds = 0;
-      const maxRounds = 3;
       
       const toolCallCounts: Record<string, number> = {};
-      const MAX_CALLS_PER_TOOL: Record<string, number> = { web_search: 3 };
+      const MAX_CALLS_PER_TOOL: Record<string, number> = { web_search: 4 };
       const analyzedImageIds = new Set<string>();
       const processedFileIds = new Set<string>();
       const searchedQueries = new Set<string>();
@@ -113,6 +112,9 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
           }
         }
       }
+      
+      const hasAttachments = uploadedImageIds.size > 0 || uploadedFileIds.size > 0;
+      const maxRounds = hasAttachments && webSearchRequested ? 5 : webSearchRequested ? 4 : 3;
       
       let totalPromptTokens = 0;
       let totalCompletionTokens = 0;
@@ -206,7 +208,7 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
           if (allLimitsReached || isLastRound) {
             currentMessages.push({
               role: 'system',
-              content: 'FINAL RESPONSE REQUIRED: Generate a complete, helpful response now using only the search results and information already retrieved above. Do not output search queries. Do not reference needing more searches. Write a direct, useful answer to the user.'
+              content: 'FINAL RESPONSE REQUIRED: You are at the step limit. You MUST write your final response now using only the search results and information already retrieved above. Do not output any search queries, tool calls, or XML tags (e.g. do not write <web_search>, <invoke>, or <tool_call>). Write a direct, complete, and useful answer to the user in the required markdown format.'
             });
           }
 

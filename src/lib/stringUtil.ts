@@ -4,11 +4,15 @@
  */
 export function sanitizeMinimaxTags(text: string): string {
     if (!text || typeof text !== 'string') return text ?? '';
+    const tags = 'minimax:[a-z_]+|invoke|tool_call|query|search_query|web_search|parameter|max_results|search_title|analysis_title|extraction_title|file_id|image_ids|image_id|argument|arguments|tool_args|tool_arguments|call|execute';
+    const pairedRegex = new RegExp(`<(${tags})[^>]*>[\\s\\S]*?<\\/\\1>`, 'gi');
+    const unpairedRegex = new RegExp(`<\\/?(${tags})[^>]*>`, 'gi');
+    const malformedRegex = new RegExp(`(?:search_query|web_search|query|invoke|tool_call|parameter|max_results)>[^\\n]*`, 'gi');
+    const partialRegex = new RegExp(`<(${tags})[^>]*$`, 'i');
+
     return text
-        // Strip complete paired XML tags with content (non-HTML tags)
-        .replace(/<(minimax:[a-z_]+|invoke|tool_call|query|search_query|web_search|parameter)[^>]*>[\s\S]*?<\/\1>/gi, '')
-        // Strip any remaining unpaired tags from the above set  
-        .replace(/<\/?(minimax:[a-z_]+|invoke|tool_call|query|search_query|web_search|parameter)[^>]*>/gi, '')
-        // Strip malformed openings (e.g. "query>text")
-        .replace(/(?:search_query|web_search|query|invoke|tool_call)>[^\n]*/gi, '');
+        .replace(pairedRegex, '')
+        .replace(unpairedRegex, '')
+        .replace(malformedRegex, '')
+        .replace(partialRegex, '');
 }

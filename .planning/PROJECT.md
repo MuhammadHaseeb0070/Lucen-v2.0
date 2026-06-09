@@ -31,7 +31,11 @@ Ship a secure, performant, and well-tested version of Lucen that the user can de
 
 ### Active
 
-> (None active. Ready for next milestone setup via /gsd-new-milestone)
+- **Parallel Web Search**: Support parallelizable tool execution for `web_search` to fetch results concurrently.
+- **Dynamic Step Limits**: Prevent step ceiling truncation errors by scaling `maxRounds` dynamically (up to 5 rounds for attachment + web search calls).
+- **Stronger Final Turn Prompting**: Prevent LLM tool leakages in final rounds by prompting with strong negative constraints when limits are reached.
+- **Defensive Tag Sanitization**: Harden client-side XML tag stripping to defensively clean all possible parameters and leaked tool tags.
+- **Premium Steps and Citations UI**: Restyle tool step statuses and domain citations to be beautiful, glassmorphic, and dynamic.
 
 ### Out of Scope
 
