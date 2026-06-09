@@ -1,0 +1,93 @@
+---
+phase: 04-security-hardening
+plan: 03
+type: execute
+wave: 2
+depends_on:
+  - 04-01-artifact-rendering-security
+  - 04-02-file-upload-content-hardening
+files_modified:
+  - supabase/functions/chat-proxy/auth.ts
+autonomous: false
+requirements:
+  - SEC-03
+---
+
+<objective>
+Configure Sentry critical alerts in the chat-proxy edge function auth layer when a signature anomaly is detected, and document manual verification tests.
+
+Purpose: Alert operations immediately if a forged JWT signature bypass is attempted on the API.
+Output: Sentry alert dispatch from auth.ts and manual verification checklist.
+</objective>
+
+<execution_context>
+@.agent/gsd-core/workflows/execute-plan.md
+@.agent/gsd-core/templates/summary.md
+</execution_context>
+
+<context>
+@.planning/PROJECT.md
+@.planning/ROADMAP.md
+@.planning/STATE.md
+@.planning/phases/04-security-hardening/04-CONTEXT.md
+@supabase/functions/chat-proxy/auth.ts
+</context>
+
+<tasks>
+
+<task type="auto">
+  <name>Task 1: Integrate Sentry critical exception logging for forged JWTs</name>
+  <files>supabase/functions/chat-proxy/auth.ts</files>
+  <action>
+    In supabase/functions/chat-proxy/auth.ts:
+    Import * as Sentry from 'https://esm.sh/@sentry/deno@10.56.0' (per D-13).
+    Under the admin.getUserById check (where user lookup fails), check if claims were successfully decoded.
+    If claims were decoded but the database user lookup failed or returned an error, capture a critical event via Sentry.captureMessage or Sentry.captureException (per D-12).
+    Attach request metadata (correlation ID, path, request origin, decoded sub/userId claim) to the Sentry event context, strictly redacting the raw Authorization token (per D-14).
+  </action>
+  <verify>
+    Deno syntax check via test compilation or dry-run.
+  </verify>
+  <done>
+    auth.ts captures and dispatches critical Sentry alerts when signature verification fails but local decode succeeds.
+  </done>
+</task>
+
+<task type="checkpoint:human-verify" gate="blocking">
+  <what-built>Sentry forged-JWT anomaly detection in Deno edge function auth.ts</what-built>
+  <how-to-verify>
+    1. Deploy the updated chat-proxy edge function to the Supabase dev environment.
+    2. Send an HTTPS POST request to the chat-proxy edge function using a JWT with a valid payload structure but an invalid/forged signature.
+    3. Verify that the server returns a 401 Unauthorized response.
+    4. Check the Sentry dashboard for a Critical Error alert matching "Forged JWT signal detected" with the redacted metadata (correlation ID, decoded userId claim, and redacted token).
+  </how-to-verify>
+  <resume-signal>approved</resume-signal>
+</task>
+
+</tasks>
+
+<threat_model>
+## Trust Boundaries
+
+| Boundary | Description |
+|----------|-------------|
+| Client Request → Edge Auth Layer | Incoming HTTP request headers containing untrusted JWT authorization payload. |
+
+## STRIDE Threat Register
+
+| Threat ID | Category | Component | Disposition | Mitigation Plan |
+|-----------|----------|-----------|-------------|-----------------|
+| T-04-03 | Spoofing | chat-proxy/auth.ts | mitigate | Dispatch critical Sentry alert with correlation trace if local token decode succeeds but signature verification fails. |
+</threat_model>
+
+<verification>
+Manual verification of edge function execution and Sentry alert delivery.
+</verification>
+
+<success_criteria>
+Edge function handles forged JWTs by logging critical Sentry messages with redacted authorization tokens and returning 401 response.
+</success_criteria>
+
+<output>
+Create .planning/phases/04-security-hardening/04-03-SUMMARY.md when done
+</output>

@@ -1,0 +1,134 @@
+---
+phase: 04-security-hardening
+plan: 01
+type: execute
+wave: 1
+depends_on: []
+files_modified:
+  - package.json
+  - src/components/ArtifactRenderer.tsx
+  - src/components/ArtifactRenderer.test.tsx
+autonomous: true
+requirements:
+  - SEC-01
+  - BUG-03
+  - BUG-07
+must_haves:
+  truths:
+    - "Raw SVG artifacts rendered in the DOM are sanitized of scripts, iframes, and foreignObject tags using DOMPurify."
+    - "Mermaid diagram outputs are sanitized before insertion into the DOM."
+    - "Sandboxed iframe documents containing HTML are fully sanitized with DOMPurify."
+    - "Empty or malformed HTML artifacts show a styled system placeholder instead of blank space."
+    - "The iframe sandbox attribute is restricted to 'allow-scripts' only."
+  artifacts:
+    - path: "src/components/ArtifactRenderer.tsx"
+      provides: "Sanitized rendering of HTML/SVG/Mermaid artifacts and empty state fallback"
+    - path: "src/components/ArtifactRenderer.test.tsx"
+      provides: "Unit tests verifying DOMPurify sanitization bypass blocks and empty HTML fallbacks"
+  key_links:
+    - from: "src/components/ArtifactRenderer.tsx"
+      to: "dompurify"
+      via: "import and sanitize calls"
+---
+
+<objective>
+Install DOMPurify and configure strict SVG and HTML sanitization in ArtifactRenderer.tsx, tighten iframe sandbox permissions to allow-scripts only, and add placeholder states for empty/malformed HTML artifacts.
+
+Purpose: Eliminate DOM-based XSS vectors and clean up empty artifact UI renderings.
+Output: Tightened iframe sandbox, DOMPurify sanitization, and fallback placeholder screens.
+</objective>
+
+<execution_context>
+@.agent/gsd-core/workflows/execute-plan.md
+@.agent/gsd-core/templates/summary.md
+</execution_context>
+
+<context>
+@.planning/PROJECT.md
+@.planning/ROADMAP.md
+@.planning/STATE.md
+@.planning/phases/04-security-hardening/04-CONTEXT.md
+@src/components/ArtifactRenderer.tsx
+</context>
+
+<tasks>
+
+<task type="auto">
+  <name>Task 1: Install DOMPurify and integrate sanitization in ArtifactRenderer</name>
+  <files>package.json, src/components/ArtifactRenderer.tsx</files>
+  <action>
+    Install 'dompurify' and '@types/dompurify' via npm.
+    In src/components/ArtifactRenderer.tsx, import DOMPurify and modify sanitizeSvg (per D-02) to call DOMPurify.sanitize(svgContent, { USE_PROFILES: { svg: true } }) (per D-01).
+    Apply DOMPurify.sanitize on the Mermaid SVG rendering output before DOM insertion (per D-03).
+    In HtmlRenderer, sanitize the final HTML document using DOMPurify (allowing standard HTML tags and inline SVGs) before injecting it into the iframe srcDoc (per D-04).
+  </action>
+  <verify>
+    npm run lint is clean.
+  </verify>
+  <done>
+    DOMPurify is installed and sanitizes all SVG and HTML rendering paths in ArtifactRenderer.tsx.
+  </done>
+</task>
+
+<task type="auto">
+  <name>Task 2: Handle empty/malformed HTML artifacts and tighten sandbox</name>
+  <files>src/components/ArtifactRenderer.tsx</files>
+  <action>
+    In src/components/ArtifactRenderer.tsx:HtmlRenderer, validate that previewContent (when not streaming) is non-empty and has structure (per D-08, D-10).
+    If empty or malformed (e.g., missing text or structural elements after streaming finishes), display a styled system error card with an AlertTriangle icon and a button to switch to Code view (per D-09).
+    Tighten the iframe sandbox attribute in HtmlRenderer to "allow-scripts" only (removing allow-forms, allow-popups, allow-modals) (per D-11).
+  </action>
+  <verify>
+    npm run lint passes.
+  </verify>
+  <done>
+    Malformed/empty artifacts render a styled placeholder and sandbox attributes are restricted to allow-scripts.
+  </done>
+</task>
+
+<task type="auto">
+  <name>Task 3: Create unit tests for artifact sanitization and empty fallbacks</name>
+  <files>src/components/ArtifactRenderer.test.tsx</files>
+  <action>
+    Create a new test file src/components/ArtifactRenderer.test.tsx.
+    Write tests verifying DOMPurify successfully strips script, foreignObject, iframe, and event handler attributes from SVGs (SEC-01 / BUG-07).
+    Write tests asserting that empty or malformed HTML strings render the styled error placeholder and do not inject empty content into the iframe srcdoc (BUG-03).
+  </action>
+  <verify>
+    npx vitest run src/components/ArtifactRenderer.test.tsx
+  </verify>
+  <done>
+    Tests pass and cover DOMPurify bypass patterns and empty HTML placeholders.
+  </done>
+</task>
+
+</tasks>
+
+<threat_model>
+## Trust Boundaries
+
+| Boundary | Description |
+|----------|-------------|
+| LLM Stream → Main DOM | Untrusted LLM output rendered as raw SVG or Mermaid inside host window context. |
+| LLM Stream → Iframe | Untrusted HTML rendered inside sandboxed iframe context. |
+
+## STRIDE Threat Register
+
+| Threat ID | Category | Component | Disposition | Mitigation Plan |
+|-----------|----------|-----------|-------------|-----------------|
+| T-04-01 | Tampering | SvgRenderer / MermaidRenderer | mitigate | Sanitize all DOM-bound SVG strings with DOMPurify svg profile. |
+| T-04-02 | Elevation of Privilege | HtmlRenderer Iframe | mitigate | Restrict sandbox to allow-scripts; sanitize document with DOMPurify HTML profile. |
+| T-04-SC | Tampering | npm installs | mitigate | slopcheck verified package legitimacy (dompurify and @types/dompurify are OK). |
+</threat_model>
+
+<verification>
+npx vitest run src/components/ArtifactRenderer.test.tsx
+</verification>
+
+<success_criteria>
+All DOM-bound SVGs and Mermaid outputs are sanitized. Empty HTML artifacts show a fallback placeholder. Sandboxing is tightened. Vitest suite passes.
+</success_criteria>
+
+<output>
+Create .planning/phases/04-security-hardening/04-01-SUMMARY.md when done
+</output>
