@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.3
-milestone_name: Stabilization
-status: complete
-stopped_at: Phase 5 complete — milestone done
-last_updated: "2026-06-09T07:01:00.000Z"
-last_activity: 2026-06-09
+milestone_name: milestone
+status: Awaiting next milestone
+stopped_at: Phase 5 planned
+last_updated: "2026-06-09T10:54:03.742Z"
+last_activity: 2026-06-09 — Milestone v2.3 completed and archived
 progress:
   total_phases: 5
   completed_phases: 5
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-08)
 
 ## Current Position
 
-Phase: 5 of 5 (CSP Enforce + E2E + Final Verification)
-Plan: Not started
-Status: planned
-Last activity: 2026-06-09
-
-Progress: [                    ] 0%
+Phase: Milestone v2.3 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-09 — Milestone v2.3 completed and archived
 
 ## Performance Metrics
 
@@ -86,3 +84,7 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-06-09T06:34:30.329Z
 Stopped at: Phase 5 planned
 Resume file: .planning/phases/05-csp-enforce-e2e-final-verification/05-01-PLAN.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
