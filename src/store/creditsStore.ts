@@ -5,6 +5,7 @@ import type { PlanId } from '../config/subscriptionConfig';
 import { hasActiveSessionSync } from '../lib/supabase';
 import * as db from '../services/database';
 import type { ActiveLedger } from '../services/database';
+import * as Sentry from '@sentry/react';
 
 interface CreditsStore {
     remainingCredits: number;
@@ -57,37 +58,7 @@ export const useCreditsStore = create<CreditsStore>()(
                     if (!hasActiveSessionSync()) return;
 
                     set({ isLoading: true });
-                    const result = await db.fetchCredits();
-                    if (result) {
-                        set({
-                            remainingCredits: result.remaining,
-                            totalUsed: result.used,
-                            billingCycleUsage: result.billingCycleUsage,
-                            subscriptionStatus: result.subscriptionStatus,
-                            subscriptionPlan: result.subscriptionPlan,
-                            customerPortalUrl: result.customerPortalUrl,
-                            renewsAt: result.renewsAt,
-                            ledgers: result.ledgers,
-                            isSynced: true,
-                        });
-                    }
-                    set({ isLoading: false });
-                },
-
-                syncWithRetry: async () => {
-                    if (!hasActiveSessionSync()) return;
-
-                    // Graduated delays cover webhook processing latency.
-                    // Payment webhooks can take several seconds to arrive and be processed.
-                    // We sync immediately, then retry at 2.5s, 5s, and 10s.
-                    const delays = [0, 2500, 5000, 10000];
-
-                    for (let i = 0; i < delays.length; i++) {
-                        if (delays[i] > 0) {
-                            await new Promise(r => setTimeout(r, delays[i]));
-                        }
-
-                        set({ isLoading: true });
+                    try {
                         const result = await db.fetchCredits();
                         if (result) {
                             set({
@@ -101,16 +72,62 @@ export const useCreditsStore = create<CreditsStore>()(
                                 ledgers: result.ledgers,
                                 isSynced: true,
                             });
-
-                            // Once we see an active paid subscription AND the credits > free tier amount, credits are confirmed.
-                            // Stop polling early — no need to waste network requests.
-                            if (result.subscriptionStatus === 'active' &&
-                                (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro') &&
-                                result.remaining > 100) {
-                                set({ isLoading: false });
-                                return;
-                            }
                         }
+                    } catch (error) {
+                        Sentry.captureException(error, {
+                            tags: { area: 'billing', action: 'syncFromServer' }
+                        });
+                        console.error('Error syncing credits from server:', error);
+                    } finally {
+                        set({ isLoading: false });
+                    }
+                },
+
+                syncWithRetry: async () => {
+                    if (!hasActiveSessionSync()) return;
+
+                    // Graduated delays cover webhook processing latency.
+                    // Payment webhooks can take several seconds to arrive and be processed.
+                    // We sync immediately, then retry at 2.5s, 5s, and 10s.
+                    const delays = [0, 2500, 5000, 10000];
+
+                    try {
+                        for (let i = 0; i < delays.length; i++) {
+                            if (delays[i] > 0) {
+                                await new Promise(r => setTimeout(r, delays[i]));
+                            }
+
+                            set({ isLoading: true });
+                            const result = await db.fetchCredits();
+                            if (result) {
+                                set({
+                                    remainingCredits: result.remaining,
+                                    totalUsed: result.used,
+                                    billingCycleUsage: result.billingCycleUsage,
+                                    subscriptionStatus: result.subscriptionStatus,
+                                    subscriptionPlan: result.subscriptionPlan,
+                                    customerPortalUrl: result.customerPortalUrl,
+                                    renewsAt: result.renewsAt,
+                                    ledgers: result.ledgers,
+                                    isSynced: true,
+                                });
+
+                                // Once we see an active paid subscription AND the credits > free tier amount, credits are confirmed.
+                                // Stop polling early — no need to waste network requests.
+                                if (result.subscriptionStatus === 'active' &&
+                                    (result.subscriptionPlan === 'regular' || result.subscriptionPlan === 'pro') &&
+                                    result.remaining > 100) {
+                                    set({ isLoading: false });
+                                    return;
+                                }
+                            }
+                            set({ isLoading: false });
+                        }
+                    } catch (error) {
+                        Sentry.captureException(error, {
+                            tags: { area: 'billing', action: 'syncWithRetry' }
+                        });
+                        console.error('Error in credit sync with retry:', error);
                         set({ isLoading: false });
                     }
                 },

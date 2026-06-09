@@ -19,6 +19,7 @@ import { retrieveRelevantChunks } from './rag';
 import { buildApiMessages, pruneMessagesForContext } from './messages';
 import { processStream, type StreamCallbacks } from './streaming';
 import { logger } from '../../lib/logger';
+import * as Sentry from '@sentry/react';
 
 const SYSTEM_PROMPT_RESERVE = 5000;
 const NETWORK_RETRY_DELAYS_MS = [500, 1000, 2000];
@@ -207,6 +208,10 @@ export async function streamChat(
       accounting,
     );
   } catch (err: unknown) {
+    Sentry.captureException(err, {
+      tags: { area: 'streaming', action: 'streamChat' },
+      extra: { correlationId: clientCorrelationId }
+    });
     logger.error('[streamChat] top-level catch:', err, { correlationId: clientCorrelationId });
     const msg = err instanceof Error ? err.message : String(err);
     callbacks.onError(msg);
@@ -362,6 +367,12 @@ async function streamViaEdgeFunctionWrapper(
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
+  if (lastErr && !(lastErr instanceof Error && lastErr.name === 'AbortError')) {
+    Sentry.captureException(lastErr, {
+      tags: { area: 'streaming', action: 'streamViaEdgeFunctionWrapper' },
+      extra: { correlationId: accounting?.correlationId }
+    });
+  }
   callbacks.onError(
     lastErr instanceof Error ? lastErr.message : 'Streaming failed after retries',
   );
@@ -515,6 +526,12 @@ async function streamViaEdgeFunction(
         : `API Error ${response.status}`;
     }
     logger.error('[streamViaEdgeFunction] HTTP error:', response.status, errorMsg, { correlationId: accounting?.correlationId });
+    if (response.status !== 401) {
+      Sentry.captureException(new Error(`Edge function HTTP ${response.status}: ${errorMsg}`), {
+        tags: { area: 'streaming', action: 'streamViaEdgeFunction', status: String(response.status) },
+        extra: { correlationId: accounting?.correlationId }
+      });
+    }
     callbacks.onError(errorMsg); 
     return;
   }

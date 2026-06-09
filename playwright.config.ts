@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
+  // Global test timeout increased to handle slower start-up and navigation
+  timeout: 60000,
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

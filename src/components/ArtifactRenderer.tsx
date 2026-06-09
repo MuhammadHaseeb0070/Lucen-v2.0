@@ -147,6 +147,17 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   const runtimeError = useArtifactStore((s) => s.runtimeErrors[artifactId || ''] ?? null);
   const setViewMode = useArtifactStore((s) => s.setViewMode);
 
+  const hasInteractiveElements = useMemo(() => {
+    const lower = previewContent.toLowerCase();
+    return (
+      lower.includes('<form') ||
+      lower.includes('<input') ||
+      lower.includes('<textarea') ||
+      lower.includes('window.open') ||
+      lower.includes('alert(')
+    );
+  }, [previewContent]);
+
   const isMalformed = useMemo(() => {
     if (isStreaming) return false;
     const trimmed = previewContent.trim();
@@ -252,13 +263,21 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   }
 
   return (
-    <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`} style={{ height: '100%', position: 'relative' }}>
+    <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`} style={{ height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      {hasInteractiveElements && (
+        <div className="sandbox-warning-banner">
+          <AlertTriangle size={14} style={{ color: '#b45309', flexShrink: 0, marginTop: '2px' }} />
+          <div className="sandbox-warning-content">
+            Interactive elements (forms, inputs, alerts, or popups) detected. They may not function fully under the secure sandbox.
+          </div>
+        </div>
+      )}
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
         sandbox="allow-scripts"
         className="artifact-iframe"
-        style={isFramed ? { width: vpWidth!, maxWidth: '100%', height: '100%' } : { width: '100%', height: '100%', border: 'none' }}
+        style={isFramed ? { width: vpWidth!, maxWidth: '100%', flex: 1, minHeight: 0 } : { width: '100%', flex: 1, minHeight: 0, border: 'none' }}
         title="HTML Preview"
       />
       {runtimeError && (
@@ -283,6 +302,21 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
         </div>
       )}
       <style>{`
+        .sandbox-warning-banner {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          background: #fef3c7;
+          border-bottom: 1px solid #fde68a;
+          color: #92400e;
+          padding: 8px 12px;
+          font-size: 0.72rem;
+          line-height: 1.4;
+          z-index: 10;
+        }
+        .sandbox-warning-content {
+          font-weight: 500;
+        }
         .iframe-runtime-error-badge {
           position: absolute;
           bottom: 16px;

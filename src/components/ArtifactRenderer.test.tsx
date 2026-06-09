@@ -106,4 +106,26 @@ describe('ArtifactRenderer', () => {
     expect(iframe).not.toBeNull();
     expect(iframe!.getAttribute('sandbox')).toBe('allow-scripts');
   });
+
+  it('renders a warning banner when blocked interactive elements are present in preview content', async () => {
+    const interactiveHtml = '<div><form><input type="text"/></form></div>';
+    
+    let root: any;
+    await act(async () => {
+      root = createRoot(container!);
+      root.render(
+        <ArtifactRenderer
+          content={interactiveHtml}
+          type="html"
+          viewMode="preview"
+          isStreaming={false}
+          artifactId="test-html-interactive"
+        />
+      );
+    });
+
+    const warningBanner = container!.querySelector('.sandbox-warning-banner');
+    expect(warningBanner).not.toBeNull();
+    expect(warningBanner!.textContent).toContain('Interactive elements');
+  });
 });

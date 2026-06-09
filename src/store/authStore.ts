@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { supabase, isSupabaseEnabled } from '../lib/supabase';
 import type { AppUser } from '../services/auth';
 import { getUser } from '../services/auth';
+import * as Sentry from '@sentry/react';
 
 let initPromise: Promise<void> | null = null;
 let authSubscription: { unsubscribe: () => void } | null = null;
@@ -59,44 +60,50 @@ export const useAuthStore = create<AuthStore>()(
         }
 
         initPromise = (async () => {
-            if (!isSupabaseEnabled()) {
-                // No Supabase = local-only mode, use stub user
+            try {
+                if (!isSupabaseEnabled()) {
+                    // No Supabase = local-only mode, use stub user
+                    const user = await getUser();
+                    set({ user, isLoading: false, isInitialized: true });
+                    return;
+                }
+
+                // Check for existing session
                 const user = await getUser();
                 set({ user, isLoading: false, isInitialized: true });
-                return;
-            }
 
-            // Check for existing session
-            const user = await getUser();
-            set({ user, isLoading: false, isInitialized: true });
+                // Listen for auth changes (login/logout/token refresh/recovery)
+                if (supabase) {
+                    // Unsubscribe previous listener if present (e.g. after HMR)
+                    if (authSubscription) {
+                        authSubscription.unsubscribe();
+                    }
+                    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+                        const prevUser = get().user;
 
-            // Listen for auth changes (login/logout/token refresh/recovery)
-            if (supabase) {
-                // Unsubscribe previous listener if present (e.g. after HMR)
-                if (authSubscription) {
-                    authSubscription.unsubscribe();
-                }
-                const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-                    const prevUser = get().user;
-
-                    if (event === 'SIGNED_OUT') {
-                        if (prevUser) {
-                            set({ sessionExpired: true });
+                        if (event === 'SIGNED_OUT') {
+                            if (prevUser) {
+                                set({ sessionExpired: true });
+                            }
                         }
-                    }
 
-                    if (session?.user) {
-                        const appUser: AppUser = {
-                            id: session.user.id,
-                            email: session.user.email || '',
-                            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-                        };
-                        set({ user: appUser });
-                    } else {
-                        set({ user: null });
-                    }
-                });
-                authSubscription = subscription;
+                        if (session?.user) {
+                            const appUser: AppUser = {
+                                id: session.user.id,
+                                email: session.user.email || '',
+                                name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+                            };
+                            set({ user: appUser });
+                        } else {
+                            set({ user: null });
+                        }
+                    });
+                    authSubscription = subscription;
+                }
+            } catch (err) {
+                Sentry.captureException(err, { tags: { area: 'auth', action: 'initPromise' } });
+                console.error('Auth initialization error:', err);
+                throw err;
             }
         })();
 
@@ -104,6 +111,7 @@ export const useAuthStore = create<AuthStore>()(
             await initPromise;
         } catch (err) {
             initPromise = null;
+            Sentry.captureException(err, { tags: { area: 'auth', action: 'initialize' } });
             throw err;
         }
     },
