@@ -63,7 +63,7 @@ export async function handleAuthAndRateLimit(
   }
 
   // Rate limit: 30 requests per minute per user
-  const rateLimitResult = checkRateLimit(`chat:${userId}`, 30, 60_000);
+  const rateLimitResult = await checkRateLimit(`chat:${userId}`, 30, 60_000);
   if (!rateLimitResult.allowed) {
     log.warn('Rate limit exceeded', { userId, retryAfterMs: rateLimitResult.retryAfterMs });
     const res = await fail('client_error', 429, 'Too many requests. Please wait a moment and try again.');
