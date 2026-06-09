@@ -744,6 +744,9 @@ const ChatArea: React.FC = () => {
             content: '', reasoning: '', isStreaming: true, isReasoningStreaming: model.supportsReasoning,
             generationStatus: 'streaming',
             generationStatusDetail: undefined,
+            toolSteps: [],
+            webSearchUsed: false,
+            webSearchUrls: [],
         });
         doStreamResponse(activeConversationId, assistantMsgId);
     };

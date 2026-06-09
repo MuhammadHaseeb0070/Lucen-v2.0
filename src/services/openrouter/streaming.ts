@@ -103,6 +103,10 @@ export async function processStream(
   const FINALIZE_CONTENT_CAP = 120_000;
   let accContent = '';
   let accReasoning = '';
+  let accContentRaw = '';
+  let accReasoningRaw = '';
+  let sentContentLength = 0;
+  let sentReasoningLength = 0;
 
   const decoder = new TextDecoder();
   let buffer = '';
@@ -304,9 +308,12 @@ export async function processStream(
             const shouldRouteToChunk = treatReasoningAsContent;
 
             if (shouldRouteToChunk) {
-              const chunk = sanitizeAssistantOutput(reasoningChunk);
-              if (chunk && typeof chunk === 'string') {
-                wrappedCallbacks.onChunk(chunk);
+              accContentRaw += reasoningChunk;
+              const newSanitized = sanitizeAssistantOutput(accContentRaw);
+              const deltaToSend = newSanitized.slice(sentContentLength);
+              if (deltaToSend) {
+                wrappedCallbacks.onChunk(deltaToSend);
+                sentContentLength += deltaToSend.length;
               }
               contentChunkCount++;
               lastContentTail = reasoningChunk.slice(-220);
@@ -314,9 +321,12 @@ export async function processStream(
                 accContent += reasoningChunk;
               }
             } else if (reasoningChunk.includes('<lucen_artifact')) {
-              const chunk = sanitizeAssistantOutput(reasoningChunk);
-              if (chunk && typeof chunk === 'string') {
-                wrappedCallbacks.onChunk(chunk);
+              accContentRaw += reasoningChunk;
+              const newSanitized = sanitizeAssistantOutput(accContentRaw);
+              const deltaToSend = newSanitized.slice(sentContentLength);
+              if (deltaToSend) {
+                wrappedCallbacks.onChunk(deltaToSend);
+                sentContentLength += deltaToSend.length;
               }
               contentChunkCount++;
               lastContentTail = reasoningChunk.slice(-220);
@@ -324,9 +334,12 @@ export async function processStream(
                 accContent += reasoningChunk;
               }
             } else {
-              const chunk = sanitizeAssistantOutput(reasoningChunk);
-              if (chunk && typeof chunk === 'string') {
-                wrappedCallbacks.onReasoning(chunk);
+              accReasoningRaw += reasoningChunk;
+              const newSanitized = sanitizeAssistantOutput(accReasoningRaw);
+              const deltaToSend = newSanitized.slice(sentReasoningLength);
+              if (deltaToSend) {
+                wrappedCallbacks.onReasoning(deltaToSend);
+                sentReasoningLength += deltaToSend.length;
               }
             }
             reasoningChunkCount++;
@@ -340,17 +353,21 @@ export async function processStream(
           }
 
           if (delta.content) {
-            const chunk = sanitizeAssistantOutput(String(delta.content));
-            if (chunk && typeof chunk === 'string') {
-              wrappedCallbacks.onChunk(chunk);
+            const contentStr = String(delta.content);
+            accContentRaw += contentStr;
+            const newSanitized = sanitizeAssistantOutput(accContentRaw);
+            const deltaToSend = newSanitized.slice(sentContentLength);
+            if (deltaToSend) {
+              wrappedCallbacks.onChunk(deltaToSend);
+              sentContentLength += deltaToSend.length;
             }
             contentChunkCount++;
-            lastContentTail = String(delta.content).slice(-220);
+            lastContentTail = contentStr.slice(-220);
             if (accContent.length < FINALIZE_CONTENT_CAP) {
-              accContent += String(delta.content);
+              accContent += contentStr;
             }
-            if (OPENROUTER_RAW_DEBUG && contentSamples.length < 6 && String(delta.content).trim()) {
-              contentSamples.push(String(delta.content).slice(0, 400));
+            if (OPENROUTER_RAW_DEBUG && contentSamples.length < 6 && contentStr.trim()) {
+              contentSamples.push(contentStr.slice(0, 400));
             }
           }
         } catch {
@@ -388,21 +405,36 @@ export async function processStream(
             else if (choice.finish_reason === 'stop' || choice.finish_reason === 'end_turn') sawNaturalFinish = true;
             const delta = choice.delta;
             if (delta?.content) {
-              const chunk = sanitizeAssistantOutput(String(delta.content));
-              if (chunk && typeof chunk === 'string') wrappedCallbacks.onChunk(chunk);
+              const contentStr = String(delta.content);
+              accContentRaw += contentStr;
+              const newSanitized = sanitizeAssistantOutput(accContentRaw);
+              const deltaToSend = newSanitized.slice(sentContentLength);
+              if (deltaToSend) {
+                wrappedCallbacks.onChunk(deltaToSend);
+                sentContentLength += deltaToSend.length;
+              }
               contentChunkCount++;
-              if (accContent.length < FINALIZE_CONTENT_CAP) accContent += String(delta.content);
+              if (accContent.length < FINALIZE_CONTENT_CAP) accContent += contentStr;
             }
             if (delta?.reasoning || delta?.reasoning_content) {
               const rawRc = String(delta.reasoning || delta.reasoning_content || '');
-              const rc = sanitizeAssistantOutput(rawRc);
-              if (rc && typeof rc === 'string') {
-                if (treatReasoningAsContent || rawRc.includes('<lucen_artifact')) {
-                  wrappedCallbacks.onChunk(rc);
-                  contentChunkCount++;
-                  if (accContent.length < FINALIZE_CONTENT_CAP) accContent += rawRc;
-                } else {
-                  wrappedCallbacks.onReasoning(rc);
+              if (treatReasoningAsContent || rawRc.includes('<lucen_artifact')) {
+                accContentRaw += rawRc;
+                const newSanitized = sanitizeAssistantOutput(accContentRaw);
+                const deltaToSend = newSanitized.slice(sentContentLength);
+                if (deltaToSend) {
+                  wrappedCallbacks.onChunk(deltaToSend);
+                  sentContentLength += deltaToSend.length;
+                }
+                contentChunkCount++;
+                if (accContent.length < FINALIZE_CONTENT_CAP) accContent += rawRc;
+              } else {
+                accReasoningRaw += rawRc;
+                const newSanitized = sanitizeAssistantOutput(accReasoningRaw);
+                const deltaToSend = newSanitized.slice(sentReasoningLength);
+                if (deltaToSend) {
+                  wrappedCallbacks.onReasoning(deltaToSend);
+                  sentReasoningLength += deltaToSend.length;
                 }
               }
               reasoningChunkCount++;
