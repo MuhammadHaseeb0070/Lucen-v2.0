@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, Component } from 'react';
 import { highlightCode } from '../workers/highlighterWorkerClient';
-import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X } from 'lucide-react';
-import type { ArtifactType } from '../types';
+import { AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download, X, XCircle, Terminal, FileText, CheckCircle2 } from 'lucide-react';
+import type { ArtifactType, Artifact } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
+import { useChatStore } from '../store/chatStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import DOMPurify from 'dompurify';
+import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage } from '../workers/pyodideWorkerClient';
 
 interface RendererProps {
   content: string;
@@ -732,6 +734,352 @@ const FileRenderer: React.FC<RendererProps> = ({ content, title, isStreaming }) 
 };
 
 
+function parseExcelError(raw: string): { headline: string; detail: string; isTimeout: boolean; isPackage: boolean; isFile: boolean } {
+  const isTimeout = /timed out/i.test(raw);
+  const isPackage = /ModuleNotFoundError|No module named|ImportError/i.test(raw);
+  const isFile = /FileNotFoundError|No such file/i.test(raw);
+  const isSyntax = /SyntaxError/i.test(raw);
+  const isMemory = /MemoryError|out of memory/i.test(raw);
+
+  let headline = 'Script error';
+  if (isTimeout) headline = 'Script timed out';
+  else if (isPackage) headline = 'Missing library';
+  else if (isFile) headline = 'Input file not found';
+  else if (isSyntax) headline = 'Syntax error in generated code';
+  else if (isMemory) headline = 'Not enough memory';
+
+  // Extract just the last meaningful line for the detail
+  const lines = raw.trim().split('\n').filter(l => l.trim());
+  const detail = lines[lines.length - 1] || raw.slice(0, 120);
+
+  return { headline, detail, isTimeout, isPackage, isFile };
+}
+
+const excelCache = new Map<string, ExcelResult>();
+
+export function clearExcelCache(artifactId: string) {
+  for (const key of Array.from(excelCache.keys())) {
+    if (key.startsWith(artifactId + '_')) excelCache.delete(key);
+  }
+  excelCache.delete(artifactId);
+}
+
+interface ExcelRendererProps {
+  artifact: Artifact;
+  onRetry?: () => void;
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  init: 'Setting up Python environment',
+  packages: 'Loading Excel libraries (openpyxl, pandas, matplotlib...)',
+  input: 'Loading your input file',
+  running: 'Running script',
+  ready: 'Ready',
+};
+
+const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
+  const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
+  const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
+
+  const inputFile = (artifact as any).meta?.inputFile || (artifact as any).filename;
+  const conversations = useChatStore((s) => s.conversations);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const messages = useMemo(() => {
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    return conv?.messages || [];
+  }, [conversations, activeConversationId]);
+
+  const matchedAttachment = useMemo(() => {
+    if (!inputFile) return null;
+    const allAttachments = messages.flatMap((m) => m.attachments || []);
+    return allAttachments.find((a) => a.name.toLowerCase() === inputFile.toLowerCase()) || null;
+  }, [messages, inputFile]);
+
+  const cacheKey = `${artifact.id}_${artifact.content}`;
+  const [result, setResult] = useState<ExcelResult | null>(() => excelCache.get(cacheKey) || null);
+  const [progress, setProgress] = useState<ExcelProgress | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [showRawError, setShowRawError] = useState(false);
+  const [fileNotFound, setFileNotFound] = useState(false);
+
+  const ranRef = useRef<string | null>(excelCache.has(cacheKey) ? cacheKey : null);
+  const isRunningRef = useRef(false);
+
+  useEffect(() => {
+    if (activeArtifactId !== artifact.id) return;
+    if (ranRef.current === cacheKey || isRunningRef.current) return;
+
+    let isMounted = true;
+    const isActive = () => isMounted && useArtifactStore.getState().activeArtifact?.id === artifact.id;
+
+    setFileNotFound(false);
+    setShowRawError(false);
+
+    const run = async () => {
+      let inputFiles: Array<{ name: string; data: string }> | undefined;
+
+      if (inputFile) {
+        if (!matchedAttachment) {
+          if (isActive()) setFileNotFound(true);
+          return;
+        }
+        let fileData = matchedAttachment.rawBase64;
+        if (!fileData && matchedAttachment.storagePath) {
+          const { supabase } = await import('../lib/supabase');
+          if (isActive()) setProgress({ stage: 'input', message: 'Downloading your file...' });
+          try {
+            const { data, error } = await supabase!.storage
+              .from('attachments').download(matchedAttachment.storagePath);
+            if (error || !data) throw error || new Error('No data');
+            const base64 = await new Promise<string>((res, rej) => {
+              const reader = new FileReader();
+              reader.onload = () => res((reader.result as string).split(',')[1]);
+              reader.onerror = () => rej(new Error('Read failed'));
+              reader.readAsDataURL(data);
+            });
+            matchedAttachment.rawBase64 = base64;
+            fileData = base64;
+          } catch (err: any) {
+            if (isActive()) {
+              setResult({ stdout: '', stderr: '', files: [], 
+                error: `Could not download your file: ${err.message}` });
+              setIsRunning(false);
+              isRunningRef.current = false;
+            }
+            return;
+          }
+        }
+        if (!fileData) {
+          if (isActive()) setFileNotFound(true);
+          return;
+        }
+        inputFiles = [{ name: matchedAttachment.name, data: fileData }];
+      }
+
+      if (!isActive()) return;
+      setIsRunning(true);
+      isRunningRef.current = true;
+      setResult(null);
+      setProgress({ stage: 'init', message: 'Setting up Python environment...' });
+
+      try {
+        const res = await runExcel(
+          artifact.id,
+          artifact.content,
+          inputFiles,
+          (prog) => { if (isActive()) setProgress(prog); }
+        );
+
+        if (!isActive()) return;
+        excelCache.set(cacheKey, res);
+        setResult(res);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = cacheKey;
+
+        if (res.error) {
+          setRuntimeError(artifact.id, {
+            message: res.error,
+            origin: 'iframe' as any, // Map to iframe to trigger auto-fix banner if needed
+            capturedAt: Date.now(),
+          });
+        } else {
+          const cur = useArtifactStore.getState().runtimeErrors[artifact.id];
+          if (cur) setRuntimeError(artifact.id, null);
+        }
+      } catch (err: any) {
+        if (!isActive()) return;
+        const errRes: ExcelResult = { 
+          stdout: '', stderr: '', files: [], 
+          error: err.message || String(err) 
+        };
+        excelCache.set(cacheKey, errRes);
+        setResult(errRes);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        ranRef.current = cacheKey;
+        setRuntimeError(artifact.id, {
+          message: errRes.error!,
+          origin: 'iframe' as any,
+          capturedAt: Date.now(),
+        });
+      }
+    };
+
+    run();
+    return () => {
+      isMounted = false;
+      isRunningRef.current = false;
+      cancelExcelRun(artifact.id);
+    };
+  }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey]);
+
+  // ── File not found state ──
+  if (fileNotFound) {
+    return (
+      <div className="excel-output excel-output--notice" style={{ padding: '20px' }}>
+        <div className="excel-notice excel-notice--warn" style={{ display: 'flex', gap: '8px', color: '#b45309' }}>
+          <AlertTriangle size={16} />
+          <div>
+            <strong>Input file not found</strong>
+            <p>This script needs <code>{inputFile}</code> but it wasn't found in the conversation. Please upload the file and try again.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Loading state ──
+  if (isRunning) {
+    const stage = progress?.stage || 'init';
+    const stages: ExcelRunStage[] = ['init', 'packages', 'input', 'running'];
+    const currentIdx = stages.indexOf(stage as ExcelRunStage);
+    return (
+      <div className="excel-output excel-output--loading" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div className="excel-loading-icon" style={{ marginBottom: '16px' }}>
+          <Terminal size={28} style={{ color: '#22c55e' }} />
+        </div>
+        <p className="excel-loading-label" style={{ fontWeight: 600, marginBottom: '16px' }}>{progress?.message || 'Starting...'}</p>
+        <div className="excel-loading-stages" style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '300px', marginBottom: '16px' }}>
+          {stages.map((s, i) => (
+            <div key={s} className={`excel-stage ${i < currentIdx ? 'excel-stage--done' : i === currentIdx ? 'excel-stage--active' : 'excel-stage--waiting'}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: i > currentIdx ? 0.5 : 1 }}>
+              <div className="excel-stage-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', background: i < currentIdx ? '#22c55e' : i === currentIdx ? '#3b82f6' : '#9ca3af' }} />
+              <span style={{ fontSize: '0.8rem' }}>{STAGE_LABELS[s]}</span>
+            </div>
+          ))}
+        </div>
+        <p className="excel-loading-hint" style={{ fontSize: '0.7rem', color: '#6b7280' }}>First run loads the Python environment (~5-10s). Subsequent runs are instant.</p>
+      </div>
+    );
+  }
+
+  if (!result) return null;
+
+  // ── Error state ──
+  if (result.error) {
+    const { headline, detail, isTimeout, isPackage, isFile } = parseExcelError(result.error);
+    return (
+      <div className="excel-output excel-output--error" style={{ padding: '20px' }}>
+        <div className="excel-error-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <XCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <strong>{headline}</strong>
+        </div>
+        <p className="excel-error-detail" style={{ fontFamily: 'monospace', fontSize: '0.8rem', background: '#f3f4f6', padding: '8px', borderRadius: '4px', marginBottom: '12px' }}>{detail}</p>
+        {isPackage && (
+          <p className="excel-error-hint" style={{ fontSize: '0.75rem', color: '#4b5563', marginBottom: '12px' }}>A required library wasn't available. Click Regenerate below to try again with a fix.</p>
+        )}
+        {isFile && (
+          <p className="excel-error-hint" style={{ fontSize: '0.75rem', color: '#4b5563', marginBottom: '12px' }}>The script expected <code>{inputFile || 'an input file'}</code>. Make sure it's uploaded in this conversation.</p>
+        )}
+        {isTimeout && (
+          <p className="excel-error-hint" style={{ fontSize: '0.75rem', color: '#4b5563', marginBottom: '12px' }}>The script ran too long. Try asking for a simpler version or with a smaller dataset.</p>
+        )}
+        <div className="excel-error-actions" style={{ display: 'flex', gap: '12px' }}>
+          {onRetry && (
+            <button className="excel-btn excel-btn--primary" onClick={onRetry} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
+              ↺ Regenerate
+            </button>
+          )}
+          <button className="excel-btn excel-btn--ghost" onClick={() => setShowRawError(!showRawError)} style={{ background: 'transparent', border: '1px solid #d1d5db', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
+            {showRawError ? 'Hide' : 'Show'} technical details
+          </button>
+        </div>
+        {showRawError && (
+          <pre className="excel-error-raw" style={{ marginTop: '12px', padding: '8px', background: '#1f2937', color: '#f9fafb', fontSize: '0.75rem', overflow: 'auto', maxHeight: '200px' }}>{result.error}</pre>
+        )}
+      </div>
+    );
+  }
+
+  const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
+  const excelFiles = uniqueFiles.filter(f => f.mimeType.includes('spreadsheet') || f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
+  const imageFiles = uniqueFiles.filter(f => f.mimeType.startsWith('image/'));
+  const otherFiles = uniqueFiles.filter(f => !excelFiles.includes(f) && !imageFiles.includes(f));
+
+  const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
+    const binary = atob(file.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="excel-output excel-output--success" style={{ padding: '20px' }}>
+      {result.stdout && (
+        <div className="excel-stdout" style={{ marginBottom: '16px' }}>
+          <div className="excel-stdout-bar" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#4b5563', borderBottom: '1px solid #e5e7eb', paddingBottom: '4px', marginBottom: '8px' }}>
+            <Terminal size={12} /><span>Output</span>
+          </div>
+          <pre style={{ fontFamily: 'monospace', fontSize: '0.8rem', background: '#f9fafb', padding: '8px', borderRadius: '4px', overflow: 'auto', maxHeight: '150px' }}>{result.stdout}</pre>
+        </div>
+      )}
+      {result.stderr && (
+        <details className="excel-warnings" style={{ marginBottom: '16px', fontSize: '0.75rem', color: '#d97706' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>⚠ Warnings ({result.stderr.trim().split('\n').length})</summary>
+          <pre style={{ marginTop: '4px', fontFamily: 'monospace', background: '#fffbeb', padding: '8px', borderRadius: '4px', overflow: 'auto', maxHeight: '100px' }}>{result.stderr}</pre>
+        </details>
+      )}
+      {excelFiles.length > 0 && (
+        <div className="excel-files-section" style={{ marginBottom: '16px' }}>
+          <div className="excel-files-heading" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Generated Files</div>
+          {excelFiles.map((file) => (
+            <div key={file.name} className="excel-file-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '10px 14px', borderRadius: '6px', marginBottom: '8px' }}>
+              <div className="excel-file-card-icon" style={{ color: '#16a34a' }}>
+                <FileText size={20} />
+              </div>
+              <div className="excel-file-card-info" style={{ flex: 1 }}>
+                <div className="excel-file-card-name" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#166534' }}>{file.name}</div>
+                <div className="excel-file-card-type" style={{ fontSize: '0.7rem', color: '#15803d' }}>
+                  {file.name.endsWith('.xlsx') ? 'Excel Spreadsheet' : 
+                   file.name.endsWith('.csv') ? 'CSV File' : 'File'}
+                </div>
+              </div>
+              <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)} style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Download size={13} /> Download
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {imageFiles.length > 0 && (
+        <div className="excel-images-section" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+          {imageFiles.map((file) => (
+            <div key={file.name} className="excel-image-wrap" style={{ position: 'relative', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden' }}>
+              <img src={`data:${file.mimeType};base64,${file.data}`} alt={file.name} style={{ width: '100%', height: 'auto', display: 'block' }} />
+              <button className="excel-image-download" onClick={() => handleDownload(file)} title={`Download ${file.name}`} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: 'none', borderRadius: '50%', padding: '4px', cursor: 'pointer' }}>
+                <Download size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {otherFiles.map((file) => (
+        <div key={file.name} className="excel-file-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f3f4f6', border: '1px solid #e5e7eb', padding: '10px 14px', borderRadius: '6px', marginBottom: '8px' }}>
+          <div className="excel-file-card-icon" style={{ color: '#4b5563' }}><FileText size={20} /></div>
+          <div className="excel-file-card-info" style={{ flex: 1 }}>
+            <div className="excel-file-card-name" style={{ fontSize: '0.85rem', fontWeight: 600 }}>{file.name}</div>
+          </div>
+          <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)} style={{ background: '#4b5563', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Download size={13} /> Download
+          </button>
+        </div>
+      ))}
+      {uniqueFiles.length === 0 && !result.stdout && (
+        <div className="excel-success-empty" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a' }}>
+          <CheckCircle2 size={20} />
+          <span>Ran successfully (no output files)</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 // ── Registry ──
 
 const RENDERERS: Record<string, React.FC<RendererProps>> = {
@@ -739,8 +1087,9 @@ const RENDERERS: Record<string, React.FC<RendererProps>> = {
   svg: SvgRenderer,
   mermaid: MermaidRenderer,
   file: FileRenderer,
+  excel: ExcelRenderer as any,
 };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text' };
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python' };
 
 interface ArtifactRendererProps {
   content: string;
@@ -761,8 +1110,24 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     return <CodeFallback content={content} language={LANGUAGE_MAP[type] || 'text'} isStreaming={isStreaming} />;
 
 
-  const Renderer = RENDERERS[type];
   const language = LANGUAGE_MAP[type] || 'text';
+  if (type === 'excel') {
+    const activeArtifact = useArtifactStore((s) => s.activeArtifact);
+    const activeConversationId = useChatStore((s) => s.activeConversationId);
+    const onRetry = () => {
+      const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || '';
+      if (activeConversationId) {
+        useChatStore.getState().setDraft(activeConversationId, `The Excel script failed with this error: ${error}. Please fix it.`);
+      }
+    };
+    return (
+      <RendererErrorBoundary content={content} language={language}>
+        <ExcelRenderer artifact={activeArtifact!} onRetry={onRetry} />
+      </RendererErrorBoundary>
+    );
+  }
+
+  const Renderer = RENDERERS[type];
   if (Renderer) {
     return (
       <RendererErrorBoundary content={content} language={language}>

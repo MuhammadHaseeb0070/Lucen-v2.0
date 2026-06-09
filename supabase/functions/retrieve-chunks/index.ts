@@ -142,8 +142,6 @@ Deno.serve(async (req: Request) => {
         const queryEmbedding = embedData.data[0].embedding;
         accounting.promptTokens = Number(embedData?.usage?.prompt_tokens) || 0;
 
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
         // Vector similarity search
         const { data: chunks, error } = await supabaseAdmin.rpc('match_document_chunks', {
             p_query_embedding: queryEmbedding,

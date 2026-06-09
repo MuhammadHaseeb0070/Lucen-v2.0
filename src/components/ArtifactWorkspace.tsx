@@ -13,6 +13,7 @@ const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> 
   svg: { label: 'SVG', icon: <Image size={14} /> },
   mermaid: { label: 'Diagram', icon: <GitBranch size={14} /> },
   file: { label: 'File', icon: <FileCode2 size={14} /> },
+  excel: { label: 'Excel', icon: <FileCode2 size={14} /> },
 };
 
 const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: string; width: string | null }[] = [
@@ -24,6 +25,7 @@ const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: str
 
 const DOWNLOAD_EXTENSION_MAP: Record<string, string> = {
   file: 'txt',
+  excel: 'xlsx',
 };
 
 function makeSafeName(title: string): string {
