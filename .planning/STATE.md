@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.4
-milestone_name: Web Search Optimization
-status: In progress
-stopped_at: Phase 6 planned
-last_updated: "2026-06-09T11:07:00.000Z"
-last_activity: 2026-06-09 — Milestone v2.4 started: Web Search Optimization
+milestone: v2.6
+milestone_name: Milestone v2.6 Planning
+status: Planning
+stopped_at: v2.5 archived, starting v2.6 planning
+last_updated: "2026-06-09T11:47:00.000Z"
+last_activity: 2026-06-09 — Milestone v2.5 archived. Started v2.6 planning.
 progress:
-  total_phases: 1
+  total_phases: 0
   completed_phases: 0
-  total_plans: 1
+  total_plans: 0
   completed_plans: 0
   percent: 0
 ---
@@ -20,15 +20,15 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-06-09)
 
-**Core value:** Secure, parallel, token-efficient, and premium web search that resolves user queries with accuracy and resilience.
-**Current focus:** Phase 6 — Web Search Optimization & Hardening
+**Core value:** Ship a secure, performant, well-tested, and premium-quality AI assistant with robust tools and billing controls.
+**Current focus:** Milestone v2.6 requirements scoping.
 
 ## Current Position
 
-Phase: Phase 6 — Web Search Optimization & Hardening
-Plan: 06-01-PLAN.md
-Status: In progress
-Last activity: 2026-06-09 — Milestone v2.4 started: Web Search Optimization
+Phase: N/A (Planning)
+Plan: N/A
+Status: Planning
+Last activity: 2026-06-09 — Milestone v2.5 archived. Started v2.6 planning.
 
 ## Performance Metrics
 
@@ -59,14 +59,15 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Python/Pyodide | BUG-09 is deferred — no Python execution infrastructure exists in codebase | Carried | 2026-06-08 |
+| Python/Pyodide | BUG-09 is deferred — no Python infrastructure exists in codebase | Carried | 2026-06-08 |
 
 ## Session Continuity
 
-Last session: 2026-06-09T11:07:00.000Z
-Stopped at: Phase 6 planned
-Resume file: .planning/phases/06-web-search-optimization/06-01-PLAN.md
+Last session: 2026-06-09T11:47:00.000Z
+Stopped at: v2.5 archived, starting v2.6 planning
+Resume file: N/A
 
 ## Operator Next Steps
 
-- Execute Phase 6 implementation plan.
+- Scoping and planning for milestone v2.6.
+

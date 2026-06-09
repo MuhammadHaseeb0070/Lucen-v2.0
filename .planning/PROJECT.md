@@ -1,12 +1,12 @@
-# Lucen v2.3 — Stabilization Milestone
+# Lucen — Project Profile & Status
 
 ## What This Is
 
-A stabilization pass on Lucen v2.3 — an AI chat SPA (React 19 + Vite + Supabase). The product is already live, the user works on the `dev` branch daily, and pushes to production via Vercel + Supabase. This milestone has resolved all concerns documented in `.planning/codebase/CONCERNS.md` and finished the production hardening.
+An AI chat SPA (React 19 + Vite + Supabase) that the user works on daily on the `dev` branch, pushing to production via Vercel + Supabase.
 
 ## Core Value
 
-Ship a secure, performant, and well-tested version of Lucen that the user can deploy with confidence.
+Ship a secure, performant, well-tested, and premium-quality AI assistant with robust tools and billing controls.
 
 ## Requirements
 
@@ -28,14 +28,16 @@ Ship a secure, performant, and well-tested version of Lucen that the user can de
 - ✓ Vitest + Playwright test infrastructure with 42 unit and 10 E2E tests — v2.3
 - ✓ JWT verification mid-stream and forged JWT alert safeguards — v2.3
 - ✓ File upload size limit validations, content-hash deduplication, and encrypted file error states — v2.3
+- ✓ Parallel Web Search: Support parallelizable tool execution for `web_search` to fetch results concurrently — v2.5
+- ✓ Dynamic Step Limits: Prevent step ceiling truncation errors by scaling `maxRounds` dynamically (up to 5 rounds for attachment + web search calls) — v2.5
+- ✓ Stronger Final Turn Prompting: Prevent LLM tool leakages in final rounds by prompting with strong negative constraints when limits are reached — v2.5
+- ✓ Defensive Tag Sanitization: Harden client-side XML tag stripping to defensively clean all possible parameters and leaked tool tags — v2.5
+- ✓ Premium Steps and Citations UI: Restyle tool step statuses and domain citations to be beautiful, glassmorphic, and dynamic — v2.5
 
 ### Active
 
-- **Parallel Web Search**: Support parallelizable tool execution for `web_search` to fetch results concurrently.
-- **Dynamic Step Limits**: Prevent step ceiling truncation errors by scaling `maxRounds` dynamically (up to 5 rounds for attachment + web search calls).
-- **Stronger Final Turn Prompting**: Prevent LLM tool leakages in final rounds by prompting with strong negative constraints when limits are reached.
-- **Defensive Tag Sanitization**: Harden client-side XML tag stripping to defensively clean all possible parameters and leaked tool tags.
-- **Premium Steps and Citations UI**: Restyle tool step statuses and domain citations to be beautiful, glassmorphic, and dynamic.
+- **v2.6 Milestone Planning**: Collect next milestone requirements and goals from the user.
+
 
 ### Out of Scope
 

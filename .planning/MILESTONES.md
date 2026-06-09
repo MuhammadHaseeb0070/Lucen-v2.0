@@ -15,4 +15,17 @@
 - Integrated Sentry logging in the edge function auth layer to capture forged JWT signature alerts with redacted metadata and Deno flushing
 - Audited all prior-phase implementations as already complete; created the only missing artifact — the Playwright E2E core.test.ts suite
 
+## v2.5 Web Search Optimization Milestone (Shipped: 2026-06-09)
+
+**Phases completed:** 1 phase, 1 plan, 6 tasks
+
+**Key accomplishments:**
+
+- Concurrency enabled for web search calls (`parallelizable: true`), improving search speed and response latency.
+- Dynamic `maxRounds` step limit scaling up to 5 rounds, preventing premature truncation when processing attachments + web search.
+- Injected strict step limit negative constraints in final generation turns to prevent leaked tool XML tags.
+- Enhanced defensive XML tag sanitization in `sanitizeMinimaxTags` to strip partial/leaked parameters.
+- Built a beautiful, glassmorphic steps progress and domain citation card UI.
+
 ---
+
