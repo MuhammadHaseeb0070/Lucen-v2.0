@@ -17,7 +17,7 @@ import {
 import { captureCall } from '../../store/debugStore';
 import { retrieveRelevantChunks } from './rag';
 import { buildApiMessages, pruneMessagesForContext } from './messages';
-import { processStream, type StreamCallbacks, type StreamFinalizeSummary } from './streaming';
+import { processStream, type StreamCallbacks } from './streaming';
 import { logger } from '../../lib/logger';
 
 const SYSTEM_PROMPT_RESERVE = 5000;

@@ -158,8 +158,10 @@ const MessageInput: React.FC<MessageInputProps> = ({
         if (!files || files.length === 0) return;
         setProcessingFiles(true);
         try {
-            const { attachments: newAttachments, errors } = await processFiles(files);
-            if (errors.length > 0) console.warn('File processing warnings:', errors);
+            const { attachments: newAttachments, errors } = await processFiles(files, attachments);
+            if (errors.length > 0) {
+                alert(errors.join('\n'));
+            }
             setAttachments((prev) => [...prev, ...newAttachments]);
         } catch (err) {
             console.error('Failed to process files:', err);
@@ -193,8 +195,10 @@ const MessageInput: React.FC<MessageInputProps> = ({
                 const ext = (file.type.split('/')[1] || 'png').toLowerCase();
                 return new File([file], `pasted-image-${Date.now()}-${index + 1}.${ext}`, { type: file.type || 'image/png' });
             });
-            const { attachments: newAttachments, errors } = await processFiles(normalizedFiles);
-            if (errors.length > 0) console.warn('Clipboard image processing warnings:', errors);
+            const { attachments: newAttachments, errors } = await processFiles(normalizedFiles, attachments);
+            if (errors.length > 0) {
+                alert(errors.join('\n'));
+            }
             setAttachments((prev) => [...prev, ...newAttachments]);
         } catch (err) {
             console.error('Failed to process pasted image(s):', err);

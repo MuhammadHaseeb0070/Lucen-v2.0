@@ -48,7 +48,7 @@ export type ChatExchangeRowProps = {
     highlightedPairId: string | null;
     lastAssistantMsgId: string | null;
     injectedContext: Message[];
-    setViewerFile: (file: Record<string, unknown>) => void;
+    setViewerFile: (file: any) => void;
     setViewerOpen: (open: boolean) => void;
     handleRetry: (assistantMsgId: string) => void;
     handleContinue: (assistantMsgId: string) => void;

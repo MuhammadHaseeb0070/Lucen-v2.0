@@ -13,6 +13,7 @@ export interface FileAttachment {
   tokenEstimate?: number;
   rawBase64?: string;
   uploadFailed?: boolean;
+  hash?: string;       // SHA-256 content hash (for deduplication)
 }
 
 export interface Message {

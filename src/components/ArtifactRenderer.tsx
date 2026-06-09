@@ -5,6 +5,7 @@ import type { ArtifactType } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
+import DOMPurify from 'dompurify';
 
 interface RendererProps {
   content: string;
@@ -26,21 +27,7 @@ const STREAMING_PREVIEW_THROTTLE_MS = 1500;
  * This is a defense-in-depth measure — SVGs in the main DOM are NOT sandboxed.
  */
 function sanitizeSvg(svg: string): string {
-  let cleaned = svg;
-  // Strip <script> tags and their contents
-  cleaned = cleaned.replace(/<script[\s\S]*?<\/script>/gi, '');
-  // Strip <foreignObject> tags (can contain arbitrary HTML+JS)
-  cleaned = cleaned.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
-  // Strip <iframe>, <object>, <embed> tags
-  cleaned = cleaned.replace(/<(iframe|object|embed)[\s\S]*?<\/\1>/gi, '');
-  cleaned = cleaned.replace(/<(iframe|object|embed)[^>]*\/?>/gi, '');
-  // Strip event handler attributes (onload, onerror, onclick, etc.)
-  cleaned = cleaned.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-  // Strip javascript: URIs in href/xlink:href/src attributes
-  cleaned = cleaned.replace(/((?:href|xlink:href|src|action)\s*=\s*)(["'])javascript:[^"']*["']/gi, '$1$2$3');
-  // Strip <use> elements with external references
-  cleaned = cleaned.replace(/<use[^>]*(?:href|xlink:href)\s*=\s*(?:"https?:[^"]*"|'https?:[^']*')[^>]*\/?>/gi, '');
-  return cleaned;
+  return DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true } });
 }
 
 // Custom hook: exposes a "previewContent" that only updates every N ms while
@@ -158,6 +145,25 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   const previewContent = useThrottledContent(content, isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
   const runtimeError = useArtifactStore((s) => s.runtimeErrors[artifactId || ''] ?? null);
+  const setViewMode = useArtifactStore((s) => s.setViewMode);
+
+  const isMalformed = useMemo(() => {
+    if (isStreaming) return false;
+    const trimmed = previewContent.trim();
+    if (!trimmed) return true;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(trimmed, 'text/html');
+      if (doc.getElementsByTagName('parsererror').length > 0) return true;
+      if (!doc.body) return true;
+      const hasText = doc.body.textContent?.trim().length > 0;
+      const hasChildren = doc.body.children.length > 0;
+      if (!hasText && !hasChildren) return true;
+      return false;
+    } catch {
+      return true;
+    }
+  }, [previewContent, isStreaming]);
 
   const srcDoc = useMemo(() => {
     const trimmed = previewContent.trim();
@@ -172,9 +178,17 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,-apple-system,sans-serif;padding:16px;color:#1a1a1a;background:#fff}</style>
 </head><body>${trimmed}</body></html>`;
     }
+    
+    // Sanitize the HTML document using DOMPurify before injecting into iframe
+    const sanitizedDoc = DOMPurify.sanitize(baseDoc, {
+      WHOLE_DOCUMENT: true,
+      ADD_TAGS: ['script', 'iframe'],
+      ADD_ATTR: ['srcdoc', 'sandbox']
+    });
+
     // Splice in the iframe error bridge so runtime errors / unhandled
     // rejections / console.errors are surfaced to the parent.
-    return injectIntoHtml(baseDoc);
+    return injectIntoHtml(sanitizedDoc);
   }, [previewContent]);
 
   // Bridge runtime errors back into artifactStore so the error banner
@@ -215,12 +229,34 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
   const vpWidth = VIEWPORT_WIDTHS[viewport];
   const isFramed = !!vpWidth;
 
+  if (isMalformed) {
+    return (
+      <div className="artifact-render-error" style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', background: 'var(--bg-surface)' }}>
+        <div className="artifact-render-error-banner" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: 'none', border: 'none', color: 'var(--text-primary)', padding: 0 }}>
+          <AlertTriangle size={32} style={{ color: 'var(--warning, #f59e0b)' }} />
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: '4px 0 0 0' }}>Empty or Malformed HTML Artifact</h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', maxWidth: '320px', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+            This artifact cannot be previewed because it does not contain a valid HTML structure or text content.
+          </p>
+          <button
+            type="button"
+            className="artifact-file-download"
+            onClick={() => setViewMode('code')}
+            style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+          >
+            Code View
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`artifact-viewport-frame ${isFramed ? 'artifact-viewport-frame--active' : ''}`} style={{ height: '100%', position: 'relative' }}>
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
+        sandbox="allow-scripts"
         className="artifact-iframe"
         style={isFramed ? { width: vpWidth!, maxWidth: '100%', height: '100%' } : { width: '100%', height: '100%', border: 'none' }}
         title="HTML Preview"
@@ -592,7 +628,7 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
 
 const SafeHtml: React.FC<{ html: string; className?: string }> = ({ html, className }) => {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (ref.current) ref.current.innerHTML = html; }, [html]);
+  useEffect(() => { if (ref.current) ref.current.innerHTML = DOMPurify.sanitize(html); }, [html]);
   return <div ref={ref} className={className} />;
 };
 
@@ -684,7 +720,7 @@ interface ArtifactRendererProps {
 }
 
 const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, type, viewMode, viewport, isStreaming, artifactId }) => {
-  if (!content || !content.trim())
+  if ((!content || !content.trim()) && isStreaming)
     return <div className="artifact-loading"><span className="artifact-loading-spinner" />Waiting for content...</div>;
 
   if (viewMode === 'code')

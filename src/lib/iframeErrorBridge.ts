@@ -104,16 +104,9 @@ export const INJECT_SCRIPT = `<script>(function(){try{
   /* ── Prevent form-based navigation ── */
   document.addEventListener("submit",function(e){
     try{
-      var form=e.target;
-      if(form&&form.tagName==="FORM"){
-        var action=form.getAttribute("action")||"";
-        /* Block form submissions that would navigate the iframe to relative paths */
-        if(!action.match(/^https?:\\/\\//i)&&action.indexOf("javascript:")!==0){
-          e.preventDefault();
-          e.stopPropagation();
-          console.warn("Blocked in-iframe form submission to: "+action);
-        }
-      }
+      e.preventDefault();
+      e.stopPropagation();
+      console.error("Form submission blocked: allow-forms is disabled in the sandbox.");
     }catch(_){/*noop*/}
   },true);
   /* ── Block iframe navigation via beforeunload ── */
@@ -125,18 +118,15 @@ export const INJECT_SCRIPT = `<script>(function(){try{
     history.pushState=function(){try{return origPushState.apply(history,arguments);}catch(_){/*noop*/}};
     history.replaceState=function(){try{return origReplaceState.apply(history,arguments);}catch(_){/*noop*/}};
   }catch(_){/*noop*/}
-  /* ── Intercept window.open for relative URLs ── */
+  /* ── Intercept window.open & modals for sandbox restrictions ── */
   try{
-    var origOpen=window.open.bind(window);
-    window.open=function(url){
-      try{
-        if(url&&typeof url==="string"&&url.match(/^https?:\\/\\//i)){
-          return origOpen.apply(window,arguments);
-        }
-        /* Block non-absolute URLs */
-        return null;
-      }catch(_){return null;}
+    window.open=function(){
+      console.error("Popup blocked: window.open() is disabled in the sandbox.");
+      return null;
     };
+    window.alert=function(){ console.error("Modal blocked: alert() is disabled in the sandbox."); };
+    window.confirm=function(){ console.error("Modal blocked: confirm() is disabled in the sandbox."); return false; };
+    window.prompt=function(){ console.error("Modal blocked: prompt() is disabled in the sandbox."); return null; };
   }catch(_){/*noop*/}
   /* ── Error capture ── */
   window.addEventListener("error",function(e){

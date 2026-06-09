@@ -209,8 +209,11 @@ async function extractPdfText(file: File): Promise<string> {
             result += `\n\n[... showing ${MAX_PDF_PAGES} of ${pdf.numPages} pages]`;
         }
         return compressWhitespace(result) || '[No extractable text found — PDF may be scanned/image-based]';
-    } catch (err) {
+    } catch (err: any) {
         console.warn('PDF extraction failed:', err);
+        if (err && err.name === 'PasswordException') {
+            throw new Error(`File "${file.name}" is password-protected/encrypted.`);
+        }
         return '[Failed to extract text — PDF may be encrypted or corrupted]';
     }
 }
@@ -220,8 +223,18 @@ async function extractDocxText(file: File): Promise<string> {
         const buffer = await readAsArrayBuffer(file);
         const result = await mammoth.extractRawText({ arrayBuffer: buffer });
         return compressWhitespace(result.value) || '[No text found in document]';
-    } catch (err) {
+    } catch (err: any) {
         console.warn('DOCX extraction failed:', err);
+        const errMsg = err?.message || '';
+        if (
+            errMsg.toLowerCase().includes('encrypted') || 
+            errMsg.toLowerCase().includes('password') || 
+            errMsg.toLowerCase().includes('decrypt') || 
+            errMsg.toLowerCase().includes('corrupted zip') || 
+            errMsg.toLowerCase().includes('unsupported zip')
+        ) {
+            throw new Error(`File "${file.name}" is encrypted or password-protected.`);
+        }
         return '[Failed to extract text from Word document]';
     }
 }
@@ -291,33 +304,33 @@ async function extractPptxText(file: File): Promise<string> {
 // ═══════════════════════════════════════════
 //  MAIN PROCESSOR
 // ═══════════════════════════════════════════
-export async function processFile(file: File): Promise<FileAttachment> {
+export async function processFile(file: File, hash?: string): Promise<FileAttachment> {
     const fileType = getFileType(file);
     if (fileType === 'image') {
         if (file.size > MAX_IMAGE_SIZE) throw new Error(`Image too large. Max ${formatFileSize(MAX_IMAGE_SIZE)}`);
         const dataUrl = await readAsDataURL(file);
-        return { id: uuidv4(), name: file.name, type: 'image', mimeType: file.type, size: file.size, dataUrl };
+        return { id: uuidv4(), name: file.name, type: 'image', mimeType: file.type, size: file.size, dataUrl, hash };
     }
     if (fileType === 'pdf') {
         let text = await extractPdfText(file);
-        return { id: uuidv4(), name: file.name, type: 'pdf', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
+        return { id: uuidv4(), name: file.name, type: 'pdf', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), hash };
     }
     if (fileType === 'docx') {
         let text = await extractDocxText(file);
         const rawBase64 = await fileToBase64(file);
-        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), rawBase64 };
+        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), rawBase64, hash };
     }
     if (fileType === 'xlsx') {
         let text = await extractExcelText(file);
         const rawBase64 = await fileToBase64(file);
-        return { id: uuidv4(), name: file.name, type: 'csv', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), rawBase64 };
+        return { id: uuidv4(), name: file.name, type: 'csv', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), rawBase64, hash };
     }
     if (fileType === 'pptx') {
         let text = await extractPptxText(file);
-        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name) };
+        return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type, size: file.size, textContent: smartTruncate(text, MAX_TEXT_CHARS, file.name), hash };
     }
     let text = await readAsText(file);
-    return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type || 'text/plain', size: file.size, textContent: smartTruncate(compressWhitespace(text), MAX_TEXT_CHARS, file.name) };
+    return { id: uuidv4(), name: file.name, type: 'text', mimeType: file.type || 'text/plain', size: file.size, textContent: smartTruncate(compressWhitespace(text), MAX_TEXT_CHARS, file.name), hash };
 }
 
 // ═══════════════════════════════════════════
@@ -416,16 +429,66 @@ async function enrichAttachment(attachment: FileAttachment): Promise<FileAttachm
     return attachment;
 }
 
-export async function processFiles(files: FileList | File[]): Promise<{ attachments: FileAttachment[]; errors: string[]; }> {
+async function calculateFileHash(file: File): Promise<string> {
+    const buffer = await readAsArrayBuffer(file);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function processFiles(
+    files: FileList | File[],
+    existingAttachments: FileAttachment[] = []
+): Promise<{ attachments: FileAttachment[]; errors: string[]; }> {
     const fileArray = Array.from(files);
     const errors: string[] = [];
     const accepted = fileArray.filter(isAcceptedFile).slice(0, MAX_FILES);
     if (fileArray.length > MAX_FILES) errors.push(`Only the first ${MAX_FILES} files were attached.`);
 
+    // 0-byte file check (D-06)
+    const nonZeroChecked: File[] = [];
+    for (const file of accepted) {
+        if (file.size === 0) {
+            errors.push(`File "${file.name}" is empty (0 bytes) and cannot be processed.`);
+            continue;
+        }
+        nonZeroChecked.push(file);
+    }
+
+    // SHA-256 deduplication (D-05)
+    const seenHashes = new Set<string>(existingAttachments.map(a => a.hash).filter(Boolean) as string[]);
+    const uniqueFiles: { file: File; hash: string }[] = [];
+    
+    // Calculate hashes asynchronously
+    const filesWithHashes = await Promise.all(
+        nonZeroChecked.map(async (file) => {
+            try {
+                const hash = await calculateFileHash(file);
+                return { file, hash };
+            } catch (err) {
+                return { file, hash: '' };
+            }
+        })
+    );
+
+    for (const item of filesWithHashes) {
+        if (!item.hash) {
+            uniqueFiles.push(item);
+            continue;
+        }
+        if (seenHashes.has(item.hash)) {
+            errors.push(`File "${item.file.name}" is a duplicate and was skipped.`);
+            continue;
+        }
+        seenHashes.add(item.hash);
+        uniqueFiles.push(item);
+    }
+
     // H8 fix: check combined file size limit
     let totalBytes = 0;
-    const sizeChecked: File[] = [];
-    for (const file of accepted) {
+    const sizeChecked: { file: File; hash: string }[] = [];
+    for (const item of uniqueFiles) {
+        const file = item.file;
         totalBytes += file.size;
         if (totalBytes > MAX_TOTAL_UPLOAD_BYTES) {
             errors.push(`Total file size exceeds ${formatFileSize(MAX_TOTAL_UPLOAD_BYTES)} limit. Please reduce the number or size of files.`);
@@ -437,10 +500,10 @@ export async function processFiles(files: FileList | File[]): Promise<{ attachme
             errors.push(`File "${file.name}" exceeds the ${formatFileSize(MAX_NON_IMAGE_FILE_SIZE)} size limit for document files.`);
             continue;
         }
-        sizeChecked.push(file);
+        sizeChecked.push(item);
     }
 
-    const processed = await Promise.allSettled(sizeChecked.map(processFile));
+    const processed = await Promise.allSettled(sizeChecked.map(item => processFile(item.file, item.hash)));
     const toEnrich: FileAttachment[] = [];
     for (const res of processed) {
         if (res.status === 'fulfilled') toEnrich.push(res.value);

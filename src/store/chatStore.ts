@@ -861,6 +861,18 @@ export const useChatStore = create<ChatStore>()(
         }),
         {
             name: 'lucen-chat-storage',
+            version: 1,
+            migrate: (persistedState: any, version: number) => {
+                if (version < 1) {
+                    const state = { ...persistedState };
+                    delete state.user;
+                    delete state.email;
+                    delete state.name;
+                    delete state.username;
+                    return state;
+                }
+                return persistedState;
+            },
             // Strip heavy file content from persisted state to prevent OOM.
             // Only metadata (name, type, size) is saved; file content is transient.
             partialize: (state) => ({
@@ -881,41 +893,7 @@ export const useChatStore = create<ChatStore>()(
                 targetArtifactByConv: {},
                 targetArtifactSnapshotByConv: {},
             }),
-            {
-                name: 'lucen-chat-storage',
-                version: 1,
-                migrate: (persistedState: any, version: number) => {
-                    if (version < 1) {
-                        const state = { ...persistedState };
-                        delete state.user;
-                        delete state.email;
-                        delete state.name;
-                        delete state.username;
-                        return state;
-                    }
-                    return persistedState;
-                },
-                // Strip heavy file content from persisted state to prevent OOM.
-                // Only metadata (name, type, size) is saved; file content is transient.
-                partialize: (state) => ({
-                    ...state,
-                    // Don't persist loading/sync flags
-                    isLoading: false,
-                    isMessageLoading: false,
-                    isSynced: false,
-                    isSearching: false,
-                    searchQuery: '',
-                    searchResults: null,
-                    searchError: null,
-                    // Do not cache conversations locally to force full-stack sync
-                    // from Supabase
-                    conversations: [],
-                    activeConversationId: null,
-                    // Patching: ephemeral; reset on every reload.
-                    targetArtifactByConv: {},
-                    targetArtifactSnapshotByConv: {},
-                }),
-            }
-        )
+        }
     )
+  )
 );

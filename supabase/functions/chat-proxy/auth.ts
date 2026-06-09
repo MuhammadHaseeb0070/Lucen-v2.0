@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as Sentry from 'https://esm.sh/@sentry/deno@10.56.0';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 export function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -76,6 +77,49 @@ export async function handleAuthAndRateLimit(
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
   const { data: adminUser, error: adminError } = await supabaseAdmin.auth.admin.getUserById(userId);
   if (adminError || !adminUser?.user) {
+    // Forged JWT anomaly detection (SEC-03)
+    const correlationId = req.headers.get('x-correlation-id') || req.headers.get('x-request-id') || 'unknown';
+    const path = new URL(req.url).pathname;
+    const origin = req.headers.get('origin') || req.headers.get('referer') || 'unknown';
+    
+    // Redact headers
+    const headersObj: Record<string, string> = {};
+    req.headers.forEach((value, key) => {
+      if (key.toLowerCase() === 'authorization') {
+        headersObj[key] = '[REDACTED]';
+      } else {
+        headersObj[key] = value;
+      }
+    });
+
+    log.error('Forged JWT anomaly detected', {
+      correlationId,
+      path,
+      origin,
+      userId,
+      adminError: adminError?.message || 'User not found in DB'
+    });
+
+    Sentry.withScope((scope) => {
+      scope.setLevel('error');
+      scope.setExtra('correlationId', correlationId);
+      scope.setExtra('path', path);
+      scope.setExtra('origin', origin);
+      scope.setExtra('userId', userId);
+      scope.setExtra('headers', headersObj);
+      if (adminError) {
+        scope.setExtra('adminError', adminError);
+      }
+      
+      Sentry.captureMessage(`Forged JWT signal detected - User ID: ${userId}`);
+    });
+
+    try {
+      await Sentry.flush(2000);
+    } catch (sentryErr) {
+      log.error('Failed to flush Sentry event', sentryErr);
+    }
+
     const res = await fail('auth_error', 401, 'User not found');
     return { success: false, errorResponse: res, errorStatus: 'auth_error', errorReason: 'User not found' };
   }
