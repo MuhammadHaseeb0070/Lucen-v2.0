@@ -33,10 +33,14 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - ✓ Stronger Final Turn Prompting: Prevent LLM tool leakages in final rounds by prompting with strong negative constraints when limits are reached — v2.5
 - ✓ Defensive Tag Sanitization: Harden client-side XML tag stripping to defensively clean all possible parameters and leaked tool tags — v2.5
 - ✓ Premium Steps and Citations UI: Restyle tool step statuses and domain citations to be beautiful, glassmorphic, and dynamic — v2.5
+- ✓ Transition Artifact Type: Move from 'python' to 'excel' in type definitions and parsing — v2.6
+- ✓ Rebuilt Pyodide Worker: Preload packages, set 60s timeout, and configure headless Agg backend — v2.6
+- ✓ Excel UI Renderer: Multi-stage loading, error classification, and download cards with self-correction feedback — v2.6
+- ✓ System Prompt Refactoring: Refactored base prompt with excel instructions and strict tags — v2.6
 
 ### Active
 
-- **v2.6 Milestone Planning**: Collect next milestone requirements and goals from the user.
+- **v2.7 Milestone Planning**: Scoping for next milestone.
 
 
 ### Out of Scope
@@ -67,4 +71,4 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 | Use Zustand `subscribe` for cross-store events | Breaks the `getState()` spaghetti (TD-08) | ✓ Done |
 
 ---
-*Last updated: 2026-06-09 after v2.3 stabilization milestone*
+*Last updated: 2026-06-10 after v2.6 Excel-focused Pyodide Rebuild milestone*

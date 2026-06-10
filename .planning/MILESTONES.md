@@ -1,5 +1,15 @@
 # Milestones
 
+## v2.6 Excel-focused Pyodide Rebuild (Shipped: 2026-06-10)
+
+**Phases completed:** 1 phases, 0 plans, 6 tasks
+
+**Key accomplishments:**
+
+- Optimized and hardened the web search architecture, parallelized tool calls, dynamically set maxRounds limits, and polished the frontend steps & citations UI.
+
+---
+
 ## v2.3 Stabilization Milestone (Shipped: 2026-06-09)
 
 **Phases completed:** 5 phases, 9 plans, 19 tasks
@@ -28,4 +38,3 @@
 - Built a beautiful, glassmorphic steps progress and domain citation card UI.
 
 ---
-

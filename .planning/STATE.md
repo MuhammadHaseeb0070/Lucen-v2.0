@@ -1,34 +1,34 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.6
-milestone_name: Milestone v2.6 Planning
-status: Completed
-stopped_at: v2.6 completed
-last_updated: "2026-06-09T12:30:00.000Z"
-last_activity: 2026-06-09 — Milestone v2.6 Completed.
+milestone_name: Planning
+status: Awaiting next milestone
+stopped_at: v2.5 archived, starting v2.6 planning
+last_updated: "2026-06-10T05:05:22.822Z"
+last_activity: 2026-06-10 — Milestone v2.6 completed and archived
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 1
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 0
   completed_plans: 1
-  percent: 100
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-09)
+See: .planning/PROJECT.md (updated 2026-06-10)
 
 **Core value:** Ship a secure, performant, well-tested, and premium-quality AI assistant with robust tools and billing controls.
-**Current focus:** Milestone v2.6 requirements scoping.
+**Current focus:** Preparing/planning next milestone (v2.7).
 
 ## Current Position
 
-Phase: N/A (Planning)
-Plan: N/A
-Status: Planning
-Last activity: 2026-06-09 — Milestone v2.5 archived. Started v2.6 planning.
+Phase: Milestone v2.6 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-10 — Milestone v2.6 completed and archived
 
 ## Performance Metrics
 
@@ -69,5 +69,4 @@ Resume file: N/A
 
 ## Operator Next Steps
 
-- None (Milestone v2.6 completed).
-
+- Start the next milestone with /gsd-new-milestone
