@@ -5,20 +5,6 @@ let pyodide: any = null;
 // Output extensions tracked by the worker
 const OUTPUT_EXTENSIONS = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'pdf', 'json', 'txt', 'zip', 'docx'];
 
-const PLUGINS: Record<string, { native: string[], pip: string[] }> = {
-  excel: {
-    native: ['openpyxl', 'xlsxwriter', 'pandas', 'numpy', 'matplotlib', 'Pillow'],
-    pip: []
-  },
-  word: {
-    native: ['micropip'],
-    pip: ['python-docx']
-  }
-};
-
-// Keep track of which plugins have been loaded in this worker session
-const loadedPlugins = new Set<string>();
-
 function arrayBufferToBase64(bytes: Uint8Array): string {
   const chunkSize = 8192;
   let binary = '';
@@ -98,7 +84,7 @@ function clearWorkspace(py: any) {
   } catch { /* ignore */ }
 }
 
-async function initPyodide(artifactId: string, documentType: string) {
+async function initPyodide(artifactId: string) {
   if (!pyodide) {
     ctx.postMessage({ type: 'status', artifactId, stage: 'init', 
       message: 'Setting up Python environment...' });
@@ -115,32 +101,10 @@ import os
 os.makedirs('/home/pyodide', exist_ok=True)
 os.chdir('/home/pyodide')
 `);
-  }
-
-  // Load packages required for this document type
-  if (!loadedPlugins.has(documentType)) {
-    const plugin = PLUGINS[documentType] || { native: [], pip: [] };
     
-    if (plugin.native.length > 0) {
-      ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
-        message: `Loading native ${documentType} libraries...` });
-      await pyodide.loadPackage(plugin.native);
-    }
-    
-    if (plugin.pip.length > 0) {
-      ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
-        message: `Installing ${documentType} packages...` });
-      const micropip = pyodide.pyimport('micropip');
-      for (const pkg of plugin.pip) {
-        await micropip.install(pkg);
-      }
-      micropip.destroy();
-    }
-    loadedPlugins.add(documentType);
+    // Always load micropip natively
+    await pyodide.loadPackage('micropip');
   }
-
-  ctx.postMessage({ type: 'status', artifactId, stage: 'ready', 
-    message: 'Ready.' });
 
   return pyodide;
 }
@@ -166,10 +130,10 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
 
-  const { code, artifactId, documentType, inputFiles } = d;
+  const { code, artifactId, inputFiles } = d;
 
   try {
-    const py = await initPyodide(artifactId, documentType || 'excel');
+    const py = await initPyodide(artifactId);
     clearWorkspace(py);
 
     // Mount input files
@@ -183,6 +147,29 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
           throw new Error(`Could not load input file "${file.name}": ${err.message}`);
         }
       }
+    }
+
+    // 1. Resolve Native packages automatically
+    ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
+      message: 'Resolving native dependencies...' });
+    await py.loadPackagesFromImports(code);
+
+    // 2. Resolve Pip packages from # pip: header
+    const pipRegex = /#\s*pip:\s*(.+)/gi;
+    const pipPackages = new Set<string>();
+    let match;
+    while ((match = pipRegex.exec(code)) !== null) {
+      match[1].split(',').forEach(p => pipPackages.add(p.trim()));
+    }
+
+    if (pipPackages.size > 0) {
+      ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
+        message: 'Installing pip dependencies...' });
+      const micropip = py.pyimport('micropip');
+      for (const pkg of pipPackages) {
+        if (pkg) await micropip.install(pkg);
+      }
+      micropip.destroy();
     }
 
     ctx.postMessage({ type: 'status', artifactId, stage: 'running', 
@@ -208,18 +195,55 @@ except Exception:
     pass
 `);
 
-    // Execute with timeout
+    // Execute with timeout and self-healing loop
     let runError: string | null = null;
     const TIMEOUT_MS = 60000;
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(
-          'Script timed out after 60 seconds. It may contain an infinite loop or process too much data.'
-        )), TIMEOUT_MS)
-      );
-      await Promise.race([py.runPythonAsync(code), timeoutPromise]);
-    } catch (err: any) {
-      runError = err.message || String(err);
+    let retryCount = 0;
+    const MAX_RETRIES = 2;
+
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(
+            'Script timed out after 60 seconds. It may contain an infinite loop or process too much data.'
+          )), TIMEOUT_MS)
+        );
+        await Promise.race([py.runPythonAsync(code), timeoutPromise]);
+        runError = null; // Success!
+        break;
+      } catch (err: any) {
+        runError = err.message || String(err);
+        
+        // Auto-healing for missed pip packages
+        const moduleMatch = runError?.match(/ModuleNotFoundError: No module named '([^']+)'/);
+        if (moduleMatch && retryCount < MAX_RETRIES) {
+          const missingModule = moduleMatch[1];
+          ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
+            message: `Auto-installing missing module: ${missingModule}...` });
+          
+          try {
+            const micropip = py.pyimport('micropip');
+            // Map common module names to pip package names
+            let pkgToInstall = missingModule;
+            if (missingModule === 'docx') pkgToInstall = 'python-docx';
+            else if (missingModule === 'PIL') pkgToInstall = 'Pillow';
+            else if (missingModule === 'bs4') pkgToInstall = 'beautifulsoup4';
+            else if (missingModule === 'sklearn') pkgToInstall = 'scikit-learn';
+            
+            await micropip.install(pkgToInstall);
+            micropip.destroy();
+            
+            retryCount++;
+            ctx.postMessage({ type: 'status', artifactId, stage: 'running', 
+              message: 'Retrying script execution...' });
+            continue; // Retry execution
+          } catch (installErr) {
+            runError = `Failed to auto-install missing module '${missingModule}': ${installErr}`;
+            break; // Break if we can't install it
+          }
+        }
+        break; // Break if not ModuleNotFoundError or out of retries
+      }
     }
 
     // Capture stdout/stderr
