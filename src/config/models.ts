@@ -34,7 +34,7 @@ let sideConfig: ModelConfig = {
 // ─── Platform budgets ─────────────────────────────────────────────────────
 export const PLATFORM_MAX_STREAM_SECONDS = 140;
 /** Grace passes — set to 0 to disable continuation entirely (one-shot). */
-export const CONTINUATION_MAX_CHUNKS_ARTIFACT = 0;
+export const CONTINUATION_MAX_CHUNKS_ARTIFACT = 3;
 export const CONTINUATION_MAX_CHUNKS_CHAT = 0;
 export const ABSOLUTE_OUTPUT_CEILING = 32000;
 export const CHAT_OUTPUT_CEILING = 32000;
