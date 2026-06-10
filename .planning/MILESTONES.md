@@ -1,5 +1,18 @@
 # Milestones
 
+## v2.7 Robust OpenRouter Multi-Model System (Shipped: 2026-06-10)
+
+**Phases completed:** 2 phases, 2 plans, 4 tasks
+
+**Key accomplishments:**
+
+- Built a sequential fallback execution chain (Primary -> Secondary -> Tertiary) for main and side chats supporting both streaming and non-streaming modes.
+- Implemented model parameter normalization (`normalizeModelParams`) to sanitize API payloads for reasoning models (e.g. o1/o3-mini, DeepSeek R1) by stripping temperature/top_p and mapping token limits.
+- Configured dynamic metadata header synchronization (`x-model-name`, `x-supports-reasoning`, etc.) returned from the proxy to dynamically update the client-side state.
+- Updated `/get-model-config` endpoint to dynamically resolve chat configurations based on the fallback chain structure.
+
+---
+
 ## v2.6 Excel-focused Pyodide Rebuild (Shipped: 2026-06-10)
 
 **Phases completed:** 1 phases, 0 plans, 6 tasks

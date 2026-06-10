@@ -37,14 +37,15 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - ✓ Rebuilt Pyodide Worker: Preload packages, set 60s timeout, and configure headless Agg backend — v2.6
 - ✓ Excel UI Renderer: Multi-stage loading, error classification, and download cards with self-correction feedback — v2.6
 - ✓ System Prompt Refactoring: Refactored base prompt with excel instructions and strict tags — v2.6
+- ✓ Multi-Model Secret Configuration: Implement primary, secondary, and tertiary model fallback secrets — v2.7
+- ✓ Sequential Fallback Execution Loop: Graceful try-catch model failovers in both streaming and non-streaming modes — v2.7
+- ✓ Parameter Normalization Registry: Normalize reasoning model payloads (strip temperature/top_p, convert to max_completion_tokens) — v2.7
+- ✓ Dynamic Metadata Header Sync: Return dynamically matched model headers and sync to client stores — v2.7
+- ✓ Configuration Sync Update: Resolve dynamic model config in `/get-model-config` endpoint — v2.7
 
 ### Active
 
-- **v2.7 Robust OpenRouter Multi-Model System**:
-  - Implement sequential fallback chain (Primary -> Secondary -> Tertiary) for main and side chats.
-  - Normalize model-specific parameter calls (temperature, top_p, etc.) to prevent OpenRouter errors.
-  - Sync metadata dynamically via config headers (x-model-name, x-supports-reasoning, etc.).
-
+- (None — preparing for the next milestone)
 
 ### Out of Scope
 
@@ -58,7 +59,7 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 
 - **Codebase state:** Stable and refactored. Test suites cover all critical utilities and flows. Built successfully with 0 compilation errors.
 - **User workflow:** User works on `dev` branch locally. Pushes to `dev` trigger Vercel preview and Supabase development deployments automatically.
-- **Verification strategy:** 42 Vitest unit tests + 10 Playwright E2E tests executing network mocks.
+- **Verification strategy:** 55 Vitest unit tests + 10 Playwright E2E tests executing network mocks.
 
 ## Key Decisions
 
@@ -72,6 +73,9 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 | Move circuit-breaker state to shared KV | In-memory state is per-isolate; lost on cold start (PERF-05, PROD-03) | ✓ Done |
 | Apply rate limit to every edge function (not just chat-proxy) | Other functions are unprotected; trivial to abuse (SEC-04) | ✓ Done |
 | Use Zustand `subscribe` for cross-store events | Breaks the `getState()` spaghetti (TD-08) | ✓ Done |
+| Log primary model failures to Sentry as warnings with redacted metadata | Keep trace of model fallback events without leaking PII or sensitive message info | ✓ Done |
+| Failover silently without UI system messages, but update dynamic headers | Avoid disrupting user workflow/chat flow while syncing UI capabilities to actual model | ✓ Done |
+| Strip invalid parameters dynamically for reasoning models (o1/o3-mini/DeepSeek R1) | Prevent downstream API validation errors and format clashes automatically | ✓ Done |
 
 ---
-*Last updated: 2026-06-10 after v2.6 Excel-focused Pyodide Rebuild milestone*
+*Last updated: 2026-06-10 after v2.7 Robust OpenRouter Multi-Model System milestone*
