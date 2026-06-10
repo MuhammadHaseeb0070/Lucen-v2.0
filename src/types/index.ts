@@ -110,9 +110,7 @@ export interface SideChatState {
 }
 
 
-
-export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file' | 'excel';
-
+export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'file' | 'excel' | 'word';
 export type GenerationStatus =
   | 'idle'
   | 'streaming'

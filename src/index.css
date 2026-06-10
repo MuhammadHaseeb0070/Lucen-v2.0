@@ -12,7 +12,7 @@
     --bg-base: #f5f5f5;
     --bg-surface: #ffffff;
     --bg-surface-hover: #f0f0f0;
-    --bg-muted: #eceef0; 
+    --bg-muted: #eceef0;
     --bg-inset: #e4e6e9;
 
     /* Text */
@@ -120,7 +120,8 @@ h4 {
 
 ::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--accent) 30%, transparent);
-    border: 2px solid transparent; /* Gives a nice 'floating' feel */
+    border: 2px solid transparent;
+    /* Gives a nice 'floating' feel */
     background-clip: padding-box;
     border-radius: var(--r-full);
     transition: background var(--dur-fast) var(--ease);
@@ -1749,7 +1750,8 @@ h4 {
    ═══════════════════════════════════════════ */
 .selection-menu {
     position: fixed;
-    z-index: 10000; /* Above all panels and modest overlays */
+    z-index: 10000;
+    /* Above all panels and modest overlays */
     display: flex;
     flex-direction: column;
     background: var(--bg-surface);
@@ -1761,7 +1763,8 @@ h4 {
     overflow: hidden;
     min-width: 140px;
     pointer-events: auto;
-    filter: none; /* Reset potential drop-shadow from redundant styles */
+    filter: none;
+    /* Reset potential drop-shadow from redundant styles */
 }
 
 @keyframes selMenuIn {
@@ -1769,6 +1772,7 @@ h4 {
         opacity: 0;
         transform: translateY(8px) scale(0.96);
     }
+
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
@@ -1870,7 +1874,8 @@ h4 {
 }
 
 .selection-menu--vertical .selection-menu-hint {
-    display: none; /* Hide shortcut hint in vertical mode to keep it compact */
+    display: none;
+    /* Hide shortcut hint in vertical mode to keep it compact */
 }
 
 /* Mobile-specific adjustments */
@@ -2324,7 +2329,7 @@ h4 {
     -webkit-overflow-scrolling: touch;
 }
 
-.markdown-body .katex-display > .katex {
+.markdown-body .katex-display>.katex {
     max-width: 100%;
 }
 
@@ -3848,13 +3853,13 @@ h4 {
     overflow: hidden;
 }
 
-.chat-workspace-container > .chat-area {
+.chat-workspace-container>.chat-area {
     flex: 1 1 100%;
     min-width: 280px;
     transition: flex-basis var(--dur-slow) var(--ease);
 }
 
-.app-body--workspace-open .chat-workspace-container > .chat-area {
+.app-body--workspace-open .chat-workspace-container>.chat-area {
     flex: 1 1 auto;
 }
 
@@ -4019,7 +4024,7 @@ h4 {
 .artifact-toggle-btn--active {
     background: var(--bg-surface);
     color: var(--text-primary);
-    box-shadow: 0 1px 3px var(--shadow-color, rgba(0,0,0,0.08));
+    box-shadow: 0 1px 3px var(--shadow-color, rgba(0, 0, 0, 0.08));
 }
 
 /* ─── Action buttons ─── */
@@ -4100,7 +4105,7 @@ h4 {
     align-items: center;
     gap: 2px;
     padding: 2px;
-    background: var(--bg-inset, rgba(0,0,0,0.04));
+    background: var(--bg-inset, rgba(0, 0, 0, 0.04));
     border-radius: var(--r-sm);
     margin-right: 4px;
 }
@@ -4122,13 +4127,13 @@ h4 {
 
 .artifact-viewport-btn:hover {
     color: var(--text-primary);
-    background: var(--bg-hover, rgba(0,0,0,0.06));
+    background: var(--bg-hover, rgba(0, 0, 0, 0.06));
 }
 
 .artifact-viewport-btn--active {
     color: var(--accent);
     background: var(--bg-surface, #fff);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* ─── Viewport Frame (responsive preview) ─── */
@@ -4142,7 +4147,7 @@ h4 {
 
 .artifact-viewport-frame--active {
     padding: 16px;
-    background: repeating-conic-gradient(rgba(0,0,0,0.04) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+    background: repeating-conic-gradient(rgba(0, 0, 0, 0.04) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
     border-radius: var(--r-sm);
     overflow: auto;
 }
@@ -4150,7 +4155,7 @@ h4 {
 .artifact-viewport-frame--active .artifact-iframe {
     border: 1px solid var(--divider);
     border-radius: var(--r-md);
-    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
     transition: width 0.3s ease;
 }
 
@@ -4189,7 +4194,7 @@ h4 {
 }
 
 .artifact-panzoom-toolbar button:hover {
-    background: var(--bg-hover, rgba(0,0,0,0.04));
+    background: var(--bg-hover, rgba(0, 0, 0, 0.04));
     color: var(--text-primary);
     border-color: var(--text-tertiary);
 }
@@ -4211,7 +4216,7 @@ h4 {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: repeating-conic-gradient(rgba(0,0,0,0.02) 0% 25%, transparent 0% 50%) 50% / 20px 20px;
+    background: repeating-conic-gradient(rgba(0, 0, 0, 0.02) 0% 25%, transparent 0% 50%) 50% / 20px 20px;
 }
 
 .artifact-panzoom-area:active {
@@ -4297,7 +4302,7 @@ h4 {
 }
 
 .artifact-react-layout,
-.artifact-react-layout > div,
+.artifact-react-layout>div,
 .artifact-react-layout [class*="sp-preview"],
 .artifact-react-layout iframe {
     min-height: 420px;
@@ -4537,6 +4542,7 @@ h4 {
     0% {
         background-position: 200% 0, 0 0;
     }
+
     100% {
         background-position: -200% 0, 0 0;
     }
@@ -4784,26 +4790,71 @@ h4 {
     gap: 8px;
 }
 
-.patch-report-card-icon { color: var(--text-secondary); display: inline-flex; }
-.patch-report-card-title { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
-.patch-report-card-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--text-tertiary); }
-.patch-report-card-notes { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
-.patch-report-card-note { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.35; }
-.patch-report-card-spin { animation: spin 1s linear infinite; }
-.patch-report-card--success { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.05); }
-.patch-report-card--failed { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.06); }
-.patch-report-card--running { border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.05); }
+.patch-report-card-icon {
+    color: var(--text-secondary);
+    display: inline-flex;
+}
+
+.patch-report-card-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.patch-report-card-meta {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+}
+
+.patch-report-card-notes {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.patch-report-card-note {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+.patch-report-card-spin {
+    animation: spin 1s linear infinite;
+}
+
+.patch-report-card--success {
+    border-color: rgba(34, 197, 94, 0.35);
+    background: rgba(34, 197, 94, 0.05);
+}
+
+.patch-report-card--failed {
+    border-color: rgba(245, 158, 11, 0.45);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.patch-report-card--running {
+    border-color: rgba(59, 130, 246, 0.35);
+    background: rgba(59, 130, 246, 0.05);
+}
+
 .patch-report-card-artifact {
     margin-top: 8px;
     border-top: 1px dashed var(--divider);
     padding-top: 8px;
 }
+
 .patch-report-card-artifact summary {
     cursor: pointer;
     font-size: 0.76rem;
     color: var(--text-primary);
     font-weight: 600;
 }
+
 .patch-report-card-artifact pre {
     margin: 8px 0 0;
     max-height: 280px;
@@ -4830,7 +4881,7 @@ h4 {
     background: var(--bg-surface);
     border: 1px solid var(--accent);
     border-radius: var(--r-md);
-    box-shadow: 0 2px 12px var(--shadow-color, rgba(0,0,0,0.05));
+    box-shadow: 0 2px 12px var(--shadow-color, rgba(0, 0, 0, 0.05));
     animation: fadeIn var(--dur) var(--ease);
 }
 
@@ -5105,7 +5156,7 @@ h4 {
     min-width: 0;
 }
 
-.react-workspace-toolbar__title > div {
+.react-workspace-toolbar__title>div {
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -5459,7 +5510,7 @@ h4 {
 
 .react-workspace-preview-frame,
 .react-workspace-preview-frame iframe,
-.react-workspace-preview-code > div {
+.react-workspace-preview-code>div {
     width: 100%;
     height: 100%;
     min-height: 100%;
@@ -5720,7 +5771,7 @@ h4 {
 
 .artifact-card:hover {
     border-color: var(--accent);
-    box-shadow: 0 2px 12px var(--shadow-color, rgba(0,0,0,0.06));
+    box-shadow: 0 2px 12px var(--shadow-color, rgba(0, 0, 0, 0.06));
 }
 
 .artifact-card--active {
@@ -5775,8 +5826,13 @@ h4 {
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .artifact-card-action {
@@ -5795,6 +5851,7 @@ h4 {
    RESPONSIVE — Tablet (≤768px)
    ═══════════════════════════════════════════ */
 @media (max-width: 768px) {
+
     /* ─── Navbar ─── */
     .navbar {
         padding: 0 10px;
@@ -5878,8 +5935,13 @@ h4 {
     }
 
     @keyframes mobileOverlayIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
     }
 
     /* ─── Chat Area ─── */
@@ -6209,7 +6271,7 @@ h4 {
         transform: translateY(0);
     }
 
-    .app-body--workspace-open .chat-workspace-container > .chat-area {
+    .app-body--workspace-open .chat-workspace-container>.chat-area {
         flex-basis: 100%;
     }
 
@@ -7021,11 +7083,13 @@ h4 {
     cursor: pointer;
     transition: transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
+
 .msg-attachment-file:hover {
     border-color: var(--accent-border, color-mix(in srgb, var(--accent) 40%, transparent));
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
     transform: translateY(-1px);
 }
+
 .msg-attachment-file-meta {
     display: flex;
     flex-direction: column;
@@ -7033,6 +7097,7 @@ h4 {
     flex: 1;
     gap: 2px;
 }
+
 .msg-attachment-file-name {
     display: block;
     font-weight: 600;
@@ -7043,6 +7108,7 @@ h4 {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
 .msg-attachment-file-sub {
     display: block;
     color: var(--text-tertiary);
@@ -7617,8 +7683,13 @@ h4 {
 }
 
 @keyframes lc-fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 /* ─── Modal Container ─── */
@@ -7638,8 +7709,15 @@ h4 {
 }
 
 @keyframes lc-modal-in {
-    from { opacity: 0; transform: scale(0.96) translateY(10px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 .lc-modal__close {
@@ -7907,11 +7985,9 @@ h4 {
 
 .lc-plan--featured {
     border-color: #f59e0b;
-    background: linear-gradient(
-        165deg,
-        rgba(245, 158, 11, 0.04) 0%,
-        var(--bg-muted) 40%
-    );
+    background: linear-gradient(165deg,
+            rgba(245, 158, 11, 0.04) 0%,
+            var(--bg-muted) 40%);
 }
 
 .lc-plan--featured:hover {
@@ -8262,8 +8338,15 @@ h4 {
 }
 
 @keyframes lc-faq-slide {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* ─── Footer Note ─── */
@@ -8370,7 +8453,8 @@ h4 {
     position: absolute;
     top: 0;
     right: 0;
-    bottom: 80px; /* Leave space for search area/input */
+    bottom: 80px;
+    /* Leave space for search area/input */
     width: 28px;
     z-index: 50;
     pointer-events: none;
@@ -8381,10 +8465,22 @@ h4 {
 
 /* Brief highlight when the messages container scrolls to a pinned/search hit. */
 @keyframes msgJumpFlash {
-    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); background-color: color-mix(in srgb, var(--accent) 10%, transparent); }
-    60%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent);  background-color: color-mix(in srgb, var(--accent) 6%, transparent); }
-    100% { box-shadow: 0 0 0 0 transparent; background-color: transparent; }
+    0% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+        background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    60% {
+        box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent);
+        background-color: color-mix(in srgb, var(--accent) 6%, transparent);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+        background-color: transparent;
+    }
 }
+
 .msg-jump-flash {
     animation: msgJumpFlash 1.2s ease-out;
     border-radius: 12px;
@@ -8408,14 +8504,16 @@ h4 {
 }
 
 /* Search markers should also be visually centered on their target row. */
-.search-marker { transform: translateY(-50%); }
+.search-marker {
+    transform: translateY(-50%);
+}
 
 .pin-marker-dot {
     width: 11px;
     height: 4px;
     background: var(--accent);
     border-radius: var(--r-full);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .pin-marker:hover {
@@ -8551,45 +8649,64 @@ h4 {
     right: 6px;
     width: 10px;
     height: 4px;
-    background: #f43f5e; /* Rose 500 */
+    background: #f43f5e;
+    /* Rose 500 */
     border-radius: var(--r-full);
     cursor: pointer;
     pointer-events: auto;
     transition: all var(--dur-fast) var(--ease);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .search-marker:hover {
     width: 16px;
     transform: translate(-2px, -50%);
     z-index: 60;
-    background: #e11d48; /* Rose 600 */
+    background: #e11d48;
+    /* Rose 600 */
 }
 
 /* Hide bulky tooltips on small screens (tap still works) and make the
    click target fatter so it's easier to hit with a thumb. */
 @media (max-width: 640px) {
-    .pin-track-container { width: 22px; }
-    .pin-marker { height: 20px; }
-    .pin-marker-dot { height: 5px; width: 13px; }
-    .pin-marker-tooltip { display: none; }
+    .pin-track-container {
+        width: 22px;
+    }
+
+    .pin-marker {
+        height: 20px;
+    }
+
+    .pin-marker-dot {
+        height: 5px;
+        width: 13px;
+    }
+
+    .pin-marker-tooltip {
+        display: none;
+    }
 }
 
 mark.search-highlight {
-    background: rgba(244, 63, 94, 0.15); /* Light rose background */
+    background: rgba(244, 63, 94, 0.15);
+    /* Light rose background */
     color: var(--text-primary);
     border-radius: 2px;
     padding: 0 1px;
     transition: all var(--dur-fast) var(--ease);
-    border: none !important; /* Remove individual borders to avoid double-border bug */
+    border: none !important;
+    /* Remove individual borders to avoid double-border bug */
 }
 
 mark.search-highlight.is-active {
-    background: #f43f5e; /* Vibrant Rose 500 */
+    background: #f43f5e;
+    /* Vibrant Rose 500 */
     color: #ffffff;
-    box-shadow: 
-        0 0 0 1.5px #ffffff, /* White inner ring */
-        0 0 0 3px #f43f5e; /* Rose outer ring */
+    box-shadow:
+        0 0 0 1.5px #ffffff,
+        /* White inner ring */
+        0 0 0 3px #f43f5e;
+    /* Rose outer ring */
     z-index: 10;
     position: relative;
     border-radius: 3px;
@@ -8597,7 +8714,8 @@ mark.search-highlight.is-active {
 }
 
 .msg-exchange--active-match {
-    border: 2px solid #f43f5e; /* Rose border for the active match exchange */
+    border: 2px solid #f43f5e;
+    /* Rose border for the active match exchange */
     background: rgba(244, 63, 94, 0.04) !important;
     border-radius: var(--r-md);
     box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.1);
@@ -8634,6 +8752,7 @@ mark.search-highlight.is-active {
     padding: 2px;
     border-radius: 4px;
 }
+
 .artifact-suggestion-picker-dismiss:hover {
     color: var(--text-primary);
     background: var(--bg-surface-hover);
@@ -8657,6 +8776,7 @@ mark.search-highlight.is-active {
     text-align: left;
     transition: all var(--dur-fast) var(--ease);
 }
+
 .artifact-suggestion-card:hover {
     border-color: var(--accent);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent);
@@ -8665,6 +8785,7 @@ mark.search-highlight.is-active {
 .artifact-suggestion-card-icon {
     color: var(--text-tertiary);
 }
+
 .artifact-suggestion-card:hover .artifact-suggestion-card-icon {
     color: var(--accent);
 }
@@ -8710,10 +8831,22 @@ mark.search-highlight.is-active {
     border-radius: var(--r-md);
     padding: 12px;
 }
-.patch-report-card--success { border-left: 3px solid var(--success); }
-.patch-report-card--failed { border-left: 3px solid var(--danger); }
-.patch-report-card--skipped { border-left: 3px solid var(--warning); }
-.patch-report-card--running { border-left: 3px solid var(--accent); }
+
+.patch-report-card--success {
+    border-left: 3px solid var(--success);
+}
+
+.patch-report-card--failed {
+    border-left: 3px solid var(--danger);
+}
+
+.patch-report-card--skipped {
+    border-left: 3px solid var(--warning);
+}
+
+.patch-report-card--running {
+    border-left: 3px solid var(--accent);
+}
 
 .patch-report-card-head {
     display: flex;
@@ -8721,18 +8854,37 @@ mark.search-highlight.is-active {
     gap: 8px;
     margin-bottom: 8px;
 }
-.patch-report-card-icon { display: flex; }
-.patch-report-card--success .patch-report-card-icon { color: var(--success); }
-.patch-report-card--failed .patch-report-card-icon { color: var(--danger); }
-.patch-report-card--skipped .patch-report-card-icon { color: var(--warning); }
-.patch-report-card--running .patch-report-card-icon { color: var(--accent); }
-.patch-report-card-spin { animation: spin 1s linear infinite; }
+
+.patch-report-card-icon {
+    display: flex;
+}
+
+.patch-report-card--success .patch-report-card-icon {
+    color: var(--success);
+}
+
+.patch-report-card--failed .patch-report-card-icon {
+    color: var(--danger);
+}
+
+.patch-report-card--skipped .patch-report-card-icon {
+    color: var(--warning);
+}
+
+.patch-report-card--running .patch-report-card-icon {
+    color: var(--accent);
+}
+
+.patch-report-card-spin {
+    animation: spin 1s linear infinite;
+}
 
 .patch-report-card-title {
     font-weight: 600;
     font-size: 0.85rem;
     color: var(--text-primary);
 }
+
 .patch-report-card-meta {
     margin-left: auto;
     font-size: 0.75rem;
@@ -8749,6 +8901,7 @@ mark.search-highlight.is-active {
     margin-bottom: 8px;
     font-size: 0.75rem;
 }
+
 .patch-report-card-version-badge {
     background: color-mix(in srgb, var(--accent) 15%, transparent);
     color: var(--accent);
@@ -8756,12 +8909,14 @@ mark.search-highlight.is-active {
     border-radius: var(--r-full);
     font-weight: 600;
 }
+
 .patch-report-card-blocks-badge {
     background: var(--bg-muted);
     color: var(--text-secondary);
     padding: 2px 8px;
     border-radius: var(--r-full);
 }
+
 .patch-report-card-artifact-name {
     color: var(--text-primary);
     font-weight: 500;
@@ -8777,6 +8932,7 @@ mark.search-highlight.is-active {
     line-height: 1.4;
     margin-bottom: 8px;
 }
+
 .patch-report-card-note {
     margin-bottom: 2px;
 }
@@ -8787,6 +8943,7 @@ mark.search-highlight.is-active {
     font-style: italic;
     margin-top: 4px;
 }
+
 .patch-report-card-open-btn {
     display: flex;
     align-items: center;
@@ -8802,6 +8959,7 @@ mark.search-highlight.is-active {
     margin-top: 4px;
     transition: background var(--dur-fast) var(--ease);
 }
+
 /* ============================================
    SHIKI HIGHLIGHTER STYLING
    ============================================ */
@@ -8820,13 +8978,15 @@ mark.search-highlight.is-active {
     padding: 16px;
     border-radius: 8px;
     overflow-x: auto;
-    background-color: #282c34 !important; /* One Dark Pro fallback background */
+    background-color: #282c34 !important;
+    /* One Dark Pro fallback background */
 }
 
 /* Markdown specific pre styling (it goes under powertool header, so no top border-radius) */
 .shiki-container--markdown pre {
     border-radius: 0 0 8px 8px;
-    background-color: transparent !important; /* Allow the wrapper background to show through */
+    background-color: transparent !important;
+    /* Allow the wrapper background to show through */
     padding: 12px 16px;
     line-height: 1.5;
 }
@@ -8875,6 +9035,7 @@ mark.search-highlight.is-active {
     min-height: 100%;
     border-radius: 0 !important;
 }
+
 .shiki-fallback-text--workspace {
     height: 100%;
     min-height: 100%;

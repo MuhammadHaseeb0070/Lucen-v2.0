@@ -2,17 +2,22 @@ const ctx: Worker = self as any;
 
 let pyodide: any = null;
 
-// Only Excel-relevant output extensions are tracked
-const OUTPUT_EXTENSIONS = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'pdf', 'json', 'txt', 'zip'];
+// Output extensions tracked by the worker
+const OUTPUT_EXTENSIONS = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'pdf', 'json', 'txt', 'zip', 'docx'];
 
-// WHITELISTED libraries for Excel work — all are Pyodide-native, no micropip needed
-// openpyxl: read/write xlsx, full formatting, charts, images
-// xlsxwriter: write xlsx with advanced chart API (write-only)
-// pandas: data manipulation, CSV to Excel, transformations
-// numpy: numerical calculations
-// matplotlib: chart images to embed in Excel
-// Pillow: image processing before Excel embedding
-const EXCEL_NATIVE_PACKAGES = ['openpyxl', 'xlsxwriter', 'pandas', 'numpy', 'matplotlib', 'Pillow'];
+const PLUGINS: Record<string, { native: string[], pip: string[] }> = {
+  excel: {
+    native: ['openpyxl', 'xlsxwriter', 'pandas', 'numpy', 'matplotlib', 'Pillow'],
+    pip: []
+  },
+  word: {
+    native: ['micropip'],
+    pip: ['python-docx']
+  }
+};
+
+// Keep track of which plugins have been loaded in this worker session
+const loadedPlugins = new Set<string>();
 
 function arrayBufferToBase64(bytes: Uint8Array): string {
   const chunkSize = 8192;
@@ -93,31 +98,46 @@ function clearWorkspace(py: any) {
   } catch { /* ignore */ }
 }
 
-async function initPyodide(artifactId: string) {
-  if (pyodide) return pyodide;
+async function initPyodide(artifactId: string, documentType: string) {
+  if (!pyodide) {
+    ctx.postMessage({ type: 'status', artifactId, stage: 'init', 
+      message: 'Setting up Python environment...' });
 
-  ctx.postMessage({ type: 'status', artifactId, stage: 'init', 
-    message: 'Setting up Python environment...' });
+    const pyodideModule = await (Function('u', 'return import(u)')(
+      'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs'
+    ));
+    pyodide = await pyodideModule.loadPyodide({
+      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/',
+    });
 
-  const pyodideModule = await (Function('u', 'return import(u)')(
-    'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs'
-  ));
-  pyodide = await pyodideModule.loadPyodide({
-    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/',
-  });
-
-  ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
-    message: 'Loading Excel libraries...' });
-
-  // Load all whitelisted packages upfront — these are Pyodide-native,
-  // no network download needed after first load
-  await pyodide.loadPackage(EXCEL_NATIVE_PACKAGES);
-
-  await pyodide.runPythonAsync(`
+    await pyodide.runPythonAsync(`
 import os
 os.makedirs('/home/pyodide', exist_ok=True)
 os.chdir('/home/pyodide')
 `);
+  }
+
+  // Load packages required for this document type
+  if (!loadedPlugins.has(documentType)) {
+    const plugin = PLUGINS[documentType] || { native: [], pip: [] };
+    
+    if (plugin.native.length > 0) {
+      ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
+        message: `Loading native ${documentType} libraries...` });
+      await pyodide.loadPackage(plugin.native);
+    }
+    
+    if (plugin.pip.length > 0) {
+      ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
+        message: `Installing ${documentType} packages...` });
+      const micropip = pyodide.pyimport('micropip');
+      for (const pkg of plugin.pip) {
+        await micropip.install(pkg);
+      }
+      micropip.destroy();
+    }
+    loadedPlugins.add(documentType);
+  }
 
   ctx.postMessage({ type: 'status', artifactId, stage: 'ready', 
     message: 'Ready.' });
@@ -129,6 +149,7 @@ function getMimeType(ext: string): string {
   const types: Record<string, string> = {
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     xls: 'application/vnd.ms-excel',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     csv: 'text/csv',
     png: 'image/png',
     jpg: 'image/jpeg',
@@ -145,10 +166,10 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
 
-  const { code, artifactId, inputFiles } = d;
+  const { code, artifactId, documentType, inputFiles } = d;
 
   try {
-    const py = await initPyodide(artifactId);
+    const py = await initPyodide(artifactId, documentType || 'excel');
     clearWorkspace(py);
 
     // Mount input files

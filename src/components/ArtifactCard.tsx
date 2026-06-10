@@ -9,6 +9,7 @@ const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
   mermaid: <GitBranch size={18} />,
   file: <FileText size={18} />,
   excel: <FileText size={18} />,
+  word: <FileText size={18} />,
 };
 
 const TYPE_LABELS: Record<ArtifactType, string> = {
@@ -17,6 +18,7 @@ const TYPE_LABELS: Record<ArtifactType, string> = {
   mermaid: 'Diagram',
   file: 'File',
   excel: 'Excel',
+  word: 'Word',
 };
 
 interface ArtifactCardProps {

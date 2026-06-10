@@ -1,30 +1,30 @@
-export interface ExcelResult {
+export interface PythonDocumentResult {
   stdout: string;
   stderr: string;
   files: Array<{ name: string; data: string; mimeType: string }>;
   error: string | null;
 }
 
-export type ExcelRunStage = 'init' | 'packages' | 'input' | 'running' | 'ready';
+export type PythonDocumentRunStage = 'init' | 'packages' | 'input' | 'running' | 'ready';
 
-export interface ExcelProgress {
-  stage: ExcelRunStage;
+export interface PythonDocumentProgress {
+  stage: PythonDocumentRunStage;
   message: string;
 }
 
 type WorkerMessage =
-  | { type: 'status'; artifactId: string; stage: ExcelRunStage; message: string }
+  | { type: 'status'; artifactId: string; stage: PythonDocumentRunStage; message: string }
   | { type: 'result'; artifactId: string; stdout: string; stderr: string; 
       files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
 
 let worker: Worker | undefined;
 
 const pending = new Map<string, {
-  resolve: (res: ExcelResult) => void;
-  onProgress?: (progress: ExcelProgress) => void;
+  resolve: (res: PythonDocumentResult) => void;
+  onProgress?: (progress: PythonDocumentProgress) => void;
 }>();
 
-export function cancelExcelRun(artifactId: string) {
+export function cancelPythonRun(artifactId: string) {
   pending.delete(artifactId);
 }
 
@@ -55,22 +55,23 @@ function getWorker(): Worker {
   return worker;
 }
 
-export function runExcel(
+export function runPythonDocument(
   artifactId: string,
+  documentType: string,
   code: string,
   inputFiles?: Array<{ name: string; data: string }>,
-  onProgress?: (progress: ExcelProgress) => void,
-): Promise<ExcelResult> {
+  onProgress?: (progress: PythonDocumentProgress) => void,
+): Promise<PythonDocumentResult> {
   // Cancel any prior run for this artifact
   pending.delete(artifactId);
 
   return new Promise((resolve) => {
     pending.set(artifactId, { resolve, onProgress });
-    getWorker().postMessage({ type: 'run', artifactId, code, inputFiles });
+    getWorker().postMessage({ type: 'run', artifactId, documentType, code, inputFiles });
   });
 }
 
-export function terminateExcelWorker() {
+export function terminatePythonWorker() {
   if (worker) {
     worker.terminate();
     worker = undefined;
@@ -81,4 +82,4 @@ export function terminateExcelWorker() {
   }
 }
 
-export default runExcel;
+export default runPythonDocument;

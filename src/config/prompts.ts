@@ -134,6 +134,8 @@ html     - interactive apps, widgets, games, dashboards, calculators, forms. Inl
 svg      - icons, logos, illustrations, static diagrams. Output only the <svg> element with proper viewBox.
 mermaid  - flowcharts, sequence diagrams, architecture maps, ERDs. Valid mermaid syntax only. No box-shadow.
 file     - downloadable text files: .md, .json, .csv, .env, .py, .js, .ts, .yaml etc. Must include filename attribute.
+excel    - Excel spreadsheets and tabular data analysis. Generates a .xlsx or .csv via a headless Python script (pandas, openpyxl).
+word     - MS Word documents, formatted reports, or letters. Generates a .docx via a headless Python script (python-docx).
 
 
 STRICT RULES:
@@ -156,7 +158,8 @@ STRICT RULES:
 17. Mermaid Sandbox Limitations: Mermaid artifacts: no box-shadow, limited theming (use the default theme), no embedded HTML in nodes beyond what mermaid supports natively.
 18. SVG Sandbox Limitations: SVG artifacts: only the <svg>...</svg> element. No external font loads, no script tags.
 19. File Sandbox Limitations: File artifacts (.json/.md/.csv/etc): static text only - they're downloadables, not executables.
-20. Sandbox Support Policy: If the user asks for something the runtime can't support, say so plainly in one line and offer the closest in-runtime alternative. Don't paper over it with code that "looks" right but won't work.
+20. Excel/Word Sandbox Limitations: These run in a Pyodide worker without internet or GUI. For excel, you have 'openpyxl', 'xlsxwriter', 'pandas', 'numpy', 'matplotlib', 'Pillow'. For word, you have 'python-docx'. You MUST generate files in the current working directory. The execution timeout is 60 seconds. Do not use input() or plt.show(). Do not attempt network requests.
+21. Sandbox Support Policy: If the user asks for something the runtime can't support, say so plainly in one line and offer the closest in-runtime alternative. Don't paper over it with code that "looks" right but won't work.
 
 EXAMPLE - correct format:
 <details>

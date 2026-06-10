@@ -7,7 +7,7 @@ import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import DOMPurify from 'dompurify';
-import { runExcel, cancelExcelRun, type ExcelResult, type ExcelProgress, type ExcelRunStage } from '../workers/pyodideWorkerClient';
+import { runPythonDocument, cancelPythonRun, type PythonDocumentResult, type PythonDocumentProgress, type PythonDocumentRunStage } from '../workers/pyodideWorkerClient';
 
 interface RendererProps {
   content: string;
@@ -734,7 +734,7 @@ const FileRenderer: React.FC<RendererProps> = ({ content, title, isStreaming }) 
 };
 
 
-function parseExcelError(raw: string): { headline: string; detail: string; isTimeout: boolean; isPackage: boolean; isFile: boolean } {
+function parsePythonError(raw: string): { headline: string; detail: string; isTimeout: boolean; isPackage: boolean; isFile: boolean } {
   const isTimeout = /timed out/i.test(raw);
   const isPackage = /ModuleNotFoundError|No module named|ImportError/i.test(raw);
   const isFile = /FileNotFoundError|No such file/i.test(raw);
@@ -755,29 +755,29 @@ function parseExcelError(raw: string): { headline: string; detail: string; isTim
   return { headline, detail, isTimeout, isPackage, isFile };
 }
 
-const excelCache = new Map<string, ExcelResult>();
+const pythonCache = new Map<string, PythonDocumentResult>();
 
-export function clearExcelCache(artifactId: string) {
-  for (const key of Array.from(excelCache.keys())) {
-    if (key.startsWith(artifactId + '_')) excelCache.delete(key);
+export function clearPythonCache(artifactId: string) {
+  for (const key of Array.from(pythonCache.keys())) {
+    if (key.startsWith(artifactId + '_')) pythonCache.delete(key);
   }
-  excelCache.delete(artifactId);
+  pythonCache.delete(artifactId);
 }
 
-interface ExcelRendererProps {
+interface PythonDocumentRendererProps {
   artifact: Artifact;
   onRetry?: () => void;
 }
 
 const STAGE_LABELS: Record<string, string> = {
   init: 'Setting up Python environment',
-  packages: 'Loading Excel libraries (openpyxl, pandas, matplotlib...)',
+  packages: 'Loading necessary libraries',
   input: 'Loading your input file',
   running: 'Running script',
   ready: 'Ready',
 };
 
-const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
+const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifact, onRetry }) => {
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
 
@@ -796,13 +796,13 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
   }, [messages, inputFile]);
 
   const cacheKey = `${artifact.id}_${artifact.content}`;
-  const [result, setResult] = useState<ExcelResult | null>(() => excelCache.get(cacheKey) || null);
-  const [progress, setProgress] = useState<ExcelProgress | null>(null);
+  const [result, setResult] = useState<PythonDocumentResult | null>(() => pythonCache.get(cacheKey) || null);
+  const [progress, setProgress] = useState<PythonDocumentProgress | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [showRawError, setShowRawError] = useState(false);
   const [fileNotFound, setFileNotFound] = useState(false);
 
-  const ranRef = useRef<string | null>(excelCache.has(cacheKey) ? cacheKey : null);
+  const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef(false);
 
   useEffect(() => {
@@ -863,15 +863,16 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
       setProgress({ stage: 'init', message: 'Setting up Python environment...' });
 
       try {
-        const res = await runExcel(
+        const res = await runPythonDocument(
           artifact.id,
+          artifact.type,
           artifact.content,
           inputFiles,
           (prog) => { if (isActive()) setProgress(prog); }
         );
 
         if (!isActive()) return;
-        excelCache.set(cacheKey, res);
+        pythonCache.set(cacheKey, res);
         setResult(res);
         setIsRunning(false);
         isRunningRef.current = false;
@@ -889,11 +890,11 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
         }
       } catch (err: any) {
         if (!isActive()) return;
-        const errRes: ExcelResult = { 
+        const errRes: PythonDocumentResult = { 
           stdout: '', stderr: '', files: [], 
           error: err.message || String(err) 
         };
-        excelCache.set(cacheKey, errRes);
+        pythonCache.set(cacheKey, errRes);
         setResult(errRes);
         setIsRunning(false);
         isRunningRef.current = false;
@@ -910,7 +911,7 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
     return () => {
       isMounted = false;
       isRunningRef.current = false;
-      cancelExcelRun(artifact.id);
+      cancelPythonRun(artifact.id);
     };
   }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey]);
 
@@ -932,8 +933,8 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
   // ── Loading state ──
   if (isRunning) {
     const stage = progress?.stage || 'init';
-    const stages: ExcelRunStage[] = ['init', 'packages', 'input', 'running'];
-    const currentIdx = stages.indexOf(stage as ExcelRunStage);
+    const stages: PythonDocumentRunStage[] = ['init', 'packages', 'input', 'running'];
+    const currentIdx = stages.indexOf(stage as PythonDocumentRunStage);
     return (
       <div className="excel-output excel-output--loading" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div className="excel-loading-icon" style={{ marginBottom: '16px' }}>
@@ -957,7 +958,7 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ artifact, onRetry }) => {
 
   // ── Error state ──
   if (result.error) {
-    const { headline, detail, isTimeout, isPackage, isFile } = parseExcelError(result.error);
+    const { headline, detail, isTimeout, isPackage, isFile } = parsePythonError(result.error);
     return (
       <div className="excel-output excel-output--error" style={{ padding: '20px' }}>
         <div className="excel-error-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
@@ -1087,9 +1088,10 @@ const RENDERERS: Record<string, React.FC<RendererProps>> = {
   svg: SvgRenderer,
   mermaid: MermaidRenderer,
   file: FileRenderer,
-  excel: ExcelRenderer as any,
+  excel: PythonDocumentRenderer as any,
+  word: PythonDocumentRenderer as any,
 };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python' };
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python', word: 'python' };
 
 interface ArtifactRendererProps {
   content: string;
@@ -1111,18 +1113,18 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
 
 
   const language = LANGUAGE_MAP[type] || 'text';
-  if (type === 'excel') {
+  if (type === 'excel' || type === 'word') {
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const activeConversationId = useChatStore((s) => s.activeConversationId);
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || '';
       if (activeConversationId) {
-        useChatStore.getState().setDraft(activeConversationId, `The Excel script failed with this error: ${error}. Please fix it.`);
+        useChatStore.getState().setDraft(activeConversationId, `The python script failed with this error: ${error}. Please fix it.`);
       }
     };
     return (
       <RendererErrorBoundary content={content} language={language}>
-        <ExcelRenderer artifact={activeArtifact!} onRetry={onRetry} />
+        <PythonDocumentRenderer artifact={activeArtifact!} onRetry={onRetry} />
       </RendererErrorBoundary>
     );
   }
