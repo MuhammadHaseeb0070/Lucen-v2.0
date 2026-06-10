@@ -764,6 +764,123 @@ export function clearPythonCache(artifactId: string) {
   pythonCache.delete(artifactId);
 }
 
+const DocumentPreview = ({ file }: { file: { name: string; data: string; mimeType: string } }) => {
+  const [content, setContent] = useState<React.ReactNode | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPreview = async () => {
+      try {
+        if (file.name.endsWith('.csv')) {
+          const text = atob(file.data);
+          const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 10);
+          const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+          if (rows.length < 2) return;
+          setContent(
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', minWidth: '400px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-surface)' }}>
+                    {rows[0].map((h, i) => <th key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--bg-inset)', fontWeight: 600, color: 'var(--text-secondary)' }}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.slice(1).map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--bg-inset)' }}>
+                      {row.map((cell, j) => <td key={j} style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{cell}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {lines.length === 10 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Showing first 10 rows</div>}
+            </div>
+          );
+        } else if (file.name.endsWith('.xlsx')) {
+          const XLSX = await import('xlsx');
+          const binary = atob(file.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const workbook = XLSX.read(bytes, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          
+          if (!rows || rows.length === 0) {
+            setContent(<div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Spreadsheet is empty</div>);
+            return;
+          }
+
+          const displayRows = rows.slice(0, 10);
+          setContent(
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', minWidth: '400px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-surface)' }}>
+                    {displayRows[0]?.map((h: any, i: number) => <th key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--bg-inset)', fontWeight: 600, color: 'var(--text-secondary)' }}>{h ?? ''}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.slice(1).map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--bg-inset)' }}>
+                      {displayRows[0]?.map((_, j) => <td key={j} style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{row[j] ?? ''}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {rows.length > 10 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Showing first 10 rows of {rows.length}</div>}
+            </div>
+          );
+        } else if (file.name.endsWith('.docx')) {
+          const mammoth = await import('mammoth');
+          const binary = atob(file.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
+          setContent(
+            <div className="docx-preview" style={{ padding: '16px', fontSize: '0.9rem', lineHeight: '1.6', color: 'var(--text-primary)' }} dangerouslySetInnerHTML={{ __html: result.value || '<i>Document is empty</i>' }} />
+          );
+        } else {
+          setContent(<div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>Preview not available for this file type.</div>);
+        }
+      } catch (e: any) {
+        if (mounted) setError(e.message || 'Error generating preview');
+      }
+    };
+
+    loadPreview();
+    return () => { mounted = false; };
+  }, [file]);
+
+  if (error) {
+    return (
+      <div style={{ margin: '16px 0', border: '1px solid #fecaca', borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', background: '#fef2f2', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid #fecaca', color: '#991b1b' }}>Failed to preview: {file.name}</div>
+        <div style={{ padding: '12px', fontSize: '0.8rem', color: '#b91c1c' }}>{error}</div>
+      </div>
+    );
+  }
+
+  if (!content) {
+    return (
+      <div style={{ margin: '16px 0', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', background: 'var(--bg-muted)', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid var(--bg-inset)', color: 'var(--text-secondary)' }}>Preview: {file.name}</div>
+        <div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>Loading preview...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ margin: '16px 0', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden', background: 'var(--bg-base)' }}>
+      <div style={{ padding: '8px 12px', background: 'var(--bg-muted)', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid var(--bg-inset)', color: 'var(--text-secondary)' }}>Preview: {file.name}</div>
+      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+        {content}
+      </div>
+    </div>
+  );
+};
+
 interface PythonDocumentRendererProps {
   artifact: Artifact;
   onRetry?: () => void;
@@ -1009,36 +1126,6 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const renderCsvPreview = (file: { name: string; data: string; mimeType: string }) => {
-    try {
-      const text = atob(file.data);
-      const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 6);
-      const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-      if (rows.length < 2) return null;
-      return (
-        <div key={`preview-${file.name}`} className="csv-preview-container" style={{ margin: '16px 0', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden' }}>
-          <div style={{ padding: '8px 12px', background: 'var(--bg-muted)', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid var(--bg-inset)', color: 'var(--text-secondary)' }}>Preview: {file.name}</div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', minWidth: '400px' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-surface)' }}>
-                  {rows[0].map((h, i) => <th key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--bg-inset)', fontWeight: 600, color: 'var(--text-secondary)' }}>{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(1).map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--bg-inset)' }}>
-                    {row.map((cell, j) => <td key={j} style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{cell}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      );
-    } catch { return null; }
-  };
-
   return (
     <div className="doc-output-container" style={{ padding: '24px', background: 'var(--bg-base)', height: '100%', overflowY: 'auto' }}>
       {(result.stdout || result.stderr) && (
@@ -1092,7 +1179,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
                   <Download size={16} /> Download
                 </button>
               </div>
-              {file.name.endsWith('.csv') && renderCsvPreview(file)}
+              {(file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.docx')) && <DocumentPreview file={file} />}
             </React.Fragment>
           ))}
         </div>
