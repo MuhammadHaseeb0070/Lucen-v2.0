@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Muhammad Haseeb — Integration Engineer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0A0D14;
+      --text: #E2E8F0;
+      --text-muted: #94A3B8;
+      --accent: #0ea5e9;
+      --accent-dim: rgba(14, 165, 233, 0.15);
+      --surface: #1E293B;
+      --border: #334155;
+      
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'IBM Plex Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Layout Structure - Split Screen Layout */
+    .container {
+      display: flex;
+      flex-direction: column;
+    }
+
+    @media (min-width: 1024px) {
+      .container {
+        flex-direction: row;
+        min-height: 100vh;
+      }
+    }
+
+    /* Fixed Left Column */
+    .left-panel {
+      padding: 3rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background-color: #07090e;
+    }
+
+    @media (min-width: 1024px) {
+      .left-panel {
+        width: 40%;
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        border-bottom: none;
+        border-right: 1px solid var(--border);
+        padding: 5rem 4rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+    }
+
+    /* Scrollable Right Column */
+    .right-panel {
+      padding: 3rem 2rem;
+    }
+
+    @media (min-width: 1024px) {
+      .right-panel {
+        width: 60%;
+        margin-left: 40%;
+        padding: 5rem 6rem;
+      }
+    }
+
+    /* Typography Utilities */
+    h1, h2, h3, h4 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .mono-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      display: inline-block;
+      margin-bottom: 0.75rem;
+    }
+
+    /* Left Panel Styling */
+    .brand-title {
+      font-size: 2.5rem;
+      line-height: 1.1;
+      margin-bottom: 0.5rem;
+    }
+
+    .brand-role {
+      font-size: 1.25rem;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+      font-family: var(--font-display);
+    }
+
+    .brand-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 380px;
+      margin-bottom: 2rem;
+    }
+
+    /* Navigation */
+    .nav-list {
+      list-style: none;
+      display: none;
+    }
+
+    @media (min-width: 1024px) {
+      .nav-list {
+        display: block;
+        margin-top: 3rem;
+      }
+    }
+
+    .nav-item {
+      margin-bottom: 1rem;
+    }
+
+    .nav-link {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      transition: color 0.4s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+    }
+
+    .nav-link::before {
+      content: '';
+      width: 0;
+      height: 1px;
+      background-color: var(--accent);
+      margin-right: 0;
+      transition: width 0.4s var(--ease-out-expo), margin-right 0.4s var(--ease-out-expo);
+    }
+
+    .nav-link:hover {
+      color: var(--text);
+      transform: translateX(8px);
+    }
+
+    .nav-link:hover::before {
+      width: 24px;
+      margin-right: 8px;
+    }
+
+    /* System Stats panel */
+    .system-status {
+      border: 1px solid var(--border);
+      background-color: rgba(30, 41, 59, 0.3);
+      padding: 1.25rem;
+      border-radius: 4px;
+      margin-top: 2rem;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      margin-bottom: 0.5rem;
+    }
+
+    .status-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #22c55e;
+    }
+
+    /* Right Panel Layout (Chapters) */
+    .section-chapter {
+      padding-bottom: 6rem;
+    }
+
+    .section-chapter:last-child {
+      padding-bottom: 0;
+    }
+
+    .section-title {
+      font-size: 1.75rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    /* Signature Element - Middleware Flow Animation */
+    .hero-canvas {
+      width: 100%;
+      height: 180px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: radial-gradient(circle at 50% 50%, #111622 0%, #07090e 100%);
+      margin-bottom: 3rem;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+    }
+
+    .node {
+      width: 48px;
+      height: 48px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background-color: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text);
+      position: relative;
+      z-index: 2;
+    }
+
+    .node.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+    }
+
+    .node-label {
+      position: absolute;
+      bottom: -20px;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .flow-line-container {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .data-packet {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background-color: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+      top: calc(50% - 4px);
+    }
+
+    @keyframes flowRight1 {
+      0% { left: 4.5rem; opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { left: calc(50% - 24px); opacity: 0; }
+    }
+
+    @keyframes flowRight2 {
+      0% { left: calc(50% + 24px); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { left: calc(100% - 5rem); opacity: 0; }
+    }
+
+    .packet-1 {
+      animation: flowRight1 3s infinite linear;
+    }
+
+    .packet-2 {
+      animation: flowRight2 3s infinite linear;
+      animation-delay: 1.5s;
+    }
+
+    /* Asymmetric Skills Grid */
+    .skills-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 640px) {
+      .skills-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    .skill-card {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      background-color: rgba(30, 41, 59, 0.15);
+      transition: border-color 0.4s var(--ease-out-expo), background-color 0.4s var(--ease-out-expo);
+    }
+
+    .skill-card:hover {
+      border-color: var(--accent);
+      background-color: rgba(14, 165, 233, 0.03);
+    }
+
+    .skill-card.primary {
+      grid-column: span 1;
+    }
+
+    @media (min-width: 640px) {
+      .skill-card.primary {
+        grid-column: span 2;
+        border-left: 3px solid var(--accent);
+      }
+    }
+
+    .skill-card h4 {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    .skill-list {
+      list-style: none;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .skill-list li {
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .skill-list li::before {
+      content: '→';
+      color: var(--accent);
+      margin-right: 0.5rem;
+    }
+
+    /* Experience / Projects chapters */
+    .timeline {
+      position: relative;
+      padding-left: 2rem;
+      border-left: 1px solid var(--border);
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 3rem;
+    }
+
+    .timeline-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .timeline-marker {
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      background-color: var(--bg);
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      left: calc(-2rem - 6px);
+      top: 6px;
+    }
+
+    .project-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.5rem;
+    }
+
+    .project-date {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .project-desc {
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .project-stats {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .stat-box {
+      border-left: 2px solid var(--border);
+      padding-left: 0.75rem;
+    }
+
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .stat-lbl {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Call to Action */
+    .contact-link {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--text);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      transition: color 0.4s var(--ease-out-expo);
+      margin-top: 1rem;
+    }
+
+    .contact-link:hover {
+      color: var(--accent);
+    }
+
+    .contact-link span {
+      margin-left: 0.75rem;
+      transition: transform 0.4s var(--ease-out-expo);
+    }
+
+    .contact-link:hover span {
+      transform: translateX(8px);
+    }
+
+    /* Scroll Reveals */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.8s var(--ease-out-expo), transform 0.8s var(--ease-out-expo);
+    }
+
+    .reveal.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- LEFT PANEL: Core Profile, Brand, Navigation -->
+    <aside class="left-panel">
+      <div>
+        <span class="mono-tag">// integration middleware</span>
+        <h1 class="brand-title">Muhammad Haseeb</h1>
+        <div class="brand-role">Integration Engineer</div>
+        <p class="brand-desc">
+          Designing and securing the high-availability message brokers and transformation flows that bridge modern banking systems.
+        </p>
+        
+        <ul class="nav-list">
+          <li class="nav-item"><a href="#flows" class="nav-link">01. message_flows</a></li>
+          <li class="nav-item"><a href="#skills" class="nav-link">02. stack_capabilities</a></li>
+          <li class="nav-item"><a href="#experience" class="nav-link">03. system_routing</a></li>
+          <li class="nav-item"><a href="#contact" class="nav-link">04. open_connection</a></li>
+        </ul>
+      </div>
+
+      <div class="system-status">
+        <div class="status-row">
+          <span>SYSTEM GATEWAY</span>
+          <span style="color: #22c55e; display: flex; align-items: center; gap: 6px;">
+            <span class="status-indicator"></span> ONLINE
+          </span>
+        </div>
+        <div class="status-row">
+          <span>LATENCY</span>
+          <span>12ms (avg)</span>
+        </div>
+        <div class="status-row">
+          <span>MIDDLEWARE RUNTIME</span>
+          <span>IBM ACE v12.0</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT PANEL: Details, Projects, Skills -->
+    <main class="right-panel">
+      
+      <!-- CHAPTER 1: Hero Middleware Canvas -->
+      <section id="flows" class="section-chapter">
+        <span class="mono-tag">system visualization</span>
+        <h2 class="section-title">Message Broker Simulation</h2>
+        
+        <div class="hero-canvas">
+          <div class="flow-line-container">
+            <div class="data-packet packet-1"></div>
+            <div class="data-packet packet-2"></div>
+            <!-- SVG connection pipe -->
+            <svg width="100%" height="100%" style="position: absolute; left: 0; top: 0;">
+              <line x1="10%" y1="50%" x2="90%" y2="50%" stroke="#334155" stroke-width="1.5" stroke-dasharray="4" />
+            </svg>
+          </div>
+
+          <div class="node active">
+            XML
+            <span class="node-label">Inbound Queue</span>
+          </div>
+          <div class="node active" style="left: calc(50% - 24px); position: absolute;">
+            ESQL
+            <span class="node-label">Transformation</span>
+          </div>
+          <div class="node active">
+            JSON
+            <span class="node-label">Target REST API</span>
+          </div>
+        </div>
+        
+        <p style="color: var(--text-muted); max-width: 600px;">
+          I focus on middleware architecture. I build integration components that receive raw bank payloads, securely check data integrity, transform schemas, and map them to their correct destination REST endpoints within milliseconds.
+        </p>
+      </section>
+
+      <!-- CHAPTER 2: Technical Grid (Asymmetric) -->
+      <section id="skills" class="section-chapter reveal">
+        <span class="mono-tag">capabilities</span>
+        <h2 class="section-title">Integration Stack</h2>
+        
+        <div class="skills-grid">
+          <!-- Main Primary Skill - Span 2 Columns -->
+          <div class="skill-card primary">
+            <span class="mono-tag" style="margin-bottom: 0.25rem;">tier 01</span>
+            <h4>Middleware & Routing</h4>
+            <ul class="skill-list">
+              <li>IBM App Connect Enterprise (ACE)</li>
+              <li>ESQL / Message Flow Design</li>
+              <li>IBM WebSphere MQ Integration</li>
+              <li>REST / SOAP Web Services</li>
+            </ul>
+          </div>
+          
+          <!-- Secondary Skill -->
+          <div class="skill-card">
+            <span class="mono-tag" style="margin-bottom: 0.25rem;">tier 02</span>
+            <h4>Security & Dev</h4>
+            <ul class="skill-list">
+              <li>AES / RSA Cryptography</li>
+              <li>Full-Stack Development</li>
+              <li>Node.js / React</li>
+              <li>PostgreSQL / SQL</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHAPTER 3: Career Architecture & Projects -->
+      <section id="experience" class="section-chapter reveal">
+        <span class="mono-tag">log_history</span>
+        <h2 class="section-title">System Implementations</h2>
+        
+        <div class="timeline">
+          <!-- Item 1 -->
+          <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="project-header">
+              <h3>Junior Integration Developer</h3>
+              <span class="project-date">2026 — Present</span>
+            </div>
+            <div class="project-header">
+              <span style="color: var(--accent); font-size: 0.9rem;">Dubai Islamic Bank Pakistan</span>
+            </div>
+            <p class="project-desc">
+              Designing, debugging, and maintaining core enterprise message routing. Writing ESQL schema transformations for SOAP-to-REST translation layers.
+            </p>
+            <div class="project-stats">
+              <div class="stat-box">
+                <div class="stat-val">100%</div>
+                <div class="stat-lbl">Message Delivery</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val">ESQL</div>
+                <div class="stat-lbl">Core Logic</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Item 2 -->
+          <div class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="project-header">
+              <h3>LavaCrypt</h3>
+              <span class="project-date">Core Developer</span>
+            </div>
+            <p class="project-desc">
+              Created a hardened local messaging tool using cryptographic containers. Standardized on AES-GCM 256-bit encryption vectors for highly sensitive messaging.
+            </p>
+            <div class="project-stats">
+              <div class="stat-box">
+                <div class="stat-val">256-bit</div>
+                <div class="stat-lbl">AES Encryption</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val">&lt; 15ms</div>
+                <div class="stat-lbl">Decryption Latency</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHAPTER 4: Open Connection -->
+      <section id="contact" class="section-chapter reveal">
+        <span class="mono-tag">handshake</span>
+        <h2 class="section-title">Open Port</h2>
+        <p style="color: var(--text-muted); margin-bottom: 2rem;">
+          Looking to integrate systems, build high-speed API gateways, or discuss enterprise middleware architecture? Let's initialize a connection request.
+        </p>
+        <a href="mailto:mhaseeb.dev@outlook.com" class="contact-link">
+          mhaseeb.dev@outlook.com <span>→</span>
+        </a>
+      </section>
+
+    </main>
+
+  </div>
+
+  <script>
+    // Scroll Reveal implementation
+    const revealElements = document.querySelectorAll('.reveal');
+    const handleScroll = () => {
+      revealElements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const triggerPoint = window.innerHeight - 80;
+        if (rect.top < triggerPoint) {
+          el.classList.add('active');
+        }
+      });
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    // Initial trigger
+    handleScroll();
+  </script>
+
+</body>
+</html>
