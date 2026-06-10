@@ -774,41 +774,29 @@ const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: str
     const loadPreview = async () => {
       try {
         if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx')) {
-          let rows: any[][] = [];
+          const XLSX = await import('xlsx');
+          const binary = atob(file.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          
+          let workbook;
           if (file.name.endsWith('.csv')) {
-            const text = atob(file.data);
-            const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 50);
-            rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+            const text = new TextDecoder().decode(bytes);
+            workbook = XLSX.read(text, { type: 'string' });
           } else {
-            const XLSX = await import('xlsx');
-            const binary = atob(file.data);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const workbook = XLSX.read(bytes, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+            workbook = XLSX.read(bytes, { type: 'array' });
           }
 
-          if (!rows || rows.length === 0) {
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          
+          if (!worksheet || !worksheet['!ref']) {
             setContent(<div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Spreadsheet is empty</div>);
             return;
           }
 
-          // Generate column letters (A, B, C... Z, AA, AB...)
-          const getColLetter = (index: number) => {
-            let letter = '';
-            let temp = index;
-            while (temp >= 0) {
-              letter = String.fromCharCode(65 + (temp % 26)) + letter;
-              temp = Math.floor(temp / 26) - 1;
-            }
-            return letter;
-          };
-
-          const displayRows = rows.slice(0, 100); // max 100 rows for preview
-          const maxCols = Math.max(...displayRows.map(r => r.length));
-          const cols = Array.from({ length: maxCols }, (_, i) => getColLetter(i));
+          // Generate HTML natively from the worksheet to preserve styles and merged cells
+          const htmlString = XLSX.utils.sheet_to_html(worksheet, { id: 'xlsx-native-table' });
 
           setContent(
             <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', fontSize: '11pt', background: '#fff', border: '1px solid #d4d4d4' }}>
@@ -816,7 +804,7 @@ const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: str
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={16} />
                   <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Excel Preview</span>
+                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Excel Preview (Style Preserved)</span>
                 </div>
                 <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
                   <Download size={14} /> Download
@@ -826,83 +814,50 @@ const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: str
                 <i style={{ fontFamily: 'Times New Roman, serif', fontSize: '14px', fontStyle: 'italic', marginRight: '8px', opacity: 0.8 }}>fx</i> 
                 <div style={{ background: '#fff', border: '1px solid #c8c6c4', padding: '2px 8px', flex: 1, color: '#a19f9d' }}>Formula bar disabled in preview</div>
               </div>
-              <div style={{ overflowX: 'auto', maxHeight: '500px', background: '#fff' }}>
-                <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', tableLayout: 'fixed' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', position: 'sticky', top: 0, left: 0, zIndex: 3 }} />
-                      {cols.map(c => (
-                        <th key={c} style={{ minWidth: '80px', padding: '2px 6px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', color: '#605e5c', fontWeight: 'normal', textAlign: 'center', position: 'sticky', top: 0, zIndex: 2 }}>
-                          {c}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayRows.map((row, rIdx) => (
-                      <tr key={rIdx}>
-                        <td style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #e1dfdd', color: '#605e5c', textAlign: 'center', position: 'sticky', left: 0, zIndex: 1, fontSize: '10pt' }}>
-                          {rIdx + 1}
-                        </td>
-                        {cols.map((_, cIdx) => {
-                          const isActiveCell = rIdx === 0 && cIdx === 0;
-                          return (
-                            <td key={cIdx} style={{ 
-                              padding: '2px 6px', 
-                              borderRight: '1px solid #e1dfdd', 
-                              borderBottom: '1px solid #e1dfdd', 
-                              color: '#000', 
-                              whiteSpace: 'nowrap', 
-                              overflow: 'hidden', 
-                              textOverflow: 'ellipsis', 
-                              maxWidth: '200px',
-                              boxShadow: isActiveCell ? 'inset 0 0 0 2px #107c41' : 'none',
-                              zIndex: isActiveCell ? 1 : 0,
-                              position: isActiveCell ? 'relative' : 'static'
-                            }}>
-                              {row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {rows.length > 100 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: '#605e5c', background: '#f3f2f1', borderTop: '1px solid #d4d4d4' }}>Showing first 100 rows of {rows.length}</div>}
+              <style>{`
+                #xlsx-native-table { border-collapse: collapse; min-width: 100%; }
+                #xlsx-native-table td, #xlsx-native-table th { 
+                  border: 1px solid #e1dfdd; 
+                  padding: 4px 8px; 
+                  white-space: nowrap; 
+                  color: #000;
+                }
+              `}</style>
+              <div style={{ overflowX: 'auto', maxHeight: '500px', background: '#fff', padding: '16px' }} dangerouslySetInnerHTML={{ __html: htmlString }} />
             </div>
           );
         } else if (file.name.endsWith('.docx')) {
-          const mammoth = await import('mammoth');
+          const docx = await import('docx-preview');
           const binary = atob(file.data);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
+          
           setContent(
-            <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', background: '#f3f2f1', border: '1px solid #d4d4d4', display: 'flex', flexDirection: 'column', height: '600px' }}>
-              <style>{`
-                .docx-preview-paper p { margin-top: 0; margin-bottom: 8pt; line-height: 1.08; font-size: 11pt; color: #000; }
-                .docx-preview-paper h1 { color: #2f5496; margin-top: 12pt; margin-bottom: 0; font-weight: 400; font-size: 16pt; }
-                .docx-preview-paper h2 { color: #2f5496; margin-top: 10pt; margin-bottom: 0; font-weight: 400; font-size: 13pt; }
-                .docx-preview-paper h3 { color: #2f5496; margin-top: 10pt; margin-bottom: 0; font-weight: 400; font-size: 11pt; }
-                .docx-preview-paper ul, .docx-preview-paper ol { margin-top: 0; margin-bottom: 8pt; padding-left: 36pt; }
-                .docx-preview-paper li { margin-bottom: 0; line-height: 1.08; font-size: 11pt; color: #000; }
-              `}</style>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2b579a', color: '#fff', padding: '8px 16px', flexShrink: 0 }}>
+            <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', background: '#f3f2f1', border: '1px solid #d4d4d4', display: 'flex', flexDirection: 'column', height: '800px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2b579a', color: '#fff', padding: '8px 16px', flexShrink: 0, zIndex: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={16} />
                   <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Word Preview</span>
+                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Word Preview (Style Preserved)</span>
                 </div>
                 <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
                   <Download size={14} /> Download
                 </button>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px' }}>
-                <div className="docx-preview-paper" style={{ 
-                  background: '#fff', maxWidth: '800px', margin: '40px auto', padding: '1in', 
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.13), 0 1px 2px rgba(0,0,0,0.11)', color: '#000', minHeight: '11in'
-                }} dangerouslySetInnerHTML={{ __html: result.value || '<i>Document is empty</i>' }} />
+              <div style={{ flex: 1, overflowY: 'auto', background: '#e1e1e1', padding: '20px 0' }}>
+                <div ref={(el) => {
+                  if (el && !el.hasAttribute('data-rendered')) {
+                    el.setAttribute('data-rendered', 'true');
+                    docx.renderAsync(bytes, el, undefined, { 
+                      className: 'docx-native-preview', 
+                      inWrapper: true, 
+                      ignoreWidth: false, 
+                      ignoreHeight: false, 
+                      ignoreFonts: false, 
+                      breakPages: true 
+                    }).catch(err => console.error("docx-preview error:", err));
+                  }
+                }} />
               </div>
             </div>
           );
