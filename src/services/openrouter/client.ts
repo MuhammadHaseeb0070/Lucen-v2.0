@@ -2,6 +2,7 @@ import type { Message } from '../../types';
 import {
   getActiveModel,
   ABSOLUTE_OUTPUT_CEILING,
+  updateConfigFromHeaders,
 } from '../../config/models';
 import { useUIStore } from '../../store/uiStore';
 import { supabase, isSupabaseEnabled } from '../../lib/supabase';
@@ -535,6 +536,9 @@ async function streamViaEdgeFunction(
     callbacks.onError(errorMsg); 
     return;
   }
+
+  const isSide = model.id === 'side-chat-model';
+  updateConfigFromHeaders(isSide, response.headers);
 
   await processStream(response, callbacks, model.id, signal, (summary) => {
     finalizeChat({
