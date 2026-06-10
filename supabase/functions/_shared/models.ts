@@ -191,27 +191,29 @@ export function getDynamicHeaders(chosenModel: string, modelType: string): Recor
   const isMain = modelType === 'main-chat-model';
   const prefix = isSide ? 'SIDE_CHAT_' : isMain ? 'MAIN_CHAT_' : '';
 
+  const denoEnv = (globalThis as any).Deno?.env;
+
   let displayName = modelConfig.modelDisplayName;
-  if (prefix && Deno.env.get(`${prefix}MODEL_NAME`)) {
-    displayName = Deno.env.get(`${prefix}MODEL_NAME`)!;
+  if (prefix && denoEnv?.get(`${prefix}MODEL_NAME`)) {
+    displayName = denoEnv.get(`${prefix}MODEL_NAME`)!;
   }
   let supportsReasoning = String(modelConfig.supportsReasoning);
-  if (prefix && Deno.env.get(`${prefix}SUPPORTS_REASONING`)) {
-    supportsReasoning = Deno.env.get(`${prefix}SUPPORTS_REASONING`)!;
+  if (prefix && denoEnv?.get(`${prefix}SUPPORTS_REASONING`)) {
+    supportsReasoning = denoEnv.get(`${prefix}SUPPORTS_REASONING`)!;
   }
   let contextWindow = String(modelConfig.contextWindowTokens);
-  if (prefix && Deno.env.get(`${prefix}CONTEXT_WINDOW`)) {
-    contextWindow = Deno.env.get(`${prefix}CONTEXT_WINDOW`)!;
+  if (prefix && denoEnv?.get(`${prefix}CONTEXT_WINDOW`)) {
+    contextWindow = denoEnv.get(`${prefix}CONTEXT_WINDOW`)!;
   }
   let maxOutput = String(modelConfig.maxOutputTokens);
-  if (prefix && Deno.env.get(`${prefix}MAX_OUTPUT`)) {
-    maxOutput = Deno.env.get(`${prefix}MAX_OUTPUT`)!;
+  if (prefix && denoEnv?.get(`${prefix}MAX_OUTPUT`)) {
+    maxOutput = denoEnv.get(`${prefix}MAX_OUTPUT`)!;
   }
   let tokensPerSecond = String(modelConfig.tokensPerSecond);
   if (prefix) {
     const envTps = isSide
-      ? Deno.env.get('SIDE_CHAT_TOKENS_PER_SECOND')
-      : Deno.env.get('VITE_MAIN_CHAT_TOKENS_PER_SECOND') ?? Deno.env.get('MAIN_CHAT_TOKENS_PER_SECOND');
+      ? denoEnv?.get('SIDE_CHAT_TOKENS_PER_SECOND')
+      : denoEnv?.get('VITE_MAIN_CHAT_TOKENS_PER_SECOND') ?? denoEnv?.get('MAIN_CHAT_TOKENS_PER_SECOND');
     if (envTps) tokensPerSecond = envTps;
   }
 
@@ -224,4 +226,5 @@ export function getDynamicHeaders(chosenModel: string, modelType: string): Recor
     'Access-Control-Expose-Headers': 'x-model-name, x-supports-reasoning, x-context-window, x-max-output, x-tokens-per-second',
   };
 }
+
 
