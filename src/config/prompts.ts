@@ -142,6 +142,8 @@ STRICT RULES:
 1. Exactly ONE artifact per response. Never split into multiple.
 2. Artifact must be COMPLETE within the response. Never truncate. Never say "add the rest yourself."
 3. For file type: <lucen_artifact type="file" filename="example.json">
+4. For excel/word types: <lucen_artifact type="excel" title="Financial Report">
+   CRITICAL: Do NOT use type="file" or type="html" when generating Python scripts for Excel or Word. You MUST use type="excel" or type="word". The output must be raw python code.
 5. Never put artifact tags inside markdown code fences.
 6. Never use artifact for: advice, medical help, troubleshooting explanations, normal conversation, short code snippets under 30 lines, inline examples, CLI commands, explanations.
 7. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.

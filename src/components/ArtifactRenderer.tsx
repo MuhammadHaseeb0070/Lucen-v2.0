@@ -993,9 +993,9 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
   }
 
   const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
-  const excelFiles = uniqueFiles.filter(f => f.mimeType.includes('spreadsheet') || f.name.endsWith('.xlsx') || f.name.endsWith('.csv'));
+  const documentFiles = uniqueFiles.filter(f => f.mimeType.includes('spreadsheet') || f.name.endsWith('.xlsx') || f.name.endsWith('.csv') || f.name.endsWith('.docx'));
   const imageFiles = uniqueFiles.filter(f => f.mimeType.startsWith('image/'));
-  const otherFiles = uniqueFiles.filter(f => !excelFiles.includes(f) && !imageFiles.includes(f));
+  const otherFiles = uniqueFiles.filter(f => !documentFiles.includes(f) && !imageFiles.includes(f));
 
   const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
     const binary = atob(file.data);
@@ -1025,10 +1025,10 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
           <pre style={{ marginTop: '4px', fontFamily: 'monospace', background: '#fffbeb', padding: '8px', borderRadius: '4px', overflow: 'auto', maxHeight: '100px' }}>{result.stderr}</pre>
         </details>
       )}
-      {excelFiles.length > 0 && (
+      {documentFiles.length > 0 && (
         <div className="excel-files-section" style={{ marginBottom: '16px' }}>
           <div className="excel-files-heading" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Generated Files</div>
-          {excelFiles.map((file) => (
+          {documentFiles.map((file) => (
             <div key={file.name} className="excel-file-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '10px 14px', borderRadius: '6px', marginBottom: '8px' }}>
               <div className="excel-file-card-icon" style={{ color: '#16a34a' }}>
                 <FileText size={20} />
@@ -1037,6 +1037,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
                 <div className="excel-file-card-name" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#166534' }}>{file.name}</div>
                 <div className="excel-file-card-type" style={{ fontSize: '0.7rem', color: '#15803d' }}>
                   {file.name.endsWith('.xlsx') ? 'Excel Spreadsheet' : 
+                   file.name.endsWith('.docx') ? 'Word Document' : 
                    file.name.endsWith('.csv') ? 'CSV File' : 'File'}
                 </div>
               </div>
