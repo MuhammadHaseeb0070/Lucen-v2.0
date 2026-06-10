@@ -37,8 +37,8 @@ Build a highly consistent, parameter-normalized, and robust fallback system (Pri
 
 | Requirement ID | Description | Phase | Verification Status |
 |---|---|---|---|
-| **REQ-01** | Multi-Model Secret Configuration | TBD | Pending |
-| **REQ-02** | Sequential Fallback Execution Loop | TBD | Pending |
-| **REQ-03** | Parameter Normalization Registry | TBD | Pending |
-| **REQ-04** | Dynamic Metadata Header Sync | TBD | Pending |
-| **REQ-05** | Update `get-model-config` Config | TBD | Pending |
+| **REQ-01** | Multi-Model Secret Configuration | Phase 8 | Pending |
+| **REQ-02** | Sequential Fallback Execution Loop | Phase 8 | Pending |
+| **REQ-03** | Parameter Normalization Registry | Phase 9 | Pending |
+| **REQ-04** | Dynamic Metadata Header Sync | Phase 9 | Pending |
+| **REQ-05** | Update `get-model-config` Config | Phase 8 | Pending |
