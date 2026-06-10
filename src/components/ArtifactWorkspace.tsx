@@ -26,8 +26,8 @@ const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: str
 
 const DOWNLOAD_EXTENSION_MAP: Record<string, string> = {
   file: 'txt',
-  excel: 'xlsx',
-  word: 'docx',
+  excel: 'py',
+  word: 'py',
 };
 
 function makeSafeName(title: string): string {
@@ -317,25 +317,29 @@ const ArtifactWorkspace: React.FC = () => {
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
           <div style={{ position: 'relative' }}>
-              <button className="artifact-action-btn" onClick={() => setDownloadOpen(!downloadOpen)} title="Download artifact">
-                <Download size={15} />
-              </button>
-              {downloadOpen && (
-                <div className="hub-sort-dropdown" style={{ right: 0, top: '100%', marginTop: '4px', padding: '4px' }}>
-                  <button className="hub-sort-option" onClick={() => handleDownload(DOWNLOAD_EXTENSION_MAP[activeArtifact.type] || activeArtifact.type)}>
-                    Download .{DOWNLOAD_EXTENSION_MAP[activeArtifact.type] || activeArtifact.type}
-                  </button>
-                  <button className="hub-sort-option" onClick={() => handleDownload('txt')}>
-                    Download .txt
-                  </button>
-                  {activeArtifact.type === 'mermaid' && (
-                    <button className="hub-sort-option" onClick={() => handleDownload('svg')}>
-                      Download as .svg
+            {!(viewMode === 'preview' && (activeArtifact.type === 'excel' || activeArtifact.type === 'word')) && (
+              <>
+                <button className="artifact-action-btn" onClick={() => setDownloadOpen(!downloadOpen)} title="Download artifact">
+                  <Download size={15} />
+                </button>
+                {downloadOpen && (
+                  <div className="hub-sort-dropdown" style={{ right: 0, top: '100%', marginTop: '4px', padding: '4px' }}>
+                    <button className="hub-sort-option" onClick={() => handleDownload(DOWNLOAD_EXTENSION_MAP[activeArtifact.type] || activeArtifact.type)}>
+                      Download .{DOWNLOAD_EXTENSION_MAP[activeArtifact.type] || activeArtifact.type}
                     </button>
-                  )}
-                </div>
-              )}
-            </div>
+                    <button className="hub-sort-option" onClick={() => handleDownload('txt')}>
+                      Download .txt
+                    </button>
+                    {activeArtifact.type === 'mermaid' && (
+                      <button className="hub-sort-option" onClick={() => handleDownload('svg')}>
+                        Download as .svg
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           {/* Publish / Hub button — visible when not streaming and not a raw import */}
           {!activeArtifact.isStreaming && !activeArtifact.isImported && (
             <button

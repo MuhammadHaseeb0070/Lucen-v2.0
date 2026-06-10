@@ -1009,42 +1009,91 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="excel-output excel-output--success" style={{ padding: '20px' }}>
-      {result.stdout && (
-        <div className="excel-stdout" style={{ marginBottom: '16px' }}>
-          <div className="excel-stdout-bar" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#4b5563', borderBottom: '1px solid #e5e7eb', paddingBottom: '4px', marginBottom: '8px' }}>
-            <Terminal size={12} /><span>Output</span>
+  const renderCsvPreview = (file: { name: string; data: string; mimeType: string }) => {
+    try {
+      const text = atob(file.data);
+      const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 6);
+      const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      if (rows.length < 2) return null;
+      return (
+        <div key={`preview-${file.name}`} className="csv-preview-container" style={{ margin: '16px 0', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', background: 'var(--bg-muted)', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid var(--bg-inset)', color: 'var(--text-secondary)' }}>Preview: {file.name}</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', minWidth: '400px' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-surface)' }}>
+                  {rows[0].map((h, i) => <th key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--bg-inset)', fontWeight: 600, color: 'var(--text-secondary)' }}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(1).map((row, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--bg-inset)' }}>
+                    {row.map((cell, j) => <td key={j} style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{cell}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <pre style={{ fontFamily: 'monospace', fontSize: '0.8rem', background: '#f9fafb', padding: '8px', borderRadius: '4px', overflow: 'auto', maxHeight: '150px' }}>{result.stdout}</pre>
         </div>
-      )}
-      {result.stderr && (
-        <details className="excel-warnings" style={{ marginBottom: '16px', fontSize: '0.75rem', color: '#d97706' }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>⚠ Warnings ({result.stderr.trim().split('\n').length})</summary>
-          <pre style={{ marginTop: '4px', fontFamily: 'monospace', background: '#fffbeb', padding: '8px', borderRadius: '4px', overflow: 'auto', maxHeight: '100px' }}>{result.stderr}</pre>
+      );
+    } catch { return null; }
+  };
+
+  return (
+    <div className="doc-output-container" style={{ padding: '24px', background: 'var(--bg-base)', height: '100%', overflowY: 'auto' }}>
+      {(result.stdout || result.stderr) && (
+        <details style={{ background: 'var(--bg-surface)', border: '1px solid var(--bg-inset)', borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
+          <summary style={{ padding: '12px 16px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-muted)' }}>
+            <Terminal size={14} /> View Execution Logs
+          </summary>
+          <div style={{ padding: '16px', borderTop: '1px solid var(--bg-inset)' }}>
+            {result.stdout && (
+              <div style={{ marginBottom: result.stderr ? '12px' : '0' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Output</div>
+                <pre style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', background: 'var(--bg-base)', padding: '8px', borderRadius: '4px' }}>{result.stdout}</pre>
+              </div>
+            )}
+            {result.stderr && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#d97706', marginBottom: '4px' }}>Warnings</div>
+                <pre style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#d97706', whiteSpace: 'pre-wrap', background: '#fffbeb', padding: '8px', borderRadius: '4px' }}>{result.stderr}</pre>
+              </div>
+            )}
+          </div>
         </details>
       )}
+
       {documentFiles.length > 0 && (
-        <div className="excel-files-section" style={{ marginBottom: '16px' }}>
-          <div className="excel-files-heading" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Generated Files</div>
+        <div className="doc-files-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
           {documentFiles.map((file) => (
-            <div key={file.name} className="excel-file-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '10px 14px', borderRadius: '6px', marginBottom: '8px' }}>
-              <div className="excel-file-card-icon" style={{ color: '#16a34a' }}>
-                <FileText size={20} />
-              </div>
-              <div className="excel-file-card-info" style={{ flex: 1 }}>
-                <div className="excel-file-card-name" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#166534' }}>{file.name}</div>
-                <div className="excel-file-card-type" style={{ fontSize: '0.7rem', color: '#15803d' }}>
+            <React.Fragment key={file.name}>
+              <div className="doc-preview-card" style={{ 
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                padding: '32px 20px', background: 'var(--bg-surface)', border: '1px solid var(--bg-inset)', 
+                borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' 
+              }}>
+                <div style={{ padding: '16px', background: 'var(--accent-soft)', borderRadius: '50%', color: 'var(--accent)', marginBottom: '16px' }}>
+                  <FileText size={32} />
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px', textAlign: 'center', wordBreak: 'break-all' }}>
+                  {file.name}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginBottom: '24px' }}>
                   {file.name.endsWith('.xlsx') ? 'Excel Spreadsheet' : 
                    file.name.endsWith('.docx') ? 'Word Document' : 
-                   file.name.endsWith('.csv') ? 'CSV File' : 'File'}
+                   file.name.endsWith('.csv') ? 'CSV File' : 'Document Ready'}
                 </div>
+                <button onClick={() => handleDownload(file)} style={{ 
+                  display: 'flex', alignItems: 'center', gap: '8px', 
+                  background: 'var(--accent)', color: 'var(--accent-text)', 
+                  border: 'none', padding: '10px 24px', borderRadius: '8px', 
+                  fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.2s', width: '100%', justifyContent: 'center' 
+                }}>
+                  <Download size={16} /> Download
+                </button>
               </div>
-              <button className="excel-btn excel-btn--download" onClick={() => handleDownload(file)} style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Download size={13} /> Download
-              </button>
-            </div>
+              {file.name.endsWith('.csv') && renderCsvPreview(file)}
+            </React.Fragment>
           ))}
         </div>
       )}
