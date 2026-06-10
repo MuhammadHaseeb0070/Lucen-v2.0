@@ -764,7 +764,7 @@ export function clearPythonCache(artifactId: string) {
   pythonCache.delete(artifactId);
 }
 
-const DocumentPreview = ({ file }: { file: { name: string; data: string; mimeType: string } }) => {
+const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: string; mimeType: string }, onDownload: () => void }) => {
   const [content, setContent] = useState<React.ReactNode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -773,63 +773,87 @@ const DocumentPreview = ({ file }: { file: { name: string; data: string; mimeTyp
 
     const loadPreview = async () => {
       try {
-        if (file.name.endsWith('.csv')) {
-          const text = atob(file.data);
-          const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 10);
-          const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-          if (rows.length < 2) return;
-          setContent(
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', minWidth: '400px' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-surface)' }}>
-                    {rows[0].map((h, i) => <th key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--bg-inset)', fontWeight: 600, color: 'var(--text-secondary)' }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.slice(1).map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--bg-inset)' }}>
-                      {row.map((cell, j) => <td key={j} style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{cell}</td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {lines.length === 10 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Showing first 10 rows</div>}
-            </div>
-          );
-        } else if (file.name.endsWith('.xlsx')) {
-          const XLSX = await import('xlsx');
-          const binary = atob(file.data);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const workbook = XLSX.read(bytes, { type: 'array' });
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-          
+        if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx')) {
+          let rows: any[][] = [];
+          if (file.name.endsWith('.csv')) {
+            const text = atob(file.data);
+            const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 50);
+            rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+          } else {
+            const XLSX = await import('xlsx');
+            const binary = atob(file.data);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const workbook = XLSX.read(bytes, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          }
+
           if (!rows || rows.length === 0) {
             setContent(<div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Spreadsheet is empty</div>);
             return;
           }
 
-          const displayRows = rows.slice(0, 10);
+          // Generate column letters (A, B, C... Z, AA, AB...)
+          const getColLetter = (index: number) => {
+            let letter = '';
+            let temp = index;
+            while (temp >= 0) {
+              letter = String.fromCharCode(65 + (temp % 26)) + letter;
+              temp = Math.floor(temp / 26) - 1;
+            }
+            return letter;
+          };
+
+          const displayRows = rows.slice(0, 100); // max 100 rows for preview
+          const maxCols = Math.max(...displayRows.map(r => r.length));
+          const cols = Array.from({ length: maxCols }, (_, i) => getColLetter(i));
+
           setContent(
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', minWidth: '400px' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-surface)' }}>
-                    {displayRows[0]?.map((h: any, i: number) => <th key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--bg-inset)', fontWeight: 600, color: 'var(--text-secondary)' }}>{h ?? ''}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayRows.slice(1).map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--bg-inset)' }}>
-                      {displayRows[0]?.map((_, j) => <td key={j} style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>{row[j] ?? ''}</td>)}
+            <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', fontSize: '13px', background: '#fff', border: '1px solid #d4d4d4' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#107c41', color: '#fff', padding: '8px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={16} />
+                  <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
+                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Read Only</span>
+                </div>
+                <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
+                  <Download size={14} /> Download
+                </button>
+              </div>
+              <div style={{ background: '#f3f2f1', borderBottom: '1px solid #d4d4d4', padding: '4px 8px', color: '#605e5c', fontSize: '12px' }}>
+                <i>fx</i> <span style={{ marginLeft: '8px', color: '#a19f9d' }}>Formula bar disabled in preview</span>
+              </div>
+              <div style={{ overflowX: 'auto', maxHeight: '500px' }}>
+                <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', position: 'sticky', top: 0, left: 0, zIndex: 3 }} />
+                      {cols.map(c => (
+                        <th key={c} style={{ minWidth: '80px', padding: '4px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', color: '#605e5c', fontWeight: 'normal', textAlign: 'center', position: 'sticky', top: 0, zIndex: 2 }}>
+                          {c}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {rows.length > 10 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Showing first 10 rows of {rows.length}</div>}
+                  </thead>
+                  <tbody>
+                    {displayRows.map((row, rIdx) => (
+                      <tr key={rIdx}>
+                        <td style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', color: '#605e5c', textAlign: 'center', position: 'sticky', left: 0, zIndex: 1 }}>
+                          {rIdx + 1}
+                        </td>
+                        {cols.map((_, cIdx) => (
+                          <td key={cIdx} style={{ padding: '4px 8px', borderRight: '1px solid #e1dfdd', borderBottom: '1px solid #e1dfdd', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
+                            {row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {rows.length > 100 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: '#605e5c', background: '#f3f2f1', borderTop: '1px solid #d4d4d4' }}>Showing first 100 rows of {rows.length}</div>}
             </div>
           );
         } else if (file.name.endsWith('.docx')) {
@@ -839,7 +863,24 @@ const DocumentPreview = ({ file }: { file: { name: string; data: string; mimeTyp
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
           setContent(
-            <div className="docx-preview" style={{ padding: '16px', fontSize: '0.9rem', lineHeight: '1.6', color: 'var(--text-primary)' }} dangerouslySetInnerHTML={{ __html: result.value || '<i>Document is empty</i>' }} />
+            <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', background: '#f3f2f1', border: '1px solid #d4d4d4', display: 'flex', flexDirection: 'column', height: '600px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2b579a', color: '#fff', padding: '8px 16px', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={16} />
+                  <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
+                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Read Only</span>
+                </div>
+                <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
+                  <Download size={14} /> Download
+                </button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+                <div className="docx-preview-paper" style={{ 
+                  background: '#fff', maxWidth: '800px', margin: '0 auto', padding: '1in', 
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)', color: '#000', fontSize: '11pt', lineHeight: '1.15'
+                }} dangerouslySetInnerHTML={{ __html: result.value || '<i>Document is empty</i>' }} />
+              </div>
+            </div>
           );
         } else {
           setContent(<div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>Preview not available for this file type.</div>);
@@ -851,7 +892,7 @@ const DocumentPreview = ({ file }: { file: { name: string; data: string; mimeTyp
 
     loadPreview();
     return () => { mounted = false; };
-  }, [file]);
+  }, [file, onDownload]);
 
   if (error) {
     return (
@@ -872,11 +913,8 @@ const DocumentPreview = ({ file }: { file: { name: string; data: string; mimeTyp
   }
 
   return (
-    <div style={{ margin: '16px 0', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden', background: 'var(--bg-base)' }}>
-      <div style={{ padding: '8px 12px', background: 'var(--bg-muted)', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid var(--bg-inset)', color: 'var(--text-secondary)' }}>Preview: {file.name}</div>
-      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-        {content}
-      </div>
+    <div style={{ margin: '16px 0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+      {content}
     </div>
   );
 };
@@ -1151,35 +1189,10 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
       )}
 
       {documentFiles.length > 0 && (
-        <div className="doc-files-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
           {documentFiles.map((file) => (
             <React.Fragment key={file.name}>
-              <div className="doc-preview-card" style={{ 
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                padding: '32px 20px', background: 'var(--bg-surface)', border: '1px solid var(--bg-inset)', 
-                borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' 
-              }}>
-                <div style={{ padding: '16px', background: 'var(--accent-soft)', borderRadius: '50%', color: 'var(--accent)', marginBottom: '16px' }}>
-                  <FileText size={32} />
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px', textAlign: 'center', wordBreak: 'break-all' }}>
-                  {file.name}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginBottom: '24px' }}>
-                  {file.name.endsWith('.xlsx') ? 'Excel Spreadsheet' : 
-                   file.name.endsWith('.docx') ? 'Word Document' : 
-                   file.name.endsWith('.csv') ? 'CSV File' : 'Document Ready'}
-                </div>
-                <button onClick={() => handleDownload(file)} style={{ 
-                  display: 'flex', alignItems: 'center', gap: '8px', 
-                  background: 'var(--accent)', color: 'var(--accent-text)', 
-                  border: 'none', padding: '10px 24px', borderRadius: '8px', 
-                  fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.2s', width: '100%', justifyContent: 'center' 
-                }}>
-                  <Download size={16} /> Download
-                </button>
-              </div>
-              {(file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.docx')) && <DocumentPreview file={file} />}
+              <DocumentPreview file={file} onDownload={() => handleDownload(file)} />
             </React.Fragment>
           ))}
         </div>
