@@ -45,7 +45,7 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 
 ### Active
 
-- (None — preparing for the next milestone)
+- **v2.8 - Generative UI Intelligence Engine:** Overhaul the system prompts and artifact generation logic to produce bespoke, story-driven, non-generic designs without the typical "AI signature".
 
 ### Out of Scope
 
@@ -76,6 +76,7 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 | Log primary model failures to Sentry as warnings with redacted metadata | Keep trace of model fallback events without leaking PII or sensitive message info | ✓ Done |
 | Failover silently without UI system messages, but update dynamic headers | Avoid disrupting user workflow/chat flow while syncing UI capabilities to actual model | ✓ Done |
 | Strip invalid parameters dynamically for reasoning models (o1/o3-mini/DeepSeek R1) | Prevent downstream API validation errors and format clashes automatically | ✓ Done |
+| Enforce <design_strategy> for UI artifacts | Prevent generic "AI signature" designs by forcing the AI to plan story, color, typography, and animation rationale before coding | Active |
 
 ---
-*Last updated: 2026-06-10 after v2.7 Robust OpenRouter Multi-Model System milestone*
+*Last updated: 2026-06-10 after v2.8 Generative UI Intelligence Engine milestone initialization*

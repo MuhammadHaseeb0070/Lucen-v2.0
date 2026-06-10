@@ -6,6 +6,7 @@
 - ✅ **v2.5 Web Search Optimization** — Phase 6 (shipped 2026-06-09)
 - ✅ **v2.6 Excel-focused Pyodide Rebuild** — (shipped 2026-06-10)
 - ✅ **v2.7 Robust OpenRouter Multi-Model System** — [Phases 8-9](file:///e:/Lucen/Lucen-v2.3%20fresh/.planning/milestones/v2.7-ROADMAP.md) (shipped 2026-06-10)
+- 🏃 **v2.8 Generative UI Intelligence Engine** — Phase 10
 
 ## Phases
 
@@ -42,6 +43,13 @@
 
 </details>
 
+<details open>
+<summary>🏃 v2.8 Generative UI Intelligence Engine (Phase 10)</summary>
+
+- [ ] Phase 10: Enhance `BASE_SYSTEM_PROMPT` to enforce `<design_strategy>` and specific aesthetic constraints.
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -55,3 +63,4 @@
 | 7. Excel-focused Pyodide Rebuild | v2.6 | 1/1 | Complete | 2026-06-10 |
 | 8. Multi-Model Fallback Engine | v2.7 | 1/1 | Complete | 2026-06-10 |
 | 9. Parameter Normalization & Client Synchronization | v2.7 | 1/1 | Complete | 2026-06-10 |
+| 10. UI Prompt Overhaul & `<design_strategy>` | v2.8 | 0/1 | Active | |
