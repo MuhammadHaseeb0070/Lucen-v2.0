@@ -40,7 +40,10 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 
 ### Active
 
-- **v2.7 Milestone Planning**: Scoping for next milestone.
+- **v2.7 Robust OpenRouter Multi-Model System**:
+  - Implement sequential fallback chain (Primary -> Secondary -> Tertiary) for main and side chats.
+  - Normalize model-specific parameter calls (temperature, top_p, etc.) to prevent OpenRouter errors.
+  - Sync metadata dynamically via config headers (x-model-name, x-supports-reasoning, etc.).
 
 
 ### Out of Scope
