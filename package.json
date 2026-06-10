@@ -20,6 +20,7 @@
     "better-react-mathjax": "^3.0.0",
     "docx-preview": "^0.3.7",
     "dompurify": "^3.4.8",
+    "exceljs": "^4.4.0",
     "js-tiktoken": "^1.0.21",
     "jszip": "^3.10.1",
     "lenis": "^1.1.18",
