@@ -952,7 +952,33 @@ const ExcelViewer = ({ file, onDownload }: { file: any, onDownload: () => void }
         setHtmlString(html);
       } catch (err) {
         console.error("ExcelJS Parse Error:", err);
-        setHtmlString('<div style="padding: 16px; color: #b91c1c;">Failed to parse workbook styling.</div>');
+        try {
+          const XLSX = await import('xlsx');
+          const binary = atob(file.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const workbook = file.name.endsWith('.csv') 
+            ? XLSX.read(new TextDecoder().decode(bytes), { type: 'string' })
+            : XLSX.read(bytes, { type: 'array' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          
+          if (!worksheet) throw new Error("Empty worksheet");
+          const htmlStr = XLSX.utils.sheet_to_html(worksheet, { id: 'xlsx-fallback-table' });
+          
+          setHtmlString(`
+            <div style="padding: 8px 16px; background: #fff3cd; color: #856404; font-size: 11px; border-bottom: 1px solid #ffeeba;">
+              <strong>Note:</strong> This document contains complex elements (like charts or unsupported anchors) that our advanced styling engine cannot render. Falling back to basic data view.
+            </div>
+            <style>
+              #xlsx-fallback-table { border-collapse: collapse; min-width: 100%; font-size: 10pt; }
+              #xlsx-fallback-table td, #xlsx-fallback-table th { border: 1px solid #e1dfdd; padding: 4px 8px; white-space: nowrap; color: #000; }
+            </style>
+            <div style="padding: 16px;">${htmlStr}</div>
+          `);
+        } catch (fallbackErr) {
+          console.error("XLSX Fallback Error:", fallbackErr);
+          setHtmlString('<div style="padding: 16px; color: #b91c1c;">Failed to parse workbook completely.</div>');
+        }
       }
     };
     renderExcel();
