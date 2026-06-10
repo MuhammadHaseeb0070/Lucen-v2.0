@@ -5,6 +5,7 @@ import { TOOLS } from '../_shared/toolRegistry.ts';
 import { circuitSuccess, circuitFailure } from '../_shared/circuitBreaker.ts';
 import { buildResponseFormatContract, WEBSEARCH_DEFAULT_MAX_RESULTS } from './utils.ts';
 import { computeWebSearchCredits, LC_PER_USD, WEBSEARCH_USD_PER_1K_RESULTS, CREDITS_PER_1K_TOKENS } from './billing.ts';
+import { getModelConfig, normalizeModelParams, getDynamicHeaders } from '../_shared/models.ts';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -28,6 +29,7 @@ export interface StreamHandlerOptions {
   freeSearchesUsed: number;
   body: any;
   effectiveModel: string;
+  fallbackModels?: string[];
   resolvedMaxTokens: number;
   cors: Record<string, string>;
   configHeaders: Record<string, string>;
@@ -42,8 +44,8 @@ export interface StreamHandlerOptions {
   authHeader: string;
 }
 
-export function handleStreamRequest(options: StreamHandlerOptions): Response {
-  const {
+export async function handleStreamRequest(options: StreamHandlerOptions): Promise<Response> {
+  let {
     req,
     supabaseUrl,
     supabaseServiceKey,
@@ -56,6 +58,7 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
     freeSearchesUsed,
     body,
     effectiveModel,
+    fallbackModels = [effectiveModel],
     resolvedMaxTokens,
     cors,
     configHeaders,
@@ -76,6 +79,94 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
     provider,
     is_reasoning,
   } = body || {};
+
+  // Build the filtered messages and format contract for the initial round (Round 0)
+  const formatContract = buildResponseFormatContract(false, webSearchRequested);
+  const initialFilteredMessages = [...messages].filter(
+    m => !(m.role === 'system' && m.content?.includes('## Response Format — MANDATORY'))
+  );
+  const lastUserIdx = [...initialFilteredMessages].map(m => m.role).lastIndexOf('user');
+  if (lastUserIdx !== -1) {
+    initialFilteredMessages.splice(lastUserIdx, 0, {
+      role: 'system',
+      content: formatContract
+    });
+  } else {
+    initialFilteredMessages.push({ role: 'system', content: formatContract });
+  }
+
+  // Fallback engine: Try fallback models sequentially for Round 0 connection
+  let initialOpenRouterResponse: Response | null = null;
+  let activeModel = effectiveModel;
+  let lastError: any = null;
+
+  for (const currentModel of fallbackModels) {
+    try {
+      log.info(`[streamHandler] Attempting initial connection with model: ${currentModel}`);
+      const basePayload = {
+        model: currentModel,
+        messages: initialFilteredMessages,
+        stream: true,
+        max_tokens: resolvedMaxTokens,
+        max_completion_tokens: resolvedMaxTokens,
+        include_usage: true,
+        ...(response_format ? { response_format } : {}),
+        ...(provider ? { provider } : {}),
+        ...(is_reasoning ? { is_reasoning: true } : {}),
+      };
+
+      if (toolsToPass.length > 0) {
+        basePayload.tools = toolsToPass;
+        basePayload.tool_choice = 'auto';
+      }
+
+      const normalizedPayload = normalizeModelParams(currentModel, basePayload);
+
+      const res = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openrouterApiKey}`,
+          'HTTP-Referer': supabaseUrl,
+          'X-Title': 'Lucen',
+        },
+        body: JSON.stringify(normalizedPayload),
+      });
+
+      if (res.ok) {
+        initialOpenRouterResponse = res;
+        activeModel = currentModel;
+        effectiveModel = currentModel;
+        accounting.modelId = currentModel;
+        break;
+      } else {
+        const errBody = await res.text().catch(() => '');
+        lastError = new Error(`OpenRouter API Error ${res.status}: ${errBody}`);
+        log.warn(`[streamHandler] Model ${currentModel} failed: ${lastError.message}`);
+        Sentry.captureMessage(`Stream model fallback triggered from ${currentModel}. Error: ${lastError.message}`, 'warning');
+      }
+    } catch (err: any) {
+      lastError = err;
+      log.warn(`[streamHandler] Model ${currentModel} failed with exception: ${err.message}`);
+      Sentry.captureMessage(`Stream model fallback triggered from ${currentModel} due to exception: ${err.message}`, 'warning');
+    }
+  }
+
+  if (!initialOpenRouterResponse) {
+    const errMsg = lastError?.message || 'All models in fallback chain failed';
+    await circuitFailure('openrouter');
+    return new Response(JSON.stringify({ error: errMsg }), {
+      status: 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+  await circuitSuccess('openrouter');
+
+  // Dynamically update configHeaders to match the successful model
+  configHeaders = {
+    ...configHeaders,
+    ...getDynamicHeaders(activeModel, body?.model ?? 'main-chat-model'),
+  };
 
   const responseStream = new ReadableStream({
     async start(controller) {
@@ -229,43 +320,53 @@ export function handleStreamRequest(options: StreamHandlerOptions): Response {
             filteredMessages.push({ role: 'system', content: formatContract });
           }
 
-          const requestBody: any = {
-            model: effectiveModel,
-            messages: filteredMessages,
-            stream: true,
-            max_tokens: resolvedMaxTokens,
-            max_completion_tokens: resolvedMaxTokens,
-            include_usage: true,
-            ...(response_format ? { response_format } : {}),
-            ...(provider ? { provider } : {}),
-            ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
-          };
+          let openrouterResponse: Response;
 
-          if (toolsToPass.length > 0 && rounds < maxRounds - 1 && !allLimitsReached) {
-            requestBody.tools = toolsToPass;
-            requestBody.tool_choice = 'auto';
+          if (rounds === 0) {
+            openrouterResponse = initialOpenRouterResponse!;
+          } else {
+            const basePayload = {
+              model: activeModel,
+              messages: filteredMessages,
+              stream: true,
+              max_tokens: resolvedMaxTokens,
+              max_completion_tokens: resolvedMaxTokens,
+              include_usage: true,
+              ...(response_format ? { response_format } : {}),
+              ...(provider ? { provider } : {}),
+              ...(is_reasoning ? { is_reasoning: true } : {}),
+            };
+
+            if (toolsToPass.length > 0 && rounds < maxRounds - 1 && !allLimitsReached) {
+              basePayload.tools = toolsToPass;
+              basePayload.tool_choice = 'auto';
+            }
+
+            const normalizedPayload = normalizeModelParams(activeModel, basePayload);
+
+            const res = await fetch(OPENROUTER_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openrouterApiKey}`,
+                'HTTP-Referer': supabaseUrl,
+                'X-Title': 'Lucen',
+              },
+              body: JSON.stringify(normalizedPayload),
+            });
+
+            if (!res.ok) {
+              const errBody = await res.text().catch(() => '');
+              await circuitFailure('openrouter');
+              log.error('OpenRouter stream error', { status: res.status, body: errBody.slice(0, 300) });
+              throw new Error(`OpenRouter upstream error ${res.status}: ${errBody}`);
+            }
+            await circuitSuccess('openrouter');
+            openrouterResponse = res;
           }
-
-          const openrouterResponse = await fetch(OPENROUTER_URL, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openrouterApiKey}`,
-              'HTTP-Referer': supabaseUrl,
-              'X-Title': 'Lucen',
-            },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!openrouterResponse.ok) {
-            const errBody = await openrouterResponse.text().catch(() => '');
-            await circuitFailure('openrouter');
-            log.error('OpenRouter stream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
-            throw new Error(`OpenRouter upstream error ${openrouterResponse.status}: ${errBody}`);
-          }
-          await circuitSuccess('openrouter');
 
           const reader = openrouterResponse.body!.getReader();
+
           
           let isToolCall = false;
           const firstChunks: Uint8Array[] = [];

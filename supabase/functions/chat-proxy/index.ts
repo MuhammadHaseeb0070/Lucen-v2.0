@@ -6,6 +6,7 @@ import { TOOLS } from '../_shared/toolRegistry.ts';
 import { createLogger } from '../_shared/logging.ts';
 import { circuitAllow, circuitSuccess, circuitFailure } from '../_shared/circuitBreaker.ts';
 import { isKillSwitched } from '../_shared/featureFlags.ts';
+import { getModelConfig, normalizeModelParams, getDynamicHeaders } from '../_shared/models.ts';
 
 import { handleAuthAndRateLimit } from './auth.ts';
 import { deductCredits, computeWebSearchCredits, CREDITS_PER_IMAGE, CREDITS_PER_1K_TOKENS, LC_PER_USD, WEBSEARCH_USD_PER_1K_RESULTS } from './billing.ts';
@@ -178,30 +179,39 @@ Deno.serve(async (req: Request) => {
       return await fail('client_error', 400, 'model is required');
     }
 
-    let effectiveModel = model as string;
-    if (model === 'main-chat-model') {
-      effectiveModel = Deno.env.get('MAIN_CHAT_MODEL') ?? 'minimax/minimax-01';
-    } else if (model === 'side-chat-model') {
-      effectiveModel = Deno.env.get('SIDE_CHAT_MODEL') ?? 'openai/gpt-4o-mini';
+    const isSideChat = model === 'side-chat-model';
+    const isMainChat = model === 'main-chat-model';
+
+    let fallbackModels: string[] = [];
+    if (isMainChat) {
+      fallbackModels = [
+        Deno.env.get('MAIN_CHAT_MODEL_PRIMARY'),
+        Deno.env.get('MAIN_CHAT_MODEL_SECONDARY'),
+        Deno.env.get('MAIN_CHAT_MODEL_TERTIARY'),
+        Deno.env.get('MAIN_CHAT_MODEL')
+      ].filter((m): m is string => !!m && m.trim().length > 0);
+      if (fallbackModels.length === 0) {
+        fallbackModels.push('minimax/minimax-01');
+      }
+    } else if (isSideChat) {
+      fallbackModels = [
+        Deno.env.get('SIDE_CHAT_MODEL_PRIMARY'),
+        Deno.env.get('SIDE_CHAT_MODEL_SECONDARY'),
+        Deno.env.get('SIDE_CHAT_MODEL_TERTIARY'),
+        Deno.env.get('SIDE_CHAT_MODEL')
+      ].filter((m): m is string => !!m && m.trim().length > 0);
+      if (fallbackModels.length === 0) {
+        fallbackModels.push('openai/gpt-4o-mini');
+      }
+    } else {
+      fallbackModels = [model];
     }
+    fallbackModels = Array.from(new Set(fallbackModels));
+
+    let effectiveModel = fallbackModels[0];
     accounting.modelId = effectiveModel;
 
-    const isSideChat = model === 'side-chat-model';
-    const modelPrefix = isSideChat ? 'SIDE_CHAT_' : 'MAIN_CHAT_';
-    const defaultName = isSideChat ? 'GPT-4o mini' : 'Lucen M2.7';
-    const defaultReasoning = isSideChat ? 'false' : 'true';
-    const defaultContext = isSideChat ? '128000' : '131072';
-    const defaultMaxOutput = isSideChat ? '16384' : '32768';
-    const defaultTps = isSideChat ? '60' : '40';
-
-    const configHeaders: Record<string, string> = {
-      'x-model-name': Deno.env.get(`${modelPrefix}MODEL_NAME`) ?? defaultName,
-      'x-supports-reasoning': Deno.env.get(`${modelPrefix}SUPPORTS_REASONING`) ?? defaultReasoning,
-      'x-context-window': Deno.env.get(`${modelPrefix}CONTEXT_WINDOW`) ?? defaultContext,
-      'x-max-output': Deno.env.get(`${modelPrefix}MAX_OUTPUT`) ?? defaultMaxOutput,
-      'x-tokens-per-second': Deno.env.get(isSideChat ? 'SIDE_CHAT_TOKENS_PER_SECOND' : 'VITE_MAIN_CHAT_TOKENS_PER_SECOND') ?? Deno.env.get(`${modelPrefix}TOKENS_PER_SECOND`) ?? defaultTps,
-      'Access-Control-Expose-Headers': 'x-model-name, x-supports-reasoning, x-context-window, x-max-output, x-tokens-per-second',
-    };
+    let configHeaders = getDynamicHeaders(effectiveModel, model);
 
     const imageCount = countImagesInMessages(messages);
     accounting.imageTokens = imageCount;
@@ -341,41 +351,72 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!shouldStream) {
-      const openrouterResponse = await fetch(OPENROUTER_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openrouterApiKey}`,
-          'HTTP-Referer': supabaseUrl,
-          'X-Title': 'Lucen',
-        },
-        body: JSON.stringify({
-          model: effectiveModel,
-          messages,
-          stream: false,
-          max_tokens: resolvedMaxTokens,
-          max_completion_tokens: resolvedMaxTokens,
-          include_usage: true,
-          ...(response_format ? { response_format } : {}),
-          ...(provider ? { provider } : {}),
-          ...(webSearchFallback && effectivePlugins ? { plugins: effectivePlugins } : {}),
-          ...(is_reasoning ? { reasoning: { enabled: true } } : {}),
-        }),
-      });
+      let openrouterResponse: Response | null = null;
+      let successfulModel = '';
+      let lastError: any = null;
 
-      if (!openrouterResponse.ok) {
-        const errBody = await openrouterResponse.text();
+      for (const currentModel of fallbackModels) {
+        try {
+          log.info(`Attempting non-streaming call with model: ${currentModel}`);
+          const basePayload = {
+            model: currentModel,
+            messages,
+            stream: false,
+            max_tokens: resolvedMaxTokens,
+            max_completion_tokens: resolvedMaxTokens,
+            include_usage: true,
+            ...(response_format ? { response_format } : {}),
+            ...(provider ? { provider } : {}),
+            ...(webSearchFallback && effectivePlugins ? { plugins: effectivePlugins } : {}),
+            ...(is_reasoning ? { is_reasoning: true } : {}),
+          };
+          const normalizedPayload = normalizeModelParams(currentModel, basePayload);
+
+          const res = await fetch(OPENROUTER_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openrouterApiKey}`,
+              'HTTP-Referer': supabaseUrl,
+              'X-Title': 'Lucen',
+            },
+            body: JSON.stringify(normalizedPayload),
+          });
+
+          if (res.ok) {
+            openrouterResponse = res;
+            successfulModel = currentModel;
+            effectiveModel = currentModel;
+            accounting.modelId = currentModel;
+            break;
+          } else {
+            const errBody = await res.text().catch(() => '');
+            lastError = new Error(`OpenRouter API Error ${res.status}: ${errBody}`);
+            log.warn(`Model ${currentModel} failed: ${lastError.message}`);
+            Sentry.captureMessage(`Model fallback triggered from ${currentModel}. Error: ${lastError.message}`, 'warning');
+          }
+        } catch (err: any) {
+          lastError = err;
+          log.warn(`Model ${currentModel} failed with exception: ${err.message}`);
+          Sentry.captureMessage(`Model fallback triggered from ${currentModel} due to exception: ${err.message}`, 'warning');
+        }
+      }
+
+      if (!openrouterResponse || !openrouterResponse.ok) {
         await circuitFailure('openrouter');
-        log.error('OpenRouter upstream error', { status: openrouterResponse.status, body: errBody.slice(0, 300) });
+        const errMsg = lastError?.message || 'All models in fallback chain failed';
         return await fail(
           'upstream_error',
-          openrouterResponse.status,
-          `OpenRouter API Error ${openrouterResponse.status}`,
-          errBody.slice(0, 500),
+          502,
+          `OpenRouter API Error: ${errMsg}`,
+          errMsg
         );
       } else {
         await circuitSuccess('openrouter');
       }
+
+      // Regenerate dynamic headers using the successful model's metadata
+      configHeaders = getDynamicHeaders(successfulModel, model);
 
       const json = await openrouterResponse.json();
       const finishReason = json?.choices?.[0]?.finish_reason
@@ -454,7 +495,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Streaming mode delegated to streamHandler.ts
-    return handleStreamRequest({
+    return await handleStreamRequest({
       req,
       supabaseUrl,
       supabaseServiceKey,
@@ -467,6 +508,7 @@ Deno.serve(async (req: Request) => {
       freeSearchesUsed,
       body,
       effectiveModel,
+      fallbackModels,
       resolvedMaxTokens,
       cors,
       configHeaders,
