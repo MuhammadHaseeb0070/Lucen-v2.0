@@ -811,27 +811,28 @@ const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: str
           const cols = Array.from({ length: maxCols }, (_, i) => getColLetter(i));
 
           setContent(
-            <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', fontSize: '13px', background: '#fff', border: '1px solid #d4d4d4' }}>
+            <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', fontSize: '11pt', background: '#fff', border: '1px solid #d4d4d4' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#107c41', color: '#fff', padding: '8px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={16} />
                   <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Read Only</span>
+                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Excel Preview</span>
                 </div>
-                <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
+                <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
                   <Download size={14} /> Download
                 </button>
               </div>
-              <div style={{ background: '#f3f2f1', borderBottom: '1px solid #d4d4d4', padding: '4px 8px', color: '#605e5c', fontSize: '12px' }}>
-                <i>fx</i> <span style={{ marginLeft: '8px', color: '#a19f9d' }}>Formula bar disabled in preview</span>
+              <div style={{ background: '#f3f2f1', borderBottom: '1px solid #d4d4d4', padding: '4px 8px', color: '#605e5c', fontSize: '12px', display: 'flex', alignItems: 'center' }}>
+                <i style={{ fontFamily: 'Times New Roman, serif', fontSize: '14px', fontStyle: 'italic', marginRight: '8px', opacity: 0.8 }}>fx</i> 
+                <div style={{ background: '#fff', border: '1px solid #c8c6c4', padding: '2px 8px', flex: 1, color: '#a19f9d' }}>Formula bar disabled in preview</div>
               </div>
-              <div style={{ overflowX: 'auto', maxHeight: '500px' }}>
+              <div style={{ overflowX: 'auto', maxHeight: '500px', background: '#fff' }}>
                 <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', tableLayout: 'fixed' }}>
                   <thead>
                     <tr>
                       <th style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', position: 'sticky', top: 0, left: 0, zIndex: 3 }} />
                       {cols.map(c => (
-                        <th key={c} style={{ minWidth: '80px', padding: '4px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', color: '#605e5c', fontWeight: 'normal', textAlign: 'center', position: 'sticky', top: 0, zIndex: 2 }}>
+                        <th key={c} style={{ minWidth: '80px', padding: '2px 6px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', color: '#605e5c', fontWeight: 'normal', textAlign: 'center', position: 'sticky', top: 0, zIndex: 2 }}>
                           {c}
                         </th>
                       ))}
@@ -840,14 +841,29 @@ const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: str
                   <tbody>
                     {displayRows.map((row, rIdx) => (
                       <tr key={rIdx}>
-                        <td style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #d4d4d4', color: '#605e5c', textAlign: 'center', position: 'sticky', left: 0, zIndex: 1 }}>
+                        <td style={{ width: '40px', background: '#f3f2f1', borderRight: '1px solid #d4d4d4', borderBottom: '1px solid #e1dfdd', color: '#605e5c', textAlign: 'center', position: 'sticky', left: 0, zIndex: 1, fontSize: '10pt' }}>
                           {rIdx + 1}
                         </td>
-                        {cols.map((_, cIdx) => (
-                          <td key={cIdx} style={{ padding: '4px 8px', borderRight: '1px solid #e1dfdd', borderBottom: '1px solid #e1dfdd', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-                            {row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''}
-                          </td>
-                        ))}
+                        {cols.map((_, cIdx) => {
+                          const isActiveCell = rIdx === 0 && cIdx === 0;
+                          return (
+                            <td key={cIdx} style={{ 
+                              padding: '2px 6px', 
+                              borderRight: '1px solid #e1dfdd', 
+                              borderBottom: '1px solid #e1dfdd', 
+                              color: '#000', 
+                              whiteSpace: 'nowrap', 
+                              overflow: 'hidden', 
+                              textOverflow: 'ellipsis', 
+                              maxWidth: '200px',
+                              boxShadow: isActiveCell ? 'inset 0 0 0 2px #107c41' : 'none',
+                              zIndex: isActiveCell ? 1 : 0,
+                              position: isActiveCell ? 'relative' : 'static'
+                            }}>
+                              {row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -864,20 +880,28 @@ const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: str
           const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
           setContent(
             <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', background: '#f3f2f1', border: '1px solid #d4d4d4', display: 'flex', flexDirection: 'column', height: '600px' }}>
+              <style>{`
+                .docx-preview-paper p { margin-top: 0; margin-bottom: 8pt; line-height: 1.08; font-size: 11pt; color: #000; }
+                .docx-preview-paper h1 { color: #2f5496; margin-top: 12pt; margin-bottom: 0; font-weight: 400; font-size: 16pt; }
+                .docx-preview-paper h2 { color: #2f5496; margin-top: 10pt; margin-bottom: 0; font-weight: 400; font-size: 13pt; }
+                .docx-preview-paper h3 { color: #2f5496; margin-top: 10pt; margin-bottom: 0; font-weight: 400; font-size: 11pt; }
+                .docx-preview-paper ul, .docx-preview-paper ol { margin-top: 0; margin-bottom: 8pt; padding-left: 36pt; }
+                .docx-preview-paper li { margin-bottom: 0; line-height: 1.08; font-size: 11pt; color: #000; }
+              `}</style>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2b579a', color: '#fff', padding: '8px 16px', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText size={16} />
                   <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Read Only</span>
+                  <span style={{ opacity: 0.8, fontSize: '12px' }}>- Word Preview</span>
                 </div>
-                <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
+                <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
                   <Download size={14} /> Download
                 </button>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px' }}>
                 <div className="docx-preview-paper" style={{ 
-                  background: '#fff', maxWidth: '800px', margin: '0 auto', padding: '1in', 
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)', color: '#000', fontSize: '11pt', lineHeight: '1.15'
+                  background: '#fff', maxWidth: '800px', margin: '40px auto', padding: '1in', 
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.13), 0 1px 2px rgba(0,0,0,0.11)', color: '#000', minHeight: '11in'
                 }} dangerouslySetInnerHTML={{ __html: result.value || '<i>Document is empty</i>' }} />
               </div>
             </div>
