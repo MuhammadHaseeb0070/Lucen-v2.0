@@ -847,138 +847,98 @@ const ExcelViewer = ({ file, onDownload }: { file: any, onDownload: () => void }
   useEffect(() => {
     const renderExcel = async () => {
       try {
-        const ExcelJS = await import('exceljs');
+        const XLSX = await import('xlsx');
         const binary = atob(file.data);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         
-        const workbook = new ExcelJS.Workbook();
-        
+        let workbook;
         if (file.name.endsWith('.csv')) {
           const text = new TextDecoder().decode(bytes);
-          // @ts-ignore
-          await workbook.csv.read(new ReadableStream({
-            start(controller) { controller.enqueue(new TextEncoder().encode(text)); controller.close(); }
-          }));
+          workbook = XLSX.read(text, { type: 'string' });
         } else {
-          await workbook.xlsx.load(bytes.buffer);
+          workbook = XLSX.read(bytes, { type: 'array' });
         }
 
-        const worksheet = workbook.worksheets[0];
-        if (!worksheet) {
+        const worksheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[worksheetName];
+        
+        if (!worksheet || !worksheet['!ref']) {
           setHtmlString('<div style="padding: 16px; color: #605e5c;">Spreadsheet is empty</div>');
           return;
         }
 
-        let maxCol = 1;
-        worksheet.eachRow((r) => { if (r.cellCount > maxCol) maxCol = r.cellCount; });
-
+        const range = XLSX.utils.decode_range(worksheet['!ref']);
+        
         let html = '<table style="border-collapse: collapse; min-width: 100%;">';
         
         // Generate Header (A, B, C...)
         html += '<thead><tr><th style="width: 40px; background: #f3f2f1; border: 1px solid #d4d4d4; position: sticky; top: 0; left: 0; z-index: 3;"></th>';
-        for (let i = 1; i <= maxCol; i++) {
-          let letter = '';
-          let temp = i - 1;
-          while (temp >= 0) {
-            letter = String.fromCharCode(65 + (temp % 26)) + letter;
-            temp = Math.floor(temp / 26) - 1;
-          }
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const letter = XLSX.utils.encode_col(C);
           html += `<th style="min-width: 80px; padding: 2px 6px; background: #f3f2f1; border: 1px solid #d4d4d4; color: #605e5c; font-weight: normal; text-align: center; position: sticky; top: 0; z-index: 2;">${letter}</th>`;
         }
         html += '</tr></thead><tbody>';
 
         // Limit to 100 rows for preview performance
-        const maxRows = Math.min(worksheet.rowCount, 100);
+        const maxRows = Math.min(range.e.r, range.s.r + 99);
         
-        for (let r = 1; r <= maxRows; r++) {
-          const row = worksheet.getRow(r);
+        for (let R = range.s.r; R <= maxRows; ++R) {
           html += '<tr>';
           // Row Header
-          html += `<td style="width: 40px; background: #f3f2f1; border: 1px solid #d4d4d4; color: #605e5c; text-align: center; position: sticky; left: 0; z-index: 1; font-size: 10pt;">${r}</td>`;
+          html += `<td style="width: 40px; background: #f3f2f1; border: 1px solid #d4d4d4; color: #605e5c; text-align: center; position: sticky; left: 0; z-index: 1; font-size: 10pt;">${R + 1}</td>`;
           
-          for (let c = 1; c <= maxCol; c++) {
-            const cell = row.getCell(c);
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = {c: C, r: R};
+            const cellRef = XLSX.utils.encode_cell(cellAddress);
+            const cell = worksheet[cellRef];
             
-            // Handle merged cells
-            if (cell.isMerged && cell.master !== cell) {
-              continue; // Skip rendering, master cell handles it
+            // Check if cell is master or hidden by merge
+            let isMergedTarget = false;
+            if (worksheet['!merges']) {
+               for (const merge of worksheet['!merges']) {
+                  if (R >= merge.s.r && R <= merge.e.r && C >= merge.s.c && C <= merge.e.c) {
+                     if (R !== merge.s.r || C !== merge.s.c) {
+                        isMergedTarget = true;
+                     }
+                  }
+               }
             }
             
-            // Determine if master
-            if (worksheet.model.merges) {
-               // Placeholder for future accurate merge HTML output
+            if (isMergedTarget) continue;
+            
+            let rowspan = 1;
+            let colspan = 1;
+            if (worksheet['!merges']) {
+               for (const merge of worksheet['!merges']) {
+                  if (R === merge.s.r && C === merge.s.c) {
+                     rowspan = merge.e.r - merge.s.r + 1;
+                     colspan = merge.e.c - merge.s.c + 1;
+                  }
+               }
             }
 
             let styleStr = 'padding: 2px 6px; border: 1px solid #e1dfdd; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;';
-            
-            // Extract colors
-            if (cell.fill && cell.fill.type === 'pattern' && cell.fill.fgColor) {
-               const fg = cell.fill.fgColor;
-               if (fg.argb) {
-                  // argb is AARRGGBB, we need to convert to rgba or #RRGGBB
-                  let hex = fg.argb;
-                  if (hex.length === 8) {
-                    hex = '#' + hex.substring(2); // Strip Alpha for basic rendering
-                  }
-                  styleStr += ` background-color: ${hex};`;
-               } else if (fg.theme !== undefined) {
-                  // Fallback light blue for themes
-                  styleStr += ` background-color: #e6f2ff;`; 
-               }
-            }
-            
-            if (cell.font) {
-               if (cell.font.bold) styleStr += ' font-weight: bold;';
-               if (cell.font.italic) styleStr += ' font-style: italic;';
-               if (cell.font.color && cell.font.color.argb) {
-                  let hex = cell.font.color.argb;
-                  if (hex.length === 8) hex = '#' + hex.substring(2);
-                  styleStr += ` color: ${hex};`;
-               }
-            }
-            
-            let val = cell.text || cell.value?.toString() || '';
-            html += `<td style="${styleStr}">${val}</td>`;
+            const val = cell ? (cell.w !== undefined ? cell.w : cell.v) : '';
+            html += `<td style="${styleStr}" rowspan="${rowspan}" colspan="${colspan}">${val === undefined || val === null ? '' : val}</td>`;
           }
           html += '</tr>';
         }
         
         html += '</tbody></table>';
-        if (worksheet.rowCount > 100) {
-           html += `<div style="padding: 8px; text-align: center; font-size: 11px; color: #605e5c; background: #f3f2f1; border-top: 1px solid #d4d4d4;">Showing first 100 rows of ${worksheet.rowCount}</div>`;
+        if (range.e.r - range.s.r + 1 > 100) {
+           html += `<div style="padding: 8px; text-align: center; font-size: 11px; color: #605e5c; background: #f3f2f1; border-top: 1px solid #d4d4d4;">Showing first 100 rows of ${range.e.r - range.s.r + 1}</div>`;
         }
         
-        setHtmlString(html);
+        setHtmlString(`
+          <div style="padding: 8px 16px; background: #fff3cd; color: #856404; font-size: 11px; border-bottom: 1px solid #ffeeba;">
+            <strong>Read Only Preview:</strong> This preview is not completely accurate and may not reflect advanced formatting, colors, or charts. For best results, download and open in native software.
+          </div>
+          ${html}
+        `);
       } catch (err) {
-        console.error("ExcelJS Parse Error:", err);
-        try {
-          const XLSX = await import('xlsx');
-          const binary = atob(file.data);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const workbook = file.name.endsWith('.csv') 
-            ? XLSX.read(new TextDecoder().decode(bytes), { type: 'string' })
-            : XLSX.read(bytes, { type: 'array' });
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          
-          if (!worksheet) throw new Error("Empty worksheet");
-          const htmlStr = XLSX.utils.sheet_to_html(worksheet, { id: 'xlsx-fallback-table' });
-          
-          setHtmlString(`
-            <div style="padding: 8px 16px; background: #fff3cd; color: #856404; font-size: 11px; border-bottom: 1px solid #ffeeba;">
-              <strong>Note:</strong> This document contains complex elements (like charts or unsupported anchors) that our advanced styling engine cannot render. Falling back to basic data view.
-            </div>
-            <style>
-              #xlsx-fallback-table { border-collapse: collapse; min-width: 100%; font-size: 10pt; }
-              #xlsx-fallback-table td, #xlsx-fallback-table th { border: 1px solid #e1dfdd; padding: 4px 8px; white-space: nowrap; color: #000; }
-            </style>
-            <div style="padding: 16px;">${htmlStr}</div>
-          `);
-        } catch (fallbackErr) {
-          console.error("XLSX Fallback Error:", fallbackErr);
-          setHtmlString('<div style="padding: 16px; color: #b91c1c;">Failed to parse workbook completely.</div>');
-        }
+        console.error("XLSX Parse Error:", err);
+        setHtmlString('<div style="padding: 16px; color: #b91c1c;">Failed to parse workbook completely.</div>');
       }
     };
     renderExcel();
@@ -990,7 +950,7 @@ const ExcelViewer = ({ file, onDownload }: { file: any, onDownload: () => void }
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FileText size={16} />
           <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-          <span style={{ opacity: 0.8, fontSize: '12px' }}>- Excel Preview (Style Preserved)</span>
+          <span style={{ opacity: 0.8, fontSize: '12px' }}>- Read Only Preview</span>
         </div>
         <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
           <Download size={14} /> Download
