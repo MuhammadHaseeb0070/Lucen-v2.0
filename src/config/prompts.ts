@@ -138,7 +138,7 @@ excel    - Excel spreadsheets and tabular data analysis. Generates a .xlsx or .c
 word     - MS Word documents, formatted reports, or letters. Generates a .docx via a headless Python script (python-docx).
 
 
-STRICT RULES:
+STRICT RULES :
 1. Exactly ONE artifact per response. Never split into multiple.
 2. Artifact must be COMPLETE within the response. Never truncate. Never say "add the rest yourself."
 3. For file type: <lucen_artifact type="file" filename="example.json">
