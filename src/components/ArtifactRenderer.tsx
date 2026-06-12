@@ -5,6 +5,7 @@ import type { ArtifactType, Artifact } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
+import { useComposerStore } from '../store/composerStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import DOMPurify from 'dompurify';
 import { runPythonDocument, cancelPythonRun, type PythonDocumentResult, type PythonDocumentProgress, type PythonDocumentRunStage } from '../workers/pyodideWorkerClient';
@@ -1262,7 +1263,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
             ↺ Try Again
           </button>
           {onRetry && (
-            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Terminal size={14} /> Ask AI to Fix
             </button>
           )}
@@ -1414,14 +1415,10 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';
       if (activeConversationId) {
-        useChatStore.getState().setDraft(activeConversationId, `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`);
-        setTimeout(() => {
-          const ta = document.querySelector('textarea');
-          if (ta) {
-             ta.focus();
-             ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 50);
+        useComposerStore.getState().setPendingAutoSend({
+          content: `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`,
+          hideUserMessage: false
+        });
       }
     };
     return (
