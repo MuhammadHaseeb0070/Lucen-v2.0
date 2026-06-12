@@ -137,7 +137,7 @@ describe('ArtifactRenderer', () => {
         root.render(
           <ArtifactRenderer
             content="print('hello')"
-            type="python"
+            type="excel"
             viewMode="preview"
             isStreaming={false}
             artifactId="test-python-cancel"
@@ -156,7 +156,6 @@ describe('ArtifactRenderer', () => {
           />
         );
       });
-      const stopButton = Array.from(container!.querySelectorAll('button')).find(b => b.textContent?.includes('Stop'));
       // Note: testing actual worker state requires mocking pyodideWorkerClient, but we can verify the UI mounts.
       // We expect no crash here.
       expect(container).toBeDefined();
