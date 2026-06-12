@@ -1414,12 +1414,14 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     const activeConversationId = useChatStore((s) => s.activeConversationId);
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';
-      if (activeConversationId) {
-        useComposerStore.getState().setPendingAutoSend({
-          content: `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`,
-          hideUserMessage: false
-        });
-      }
+      useComposerStore.getState().setPendingAutoSend({
+        content: `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`,
+        hideUserMessage: false
+      });
+      // Give it a tiny delay to let the message inject, then scroll to it
+      setTimeout(() => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }, 50);
     };
     return (
       <RendererErrorBoundary content={content} language={language}>
