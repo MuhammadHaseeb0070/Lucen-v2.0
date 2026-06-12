@@ -1411,7 +1411,6 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
   const language = LANGUAGE_MAP[type] || 'text';
   if (type === 'excel' || type === 'word') {
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
-    const activeConversationId = useChatStore((s) => s.activeConversationId);
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';
       useComposerStore.getState().setPendingAutoSend({
