@@ -116,6 +116,7 @@ globalThis.fetch = async function(input: RequestInfo | URL, init?: RequestInit):
       const proxied = `${PROXY_QUERY_BASE}${encodeURIComponent(urlStr)}`;
       const proxiedInit = { ...(init || {}), headers: { ...((init as any)?.headers || {}), ...proxyHeaders() } };
       return originalFetch(proxied, proxiedInit);
+      }
     }
     throw err;
   }
