@@ -1263,7 +1263,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
             ↺ Try Again
           </button>
           {onRetry && (
-            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ background: '#374151', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Terminal size={14} /> Ask AI to Fix
             </button>
           )}

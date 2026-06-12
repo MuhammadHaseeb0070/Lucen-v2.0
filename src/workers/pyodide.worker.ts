@@ -287,10 +287,30 @@ function getMimeType(ext: string): string {
   return types[ext] || 'application/octet-stream';
 }
 
-ctx.addEventListener('message', async (e: MessageEvent) => {
+const taskQueue: MessageEvent[] = [];
+let isRunningTask = false;
+
+async function processTaskQueue() {
+  if (isRunningTask) return;
+  isRunningTask = true;
+  while (taskQueue.length > 0) {
+    const e = taskQueue.shift();
+    if (e) {
+      await handleRunTask(e);
+    }
+  }
+  isRunningTask = false;
+}
+
+ctx.addEventListener('message', (e: MessageEvent) => {
   const d = e.data;
   if (!d || d.type !== 'run') return;
+  taskQueue.push(e);
+  processTaskQueue();
+});
 
+async function handleRunTask(e: MessageEvent) {
+  const d = e.data;
   const { code, artifactId, inputFiles } = d;
   currentArtifactId = artifactId;
 
