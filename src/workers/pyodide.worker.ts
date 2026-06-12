@@ -441,6 +441,13 @@ except Exception:
       stderr = py.runPython('sys.stderr.getvalue()') ?? '';
     } catch { stdout = ''; }
 
+    // Enhance error reporting if Pyodide only gives us a generic "PythonError"
+    if (runError) {
+      if ((runError === 'PythonError' || !runError.includes('Traceback')) && stderr) {
+        runError = stderr.trim();
+      }
+    }
+
     // Restore streams
     try {
       await py.runPythonAsync(`

@@ -1262,7 +1262,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
             ↺ Try Again
           </button>
           {onRetry && (
-            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Terminal size={14} /> Ask AI to Fix
             </button>
           )}
@@ -1271,7 +1271,21 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
           </button>
         </div>
         {showRawError && (
-          <pre className="excel-error-raw" style={{ marginTop: '12px', padding: '8px', background: '#1f2937', color: '#f9fafb', fontSize: '0.75rem', overflow: 'auto', maxHeight: '200px' }}>{result.error}</pre>
+          <div className="excel-error-raw" style={{ marginTop: '12px', padding: '8px', background: '#1f2937', color: '#f9fafb', fontSize: '0.75rem', overflow: 'auto', maxHeight: '300px', borderRadius: '4px' }}>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{result.error}</pre>
+            {result.stderr && result.stderr.trim() !== result.error.trim() && (
+              <>
+                <div style={{ marginTop: '8px', borderTop: '1px solid #374151', paddingTop: '8px', color: '#fb923c', fontWeight: 600 }}>Standard Error:</div>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#fdba74', fontFamily: 'monospace' }}>{result.stderr}</pre>
+              </>
+            )}
+            {result.stdout && (
+              <>
+                <div style={{ marginTop: '8px', borderTop: '1px solid #374151', paddingTop: '8px', color: '#9ca3af', fontWeight: 600 }}>Standard Output:</div>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{result.stdout}</pre>
+              </>
+            )}
+          </div>
         )}
       </div>
     );
@@ -1398,9 +1412,16 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const activeConversationId = useChatStore((s) => s.activeConversationId);
     const onRetry = () => {
-      const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || '';
+      const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';
       if (activeConversationId) {
-        useChatStore.getState().setDraft(activeConversationId, `The python script failed with this error: ${error}. Please fix it.`);
+        useChatStore.getState().setDraft(activeConversationId, `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`);
+        setTimeout(() => {
+          const ta = document.querySelector('textarea');
+          if (ta) {
+             ta.focus();
+             ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
       }
     };
     return (
