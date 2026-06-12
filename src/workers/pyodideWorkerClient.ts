@@ -14,6 +14,7 @@ export interface PythonDocumentProgress {
 
 type WorkerMessage =
   | { type: 'status'; artifactId: string; stage: PythonDocumentRunStage; message: string }
+  | { type: 'stream'; artifactId: string; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'result'; artifactId: string; stdout: string; stderr: string; 
       files: Array<{ name: string; data: string; mimeType: string }>; error: string | null };
 
@@ -22,10 +23,28 @@ let worker: Worker | undefined;
 const pending = new Map<string, {
   resolve: (res: PythonDocumentResult) => void;
   onProgress?: (progress: PythonDocumentProgress) => void;
+  onStream?: (stream: 'stdout' | 'stderr', text: string) => void;
 }>();
 
 export function cancelPythonRun(artifactId: string) {
-  pending.delete(artifactId);
+  if (pending.has(artifactId)) {
+    const handler = pending.get(artifactId);
+    pending.delete(artifactId);
+    
+    // Force terminate the worker to stop the underlying Python execution completely
+    if (worker) {
+      worker.terminate();
+      worker = undefined;
+    }
+    
+    // Resolve with a cancelled state
+    handler?.resolve({
+      stdout: '',
+      stderr: '',
+      files: [],
+      error: 'Cancelled',
+    });
+  }
 }
 
 function getWorker(): Worker {
@@ -38,6 +57,9 @@ function getWorker(): Worker {
       if (data.type === 'status') {
         const handler = pending.get(data.artifactId);
         handler?.onProgress?.({ stage: data.stage, message: data.message });
+      } else if (data.type === 'stream') {
+        const handler = pending.get(data.artifactId);
+        handler?.onStream?.(data.stream, data.text);
       } else if (data.type === 'result') {
         const handler = pending.get(data.artifactId);
         if (handler) {
@@ -61,12 +83,13 @@ export function runPythonDocument(
   code: string,
   inputFiles?: Array<{ name: string; data: string }>,
   onProgress?: (progress: PythonDocumentProgress) => void,
+  onStream?: (stream: 'stdout' | 'stderr', text: string) => void,
 ): Promise<PythonDocumentResult> {
   // Cancel any prior run for this artifact
-  pending.delete(artifactId);
+  cancelPythonRun(artifactId);
 
   return new Promise((resolve) => {
-    pending.set(artifactId, { resolve, onProgress });
+    pending.set(artifactId, { resolve, onProgress, onStream });
     getWorker().postMessage({ type: 'run', artifactId, documentType, code, inputFiles });
   });
 }

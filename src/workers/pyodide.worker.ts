@@ -136,6 +136,11 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
     const py = await initPyodide(artifactId);
     clearWorkspace(py);
 
+    // Setup streaming callback on the worker global scope
+    (self as any).emit_stream = (stream: string, text: string) => {
+      ctx.postMessage({ type: 'stream', artifactId, stream: stream as 'stdout' | 'stderr', text });
+    };
+
     // Mount input files
     if (inputFiles && Array.isArray(inputFiles)) {
       for (const file of inputFiles) {
@@ -177,11 +182,31 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
 
     const beforeMeta = getFilesMeta('/home/pyodide');
 
-    // Redirect stdout/stderr
+    // Redirect stdout/stderr with a custom streaming wrapper
     await py.runPythonAsync(`
 import sys, io
-sys.stdout = io.StringIO()
-sys.stderr = io.StringIO()
+import js
+
+class StreamWrapper:
+    def __init__(self, stream_name):
+        self.stream_name = stream_name
+        self.buffer = io.StringIO()
+
+    def write(self, text):
+        self.buffer.write(text)
+        try:
+            js.emit_stream(self.stream_name, text)
+        except Exception:
+            pass
+
+    def flush(self):
+        pass
+
+    def getvalue(self):
+        return self.buffer.getvalue()
+
+sys.stdout = StreamWrapper('stdout')
+sys.stderr = StreamWrapper('stderr')
 `);
 
     // Set matplotlib to headless mode

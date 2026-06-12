@@ -1018,6 +1018,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
   const [isRunning, setIsRunning] = useState(false);
   const [showRawError, setShowRawError] = useState(false);
   const [fileNotFound, setFileNotFound] = useState(false);
+  const [streamData, setStreamData] = useState<{ stdout: string; stderr: string }>({ stdout: '', stderr: '' });
 
   const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef(false);
@@ -1031,6 +1032,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
 
     setFileNotFound(false);
     setShowRawError(false);
+    setStreamData({ stdout: '', stderr: '' });
 
     const run = async () => {
       let inputFiles: Array<{ name: string; data: string }> | undefined;
@@ -1085,7 +1087,15 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
           artifact.type,
           artifact.content,
           inputFiles,
-          (prog) => { if (isActive()) setProgress(prog); }
+          (prog) => { if (isActive()) setProgress(prog); },
+          (stream, text) => {
+            if (isActive()) {
+              setStreamData(prev => ({
+                ...prev,
+                [stream]: prev[stream] + text
+              }));
+            }
+          }
         );
 
         if (!isActive()) return;
@@ -1128,7 +1138,6 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
     return () => {
       isMounted = false;
       isRunningRef.current = false;
-      cancelPythonRun(artifact.id);
     };
   }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey]);
 
@@ -1153,7 +1162,18 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
     const stages: PythonDocumentRunStage[] = ['init', 'packages', 'input', 'running'];
     const currentIdx = stages.indexOf(stage as PythonDocumentRunStage);
     return (
-      <div className="excel-output excel-output--loading" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div className="excel-output excel-output--loading" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+        <button
+          onClick={() => {
+            cancelPythonRun(artifact.id);
+            setIsRunning(false);
+            isRunningRef.current = false;
+            setResult({ stdout: '', stderr: '', files: [], error: 'Cancelled' });
+          }}
+          style={{ position: 'absolute', top: '16px', right: '16px', background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}
+        >
+          <X size={14} /> Stop
+        </button>
         <div className="excel-loading-icon" style={{ marginBottom: '16px' }}>
           <Terminal size={28} style={{ color: '#22c55e' }} />
         </div>
@@ -1166,12 +1186,48 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
             </div>
           ))}
         </div>
-        <p className="excel-loading-hint" style={{ fontSize: '0.7rem', color: '#6b7280' }}>First run loads the Python environment (~5-10s). Subsequent runs are instant.</p>
+        <p className="excel-loading-hint" style={{ fontSize: '0.7rem', color: '#6b7280', marginBottom: '16px' }}>First run loads the Python environment (~5-10s). Subsequent runs are instant.</p>
+        
+        {(streamData.stdout || streamData.stderr) && (
+          <details open style={{ width: '100%', maxWidth: '500px', background: 'var(--bg-surface)', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden', textAlign: 'left' }}>
+            <summary style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-muted)' }}>
+              <Terminal size={14} /> Live Output Stream
+            </summary>
+            <div style={{ padding: '12px', borderTop: '1px solid var(--bg-inset)', maxHeight: '200px', overflowY: 'auto' }}>
+              {streamData.stdout && (
+                <div style={{ marginBottom: streamData.stderr ? '8px' : '0' }}>
+                  <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.7rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{streamData.stdout}</pre>
+                </div>
+              )}
+              {streamData.stderr && (
+                <div>
+                  <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.7rem', color: '#d97706', whiteSpace: 'pre-wrap' }}>{streamData.stderr}</pre>
+                </div>
+              )}
+            </div>
+          </details>
+        )}
       </div>
     );
   }
 
   if (!result) return null;
+
+  // ── Cancelled state ──
+  if (result.error === 'Cancelled') {
+    return (
+      <div className="excel-output excel-output--notice" style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', background: 'var(--bg-base)' }}>
+        <XCircle size={32} style={{ color: '#9ca3af', marginBottom: '12px' }} />
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Execution Cancelled</div>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>The Python script was stopped by the user.</p>
+        {onRetry && (
+          <button className="excel-btn excel-btn--primary" onClick={onRetry} style={{ marginTop: '16px', background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
+            ↺ Try Again
+          </button>
+        )}
+      </div>
+    );
+  }
 
   // ── Error state ──
   if (result.error) {
@@ -1194,8 +1250,8 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
         )}
         <div className="excel-error-actions" style={{ display: 'flex', gap: '12px' }}>
           {onRetry && (
-            <button className="excel-btn excel-btn--primary" onClick={onRetry} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
-              ↺ Regenerate
+            <button className="excel-btn excel-btn--primary" onClick={onRetry} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Terminal size={14} /> {isPackage ? 'Fix with AI' : '↺ Regenerate'}
             </button>
           )}
           <button className="excel-btn excel-btn--ghost" onClick={() => setShowRawError(!showRawError)} style={{ background: 'transparent', border: '1px solid #d1d5db', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
