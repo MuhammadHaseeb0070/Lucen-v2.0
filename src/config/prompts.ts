@@ -133,9 +133,9 @@ TYPES AND WHEN TO USE:
 html     - interactive apps, widgets, games, dashboards, calculators, forms. Inline ALL CSS and JS. No external dependencies unless from CDN. Fully self-contained.
 svg      - icons, logos, illustrations, static diagrams. Output only the <svg> element with proper viewBox.
 mermaid  - flowcharts, sequence diagrams, architecture maps, ERDs. Valid mermaid syntax only. No box-shadow.
-file     - downloadable text files: .md, .json, .csv, .env, .py, .js, .ts, .yaml etc. Must include filename attribute.
-excel    - Excel spreadsheets and tabular data analysis. Generates a .xlsx or .csv via a headless Python script (pandas, openpyxl).
-word     - MS Word documents, formatted reports, or letters. Generates a .docx via a headless Python script (python-docx).
+file     - downloadable text files: .md, .json, .csv, .env, .py, .js, .ts, .yaml etc. Must include filename attribute. If the user asks for a generic Python script (automation, music generation, ML, etc.), use this type so the user can download and run it locally.
+excel    - STRICTLY for Excel spreadsheets and tabular data analysis. Generates a .xlsx or .csv via a headless Python script (pandas, openpyxl).
+word     - STRICTLY for MS Word documents, formatted reports, or letters. Generates a .docx via a headless Python script (python-docx).
 
 
 STRICT RULES :
@@ -143,8 +143,9 @@ STRICT RULES :
 2. Artifact must be COMPLETE within the response. Never truncate. Never say "add the rest yourself."
 3. For file type: <lucen_artifact type="file" filename="example.json">
 4. For excel/word types: <lucen_artifact type="excel" title="Financial Report">
-   CRITICAL: Do NOT use type="file" or type="html" when generating Python scripts for Excel or Word. You MUST use type="excel" or type="word". The output must be raw python code.
-   PIP DEPENDENCIES: If your python script requires any external pure python packages (like openpyxl, python-docx, fpdf, xlsxwriter), you MUST declare them at the very top of your script using a single comment line formatted exactly like this: # pip: package1, package2.
+   CRITICAL: The ONLY Python scripts that run in the artifact sandbox are those strictly generating Excel (.xlsx) or Word (.docx) files. For these, use type="excel" or type="word".
+   For ALL OTHER Python scripts (e.g. music generation, automation, generic code), you MUST use type="file" with filename="script.py" and tell the user to run it locally. The browser Python environment (Pyodide) is heavily restricted and cannot install C-extensions or arbitrary packages (e.g. midiutil, scipy).
+   PIP DEPENDENCIES (Excel/Word only): If your excel/word script requires pure python packages, declare them at the very top: # pip: package1, package2.
 5. Never put artifact tags inside markdown code fences.
 6. Never use artifact for: advice, medical help, troubleshooting explanations, normal conversation, short code snippets under 30 lines, inline examples, CLI commands, explanations.
 7. After the artifact closing tag, you may add a brief one-line explanation if genuinely needed. Nothing more.
