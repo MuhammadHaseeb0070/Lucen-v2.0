@@ -24,6 +24,7 @@ const pending = new Map<string, {
   resolve: (res: PythonDocumentResult) => void;
   onProgress?: (progress: PythonDocumentProgress) => void;
   onStream?: (stream: 'stdout' | 'stderr', text: string) => void;
+  runArgs: { artifactId: string, documentType: string, code: string, inputFiles?: Array<{ name: string; data: string }> };
 }>();
 
 export function cancelPythonRun(artifactId: string) {
@@ -37,16 +38,17 @@ export function cancelPythonRun(artifactId: string) {
       worker = undefined;
       
       // Since the worker is dead, any other pending tasks are orphaned.
-      // We must resolve them so they don't hang indefinitely waiting for the dead worker.
+      // We must resubmit them to a fresh worker so they don't fail just because one task hung.
+      const toResubmit = [];
       for (const [, otherHandler] of pending.entries()) {
-        otherHandler.resolve({
-          stdout: '',
-          stderr: '',
-          files: [],
-          error: 'Worker terminated by another process cancellation.',
-        });
+        toResubmit.push(otherHandler);
       }
       pending.clear();
+      
+      for (const other of toResubmit) {
+        pending.set(other.runArgs.artifactId, other);
+        getWorker().postMessage({ type: 'run', ...other.runArgs });
+      }
     }
     
     // Resolve with a cancelled state
@@ -101,7 +103,12 @@ export function runPythonDocument(
   cancelPythonRun(artifactId);
 
   return new Promise((resolve) => {
-    pending.set(artifactId, { resolve, onProgress, onStream });
+    pending.set(artifactId, { 
+      resolve, 
+      onProgress, 
+      onStream,
+      runArgs: { artifactId, documentType, code, inputFiles }
+    });
     getWorker().postMessage({ type: 'run', artifactId, documentType, code, inputFiles });
   });
 }

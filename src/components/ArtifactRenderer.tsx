@@ -5,7 +5,6 @@ import type { ArtifactType, Artifact } from '../types';
 import type { PreviewViewport } from '../store/artifactStore';
 import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
-import { useComposerStore } from '../store/composerStore';
 import { attachErrorListener, injectIntoHtml } from '../lib/iframeErrorBridge';
 import DOMPurify from 'dompurify';
 import { runPythonDocument, cancelPythonRun, type PythonDocumentResult, type PythonDocumentProgress, type PythonDocumentRunStage } from '../workers/pyodideWorkerClient';
@@ -1413,14 +1412,25 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';
-      useComposerStore.getState().setPendingAutoSend({
-        content: `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`,
-        hideUserMessage: false
-      });
-      // Give it a tiny delay to let the message inject, then scroll to it
-      setTimeout(() => {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }, 50);
+      const text = `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`;
+      
+      const tas = document.querySelectorAll('.message-textarea');
+      const ta = Array.from(tas).find(t => (t as HTMLElement).offsetParent !== null) as HTMLTextAreaElement | undefined;
+      
+      if (ta) {
+         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+         nativeInputValueSetter?.call(ta, text);
+         ta.dispatchEvent(new Event('input', { bubbles: true }));
+         
+         setTimeout(() => {
+           ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+           const container = ta.closest('.message-input-container');
+           const sendBtn = container?.querySelector('.send-btn') as HTMLButtonElement;
+           if (sendBtn && !sendBtn.disabled) {
+             sendBtn.click();
+           }
+         }, 100);
+      }
     };
     return (
       <RendererErrorBoundary content={content} language={language}>
