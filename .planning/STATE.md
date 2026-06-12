@@ -4,14 +4,14 @@ milestone: v2.7
 milestone_name: milestone
 status: Awaiting next milestone
 stopped_at: Phase 09 context gathered
-last_updated: "2026-06-12T06:50:35.136Z"
+last_updated: "2026-06-12T11:36:38.874Z"
 last_activity: 2026-06-12 — Milestone v2.7 completed and archived
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 1
   total_plans: 1
-  completed_plans: 2
-  percent: 50
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -70,3 +70,12 @@ Resume file: .planning/phases/09-artifact-system-audit/09-CONTEXT.md
 ## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone
+
+## Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-06-12:
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | pyodide-offline-failure-resolved | unknown |
+| debug | pyodide-offline-failure | unknown |

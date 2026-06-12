@@ -2,6 +2,16 @@
 
 ## v2.7 Robust OpenRouter Multi-Model System (Shipped: 2026-06-12)
 
+**Phases completed:** 3 phases, 1 plans, 0 tasks
+
+**Key accomplishments:**
+
+- `Evaluating a string as JavaScript violates the following Content Security Policy directive...`
+
+---
+
+## v2.7 Robust OpenRouter Multi-Model System (Shipped: 2026-06-12)
+
 **Phases completed:** 2 phases, 1 plans, 0 tasks
 
 **Key accomplishments:**
