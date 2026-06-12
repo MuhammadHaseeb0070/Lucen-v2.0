@@ -179,7 +179,6 @@ async function initPyodide(artifactId: string) {
     // Step 1: Probe whether CDN is directly reachable from this browser
     const cdnReachable = await probeCdnReachable();
 
-    let mjsUrl: string;
     let indexURL: string;
 
     if (!cdnReachable && PROXY_INDEX_BASE) {
