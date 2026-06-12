@@ -78,6 +78,28 @@
 
 ---
 
+## Milestone: v2.7 — Robust OpenRouter Multi-Model System
+
+**Shipped:** 2026-06-12
+**Phases:** 2 | **Plans:** 1 | **Sessions:** 1
+
+### What Was Built
+- Multi-model fallback engine to retry failed OpenRouter requests against secondary/tertiary models.
+- Parameter normalization and client synchronization to properly manage headers and strip unsupported properties (e.g., temperature) when fallback lands on a reasoning model.
+- Overhauled artifact system security (CSP adjustments) and interactive execution UX (Cancel button, Live Stream Console).
+
+### What Worked
+- Sequential Try-Catch failover implementation successfully shielded client experiences from upstream model outages.
+- DOM tests inside Vitest handled validating conditional rendering of Cancel UI and stream consoles effectively.
+
+### What Was Inefficient
+- Implementing cross-phase testing for complex multi-model API proxies and WASM runtimes manually requires significant mock orchestration.
+
+### Key Lessons
+- Transparently synchronizing frontend state with dynamic headers generated post-fallback is essential when mixing reasoning and non-reasoning models.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -87,6 +109,7 @@
 | v2.3 | 4 | 5 | Refactored legacy monoliths and added Vitest/Playwright tests from scratch. |
 | v2.5 | 1 | 1 | Parallelized web search tools and implemented dynamic round scaling. |
 | v2.6 | 1 | 1 | Rebuilt Pyodide environment focusing exclusively on Excel document generation. |
+| v2.7 | 1 | 2 | Added resilience via model fallback loops and comprehensive UI error handling for Pyodide worker. |
 
 ### Cumulative Quality
 
@@ -95,6 +118,7 @@
 | v2.3 | 52 | 77.09% | 2 |
 | v2.5 | 52 | 77.09% | 0 |
 | v2.6 | 58 | 77.50% | 0 |
+| v2.7 | 65 | 78.00% | 0 |
 
 ### Top Lessons (Verified Across Milestones)
 
