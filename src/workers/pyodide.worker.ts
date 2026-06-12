@@ -136,10 +136,9 @@ async function initPyodide(artifactId: string) {
           message: 'Network block detected. Initiating secure backend proxy fallback...' });
         
         const fallbackMjs = `${proxyBaseUrl}${encodeURIComponent(CDN_MJS)}`;
-        const fallbackIndex = `${proxyBaseUrl}${encodeURIComponent(CDN_URL)}`;
         pyodideModule = await (Function('u', 'return import(u)')(fallbackMjs));
         pyodide = await pyodideModule.loadPyodide({
-          indexURL: fallbackIndex,
+          indexURL: CDN_URL,
         });
       } else {
         throw err;

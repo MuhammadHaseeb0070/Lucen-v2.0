@@ -9,6 +9,8 @@ const ALLOWED_DOMAINS = [
 
 Deno.serve(async (req: Request) => {
   const cors = getCorsHeaders(req);
+  cors['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors });
   }
