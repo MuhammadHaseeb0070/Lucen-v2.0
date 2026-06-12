@@ -1,6 +1,38 @@
 const ctx: Worker = self as any;
 
 let pyodide: any = null;
+let currentArtifactId = '';
+let proxyBaseUrl = import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pyodide-proxy?url=` : '';
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async function(input, init) {
+  let urlStr = '';
+  if (typeof input === 'string') {
+    urlStr = input;
+  } else if (input instanceof Request) {
+    urlStr = input.url;
+  } else if (input instanceof URL) {
+    urlStr = input.toString();
+  }
+
+  const isExternal = urlStr.includes('pypi.org') || 
+                     urlStr.includes('pythonhosted.org') || 
+                     urlStr.includes('jsdelivr.net');
+
+  try {
+    return await originalFetch(input, init);
+  } catch (err: any) {
+    // Network errors typically throw TypeError in fetch
+    if (err.name === 'TypeError' && proxyBaseUrl && isExternal) {
+      if (currentArtifactId) {
+        ctx.postMessage({ type: 'status', artifactId: currentArtifactId, stage: 'packages', message: 'Network blocked. Routing request via backend proxy...' });
+      }
+      const proxiedUrl = `${proxyBaseUrl}${encodeURIComponent(urlStr)}`;
+      return originalFetch(proxiedUrl, init);
+    }
+    throw err;
+  }
+};
 
 // Output extensions tracked by the worker
 const OUTPUT_EXTENSIONS = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'pdf', 'json', 'txt', 'zip', 'docx'];
@@ -89,12 +121,30 @@ async function initPyodide(artifactId: string) {
     ctx.postMessage({ type: 'status', artifactId, stage: 'init', 
       message: 'Setting up Python environment...' });
 
-    const pyodideModule = await (Function('u', 'return import(u)')(
-      'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs'
-    ));
-    pyodide = await pyodideModule.loadPyodide({
-      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/',
-    });
+    const CDN_URL = 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/';
+    const CDN_MJS = `${CDN_URL}pyodide.mjs`;
+
+    let pyodideModule;
+    try {
+      pyodideModule = await (Function('u', 'return import(u)')(CDN_MJS));
+      pyodide = await pyodideModule.loadPyodide({
+        indexURL: CDN_URL,
+      });
+    } catch (err: any) {
+      if (proxyBaseUrl) {
+        ctx.postMessage({ type: 'status', artifactId, stage: 'init',
+          message: 'Network block detected. Initiating secure backend proxy fallback...' });
+        
+        const fallbackMjs = `${proxyBaseUrl}${encodeURIComponent(CDN_MJS)}`;
+        const fallbackIndex = `${proxyBaseUrl}${encodeURIComponent(CDN_URL)}`;
+        pyodideModule = await (Function('u', 'return import(u)')(fallbackMjs));
+        pyodide = await pyodideModule.loadPyodide({
+          indexURL: fallbackIndex,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     await pyodide.runPythonAsync(`
 import os
@@ -131,6 +181,7 @@ ctx.addEventListener('message', async (e: MessageEvent) => {
   if (!d || d.type !== 'run') return;
 
   const { code, artifactId, inputFiles } = d;
+  currentArtifactId = artifactId;
 
   try {
     const py = await initPyodide(artifactId);
