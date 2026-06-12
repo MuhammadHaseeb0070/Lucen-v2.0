@@ -2,10 +2,53 @@ const ctx: Worker = self as any;
 
 let pyodide: any = null;
 let currentArtifactId = '';
-let proxyBaseUrl = import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pyodide-proxy?url=` : '';
 
+// The Supabase project URL is injected at build time via Vite's import.meta.env
+const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Path-forwarding proxy base for Pyodide CDN assets.
+// Pyodide appends filenames to indexURL directly, so we need a clean base path,
+// not a ?url= query param. The proxy maps /cdn/ → cdn.jsdelivr.net/
+const PROXY_INDEX_BASE = SUPABASE_URL
+  ? `${SUPABASE_URL}/functions/v1/pyodide-proxy/cdn/`
+  : '';
+// Query-param proxy for micropip/PyPI (these go to known full URLs)
+const PROXY_QUERY_BASE = SUPABASE_URL
+  ? `${SUPABASE_URL}/functions/v1/pyodide-proxy?url=`
+  : '';
+
+const CDN_BASE = 'https://cdn.jsdelivr.net/';
+const CDN_URL = `${CDN_BASE}pyodide/v0.26.2/full/`;
+const CDN_MJS = `${CDN_URL}pyodide.mjs`;
+
+/** 
+ * Probe whether the CDN is reachable from this browser environment.
+ * Returns true if directly accessible, false if blocked (CORS/firewall).
+ */
+async function probeCdnReachable(): Promise<boolean> {
+  try {
+    // Probe with a tiny known file to avoid loading the whole 10MB wasm
+    const res = await originalFetch(`${CDN_URL}pyodide.mjs`, { method: 'HEAD' });
+    return res.ok || res.status === 405; // 405 = HEAD not allowed but server reached
+  } catch {
+    return false;
+  }
+}
+
+/** Returns headers needed to call the Supabase Edge Function proxy */
+function proxyHeaders(): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (SUPABASE_ANON_KEY) h['apikey'] = SUPABASE_ANON_KEY;
+  return h;
+}
+
+/**
+ * Global fetch interceptor — intercepts PyPI/CDN requests and retries
+ * through proxy if the direct request fails (TypeError = network block).
+ * This covers micropip.install() calls automatically.
+ */
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async function(input, init) {
+globalThis.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   let urlStr = '';
   if (typeof input === 'string') {
     urlStr = input;
@@ -15,24 +58,36 @@ globalThis.fetch = async function(input, init) {
     urlStr = input.toString();
   }
 
-  const isExternal = urlStr.includes('pypi.org') || 
-                     urlStr.includes('pythonhosted.org') || 
-                     urlStr.includes('jsdelivr.net');
+  const isProxiable = PROXY_QUERY_BASE && (
+    urlStr.includes('pypi.org') ||
+    urlStr.includes('pythonhosted.org') ||
+    urlStr.includes('jsdelivr.net')
+  );
 
   try {
     return await originalFetch(input, init);
   } catch (err: any) {
-    // Network errors typically throw TypeError in fetch
-    if (err.name === 'TypeError' && proxyBaseUrl && isExternal) {
+    if (err.name === 'TypeError' && isProxiable) {
       if (currentArtifactId) {
-        ctx.postMessage({ type: 'status', artifactId: currentArtifactId, stage: 'packages', message: 'Network blocked. Routing request via backend proxy...' });
+        ctx.postMessage({
+          type: 'status',
+          artifactId: currentArtifactId,
+          stage: 'packages',
+          message: 'Network blocked. Routing via backend proxy...',
+        });
       }
-      const proxiedUrl = `${proxyBaseUrl}${encodeURIComponent(urlStr)}`;
-      return originalFetch(proxiedUrl, init);
+      const proxied = `${PROXY_QUERY_BASE}${encodeURIComponent(urlStr)}`;
+      const proxiedInit = { ...(init || {}), headers: { ...((init as any)?.headers || {}), ...proxyHeaders() } };
+      return originalFetch(proxied, proxiedInit);
     }
     throw err;
   }
 };
+
+/** Make a fetch request through the proxy with auth headers */
+async function proxyFetch(url: string, init?: RequestInit): Promise<Response> {
+  return originalFetch(url, { ...init, headers: { ...((init as any)?.headers || {}), ...proxyHeaders() } });
+}
 
 // Output extensions tracked by the worker
 const OUTPUT_EXTENSIONS = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg', 'pdf', 'json', 'txt', 'zip', 'docx'];
@@ -121,28 +176,42 @@ async function initPyodide(artifactId: string) {
     ctx.postMessage({ type: 'status', artifactId, stage: 'init', 
       message: 'Setting up Python environment...' });
 
-    const CDN_URL = 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/';
-    const CDN_MJS = `${CDN_URL}pyodide.mjs`;
+    // Step 1: Probe whether CDN is directly reachable from this browser
+    const cdnReachable = await probeCdnReachable();
 
-    let pyodideModule;
-    try {
-      pyodideModule = await (Function('u', 'return import(u)')(CDN_MJS));
-      pyodide = await pyodideModule.loadPyodide({
-        indexURL: CDN_URL,
-      });
-    } catch (err: any) {
-      if (proxyBaseUrl) {
-        ctx.postMessage({ type: 'status', artifactId, stage: 'init',
-          message: 'Network block detected. Initiating secure backend proxy fallback...' });
-        
-        const fallbackMjs = `${proxyBaseUrl}${encodeURIComponent(CDN_MJS)}`;
-        pyodideModule = await (Function('u', 'return import(u)')(fallbackMjs));
-        pyodide = await pyodideModule.loadPyodide({
-          indexURL: CDN_URL,
-        });
-      } else {
-        throw err;
+    let mjsUrl: string;
+    let indexURL: string;
+
+    if (!cdnReachable && PROXY_INDEX_BASE) {
+      // CDN is blocked — use path-forwarding proxy.
+      // We CANNOT just dynamic import() from the proxy URL because the ES Module
+      // loader bypasses our fetch interceptor. Instead, we:
+      // 1. Fetch the .mjs content as text through our auth-aware proxyFetch
+      // 2. Create a Blob URL from the text
+      // 3. import() the blob URL (same-origin, no CORS issues)
+      // 4. Set indexURL to the proxy path so Pyodide fetches subsequent
+      //    files (.wasm, .json, etc.) through the fetch interceptor automatically
+      ctx.postMessage({ type: 'status', artifactId, stage: 'init',
+        message: 'Network block detected. Initiating secure backend proxy fallback...' });
+
+      const pyodidePath = 'pyodide/v0.26.2/full/';
+      indexURL = `${PROXY_INDEX_BASE}${pyodidePath}`;
+      const proxyMjsUrl = `${indexURL}pyodide.mjs`;
+      
+      // Fetch the module text through our proxy (passes apikey header)
+      const mjsText = await proxyFetch(proxyMjsUrl).then(r => r.text());
+      const blob = new Blob([mjsText], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      try {
+        const pyodideModule = await (Function('u', 'return import(u)')(blobUrl));
+        pyodide = await pyodideModule.loadPyodide({ indexURL });
+      } finally {
+        URL.revokeObjectURL(blobUrl);
       }
+    } else {
+      // CDN is reachable — use it directly (fast path, normal case)
+      const pyodideModule = await (Function('u', 'return import(u)')(CDN_MJS));
+      pyodide = await pyodideModule.loadPyodide({ indexURL: CDN_URL });
     }
 
     await pyodide.runPythonAsync(`
@@ -151,12 +220,13 @@ os.makedirs('/home/pyodide', exist_ok=True)
 os.chdir('/home/pyodide')
 `);
     
-    // Always load micropip natively
+    // Always load micropip (fetch interceptor handles proxy for its installs)
     await pyodide.loadPackage('micropip');
   }
 
   return pyodide;
 }
+
 
 function getMimeType(ext: string): string {
   const types: Record<string, string> = {

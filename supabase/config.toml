@@ -19,3 +19,6 @@ verify_jwt = false
 
 [functions.deduct-credits]
 verify_jwt = false
+
+[functions.pyodide-proxy]
+verify_jwt = false
