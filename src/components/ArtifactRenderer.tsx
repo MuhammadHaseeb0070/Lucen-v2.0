@@ -1278,9 +1278,9 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
   }
 
   const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
-  const documentFiles = uniqueFiles.filter(f => f.mimeType.includes('spreadsheet') || f.name.endsWith('.xlsx') || f.name.endsWith('.csv') || f.name.endsWith('.docx'));
+  const documentFiles: any[] = []; // Previews disabled; use native download
   const imageFiles = uniqueFiles.filter(f => f.mimeType.startsWith('image/'));
-  const otherFiles = uniqueFiles.filter(f => !documentFiles.includes(f) && !imageFiles.includes(f));
+  const otherFiles = uniqueFiles.filter(f => !imageFiles.includes(f));
 
   const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
     const binary = atob(file.data);
