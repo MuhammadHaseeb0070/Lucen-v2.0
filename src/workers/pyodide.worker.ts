@@ -74,18 +74,37 @@ globalThis.fetch = async function(input: RequestInfo | URL, init?: RequestInit):
   const isOwnProxyUrl = supabaseProxyOrigin && urlStr.startsWith(supabaseProxyOrigin) && urlStr.includes('/pyodide-proxy/');
 
   if (isOwnProxyUrl && SUPABASE_ANON_KEY) {
-    // Inject the apikey header so Supabase's gateway lets the request through
-    const authInit: RequestInit = {
+    let originalHeaders: any = {};
+    if (input instanceof Request) {
+       originalHeaders = Object.fromEntries((input.headers as any).entries());
+    }
+    const initHeaders = (init as any)?.headers || {};
+    
+    init = {
       ...(init || {}),
-      headers: { ...((init as any)?.headers || {}), ...proxyHeaders() },
+      headers: { ...originalHeaders, ...initHeaders, ...proxyHeaders() },
     };
-    return originalFetch(input, authInit);
   }
 
   try {
     return await originalFetch(input, init);
   } catch (err: any) {
-    if (err.name === 'TypeError' && isProxiable) {
+    // If it's a TypeError (Network/CORS failure)
+    if (err.name === 'TypeError') {
+      if (isOwnProxyUrl) {
+        // Transient proxy error (e.g. 502 Gateway timeout lacking CORS headers under load)
+        // Retry it after a short delay
+        if (currentArtifactId) {
+          ctx.postMessage({
+            type: 'status',
+            artifactId: currentArtifactId,
+            stage: 'packages',
+            message: 'Proxy network hiccup. Retrying...',
+          });
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return originalFetch(input, init);
+      } else if (isProxiable) {
       if (currentArtifactId) {
         ctx.postMessage({
           type: 'status',
