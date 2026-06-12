@@ -58,11 +58,29 @@ globalThis.fetch = async function(input: RequestInfo | URL, init?: RequestInit):
     urlStr = input.toString();
   }
 
+  // Detect URLs that need to be re-routed through our proxy (CDN/PyPI direct calls)
   const isProxiable = PROXY_QUERY_BASE && (
     urlStr.includes('pypi.org') ||
     urlStr.includes('pythonhosted.org') ||
     urlStr.includes('jsdelivr.net')
   );
+
+  // Detect URLs that ARE already our Supabase proxy — these need auth headers injected.
+  // This covers Pyodide's internal wheel fetches: Pyodide constructs URLs using
+  // indexURL as the base, so internal fetches go directly to our Supabase proxy URL.
+  // Without the apikey header, Supabase's gateway rejects them with 401, which the
+  // browser shows as "Fetch API cannot load" (the 401 may lack CORS headers).
+  const supabaseProxyOrigin = SUPABASE_URL ? new URL(SUPABASE_URL).origin : '';
+  const isOwnProxyUrl = supabaseProxyOrigin && urlStr.startsWith(supabaseProxyOrigin) && urlStr.includes('/pyodide-proxy/');
+
+  if (isOwnProxyUrl && SUPABASE_ANON_KEY) {
+    // Inject the apikey header so Supabase's gateway lets the request through
+    const authInit: RequestInit = {
+      ...(init || {}),
+      headers: { ...((init as any)?.headers || {}), ...proxyHeaders() },
+    };
+    return originalFetch(input, authInit);
+  }
 
   try {
     return await originalFetch(input, init);
@@ -219,8 +237,13 @@ os.makedirs('/home/pyodide', exist_ok=True)
 os.chdir('/home/pyodide')
 `);
     
-    // Always load micropip (fetch interceptor handles proxy for its installs)
-    await pyodide.loadPackage('micropip');
+    // Always load micropip + packaging together.
+    // 'packaging' is a runtime dependency of micropip that Pyodide does NOT
+    // auto-install. In CDN-blocked environments the lazy .whl fetch for
+    // 'packaging' silently fails, causing "No module named 'packaging'" when
+    // micropip tries to import it. Loading them as a batch ensures both wheels
+    // are downloaded and registered before any Python import runs.
+    await pyodide.loadPackage(['packaging', 'micropip']);
   }
 
   return pyodide;
