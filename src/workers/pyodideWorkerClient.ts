@@ -35,6 +35,18 @@ export function cancelPythonRun(artifactId: string) {
     if (worker) {
       worker.terminate();
       worker = undefined;
+      
+      // Since the worker is dead, any other pending tasks are orphaned.
+      // We must resolve them so they don't hang indefinitely waiting for the dead worker.
+      for (const [, otherHandler] of pending.entries()) {
+        otherHandler.resolve({
+          stdout: '',
+          stderr: '',
+          files: [],
+          error: 'Worker terminated by another process cancellation.',
+        });
+      }
+      pending.clear();
     }
     
     // Resolve with a cancelled state

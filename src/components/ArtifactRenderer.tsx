@@ -1019,6 +1019,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
   const [showRawError, setShowRawError] = useState(false);
   const [fileNotFound, setFileNotFound] = useState(false);
   const [streamData, setStreamData] = useState<{ stdout: string; stderr: string }>({ stdout: '', stderr: '' });
+  const [runCounter, setRunCounter] = useState(0);
 
   const ranRef = useRef<string | null>(pythonCache.has(cacheKey) ? cacheKey : null);
   const isRunningRef = useRef(false);
@@ -1139,7 +1140,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
       isMounted = false;
       isRunningRef.current = false;
     };
-  }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey]);
+  }, [activeArtifactId, artifact.id, artifact.content, inputFile, matchedAttachment, setRuntimeError, cacheKey, runCounter]);
 
   // ── File not found state ──
   if (fileNotFound) {
@@ -1221,7 +1222,11 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
         <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Execution Cancelled</div>
         <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>The Python script was stopped by the user.</p>
         {onRetry && (
-          <button className="excel-btn excel-btn--primary" onClick={onRetry} style={{ marginTop: '16px', background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
+          <button className="excel-btn excel-btn--primary" onClick={() => {
+            pythonCache.delete(cacheKey);
+            ranRef.current = null;
+            setRunCounter(c => c + 1);
+          }} style={{ marginTop: '16px', background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
             ↺ Try Again
           </button>
         )}
@@ -1249,13 +1254,20 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
           <p className="excel-error-hint" style={{ fontSize: '0.75rem', color: '#4b5563', marginBottom: '12px' }}>The script ran too long. Try asking for a simpler version or with a smaller dataset.</p>
         )}
         <div className="excel-error-actions" style={{ display: 'flex', gap: '12px' }}>
+          <button className="excel-btn excel-btn--primary" onClick={() => {
+            pythonCache.delete(cacheKey);
+            ranRef.current = null;
+            setRunCounter(c => c + 1);
+          }} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ↺ Try Again
+          </button>
           {onRetry && (
-            <button className="excel-btn excel-btn--primary" onClick={onRetry} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Terminal size={14} /> {isPackage ? 'Fix with AI' : '↺ Regenerate'}
+            <button className="excel-btn excel-btn--secondary" onClick={onRetry} style={{ background: '#6b7280', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Terminal size={14} /> Ask AI to Fix
             </button>
           )}
           <button className="excel-btn excel-btn--ghost" onClick={() => setShowRawError(!showRawError)} style={{ background: 'transparent', border: '1px solid #d1d5db', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
-            {showRawError ? 'Hide' : 'Show'} technical details
+            {showRawError ? 'Hide' : 'Show'} details
           </button>
         </div>
         {showRawError && (
@@ -1358,8 +1370,9 @@ const RENDERERS: Record<string, React.FC<RendererProps>> = {
   file: FileRenderer,
   excel: PythonDocumentRenderer as any,
   word: PythonDocumentRenderer as any,
+  python: FileRenderer,
 };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python', word: 'python' };
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python', word: 'python', python: 'python' };
 
 interface ArtifactRendererProps {
   content: string;
