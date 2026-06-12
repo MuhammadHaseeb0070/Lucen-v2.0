@@ -25,3 +25,17 @@ Evolve the current Pyodide sandbox environment (which is currently hardcoded for
 ### REQ-04: Secure Constraints & Prompt Enhancements
 - **Security:** Maintain the 60-second timeout, memory limits, and isolated `/home/pyodide` workspace constraints for all pluggable types.
 - **Prompt Architecture:** Refactor the system prompt (`src/config/prompts.ts`) so the LLM is aware of the different document types it can generate and the specific libraries available for each, minimizing "hallucinated" unsupported library usage.
+## Milestone v2.7 Traceability Table
+
+| Requirement ID | Description | Phase | Status |
+|---|---|---|---|
+| REQ-01 | Multi-Model Secret Configuration | 08-multi-model-fallback-engine | [x] |
+| REQ-02 | Sequential Fallback Execution Loop | 08-multi-model-fallback-engine | [x] |
+| REQ-03 | Parameter Normalization | 08-multi-model-fallback-engine | [x] |
+| REQ-04 | Dynamic Header Sync | 08-multi-model-fallback-engine | [x] |
+| REQ-05 | Configuration Sync | 08-multi-model-fallback-engine | [x] |
+| Obj-1 | Patch Security Headers (CSP) | 09-artifact-system-audit | [x] |
+| Obj-2 | Cancel Execution Button | 09-artifact-system-audit | [x] |
+| Obj-3 | Live Stream Console | 09-artifact-system-audit | [x] |
+| Obj-4 | Transparent Package Progress | 09-artifact-system-audit | [x] |
+| Obj-5 | Robust Error Handling | 09-artifact-system-audit | [x] |

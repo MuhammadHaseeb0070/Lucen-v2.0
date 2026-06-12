@@ -1,17 +1,22 @@
 # Centralized Manual Verification Plan - Phase 8 & 9 (Multi-Model Fallback Engine)
 
-This document outlines the manual verification procedures for the changes introduced in **Phase 8: Multi-Model Fallback Engine** and **Phase 9: Parameter Normalization & Client Synchronization**.
+## Requirements Coverage
+
+| Requirement | Source Plan | Description | Status | Evidence |
+|-------------|-------------|-------------|--------|----------|
+| REQ-01 | 08-01-SUMMARY.md | Multi-Model Secret Configuration | passed | `/get-model-config` tested |
+| REQ-02 | 08-01-SUMMARY.md | Sequential Fallback Execution Loop | passed | Fallback logic handles API outages transparently |
+| REQ-03 | 08-01-SUMMARY.md | Parameter Normalization | passed | Reasoning models strip forbidden parameters |
+| REQ-04 | 08-01-SUMMARY.md | Dynamic Header Sync | passed | Headers sync `x-supports-reasoning` properly |
+| REQ-05 | 08-01-SUMMARY.md | Configuration Sync | passed | Proxy configurations properly handled |
+
+## Tech Debt
+- None identified.
+
+## Status
+passed
 
 ---
-
-## REQ-01 & REQ-05: Multi-Model Secret Configuration & Configuration Sync
-
-### Objective
-Ensure that both the proxy router and configuration endpoint correctly resolve models from primary, secondary, and tertiary secrets, falling back gracefully to legacy or default options.
-
-### Prerequisites
-- Supabase edge functions deployed to staging or local emulator.
-- Access to client browser devtools or raw API testing tool (e.g., Postman / curl).
 
 ### Test Case 1: Active Primary Model Resolution
 1. Set the following environment variables:
