@@ -15,6 +15,7 @@ const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> 
   file: { label: 'File', icon: <FileCode2 size={14} /> },
   excel: { label: 'Excel', icon: <FileCode2 size={14} /> },
   word: { label: 'Word', icon: <FileCode2 size={14} /> },
+  pdf: { label: 'PDF', icon: <FileCode2 size={14} /> },
 };
 
 const VIEWPORT_OPTIONS: { id: PreviewViewport; icon: React.ReactNode; label: string; width: string | null }[] = [
@@ -28,6 +29,7 @@ const DOWNLOAD_EXTENSION_MAP: Record<string, string> = {
   file: 'txt',
   excel: 'py',
   word: 'py',
+  pdf: 'py',
 };
 
 function makeSafeName(title: string): string {
@@ -317,7 +319,7 @@ const ArtifactWorkspace: React.FC = () => {
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
           <div style={{ position: 'relative' }}>
-            {!(viewMode === 'preview' && (activeArtifact.type === 'excel' || activeArtifact.type === 'word')) && (
+            {!(viewMode === 'preview' && (activeArtifact.type === 'excel' || activeArtifact.type === 'word' || activeArtifact.type === 'pdf')) && (
               <>
                 <button className="artifact-action-btn" onClick={() => setDownloadOpen(!downloadOpen)} title="Download artifact">
                   <Download size={15} />

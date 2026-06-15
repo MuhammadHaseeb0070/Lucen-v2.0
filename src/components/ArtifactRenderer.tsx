@@ -740,6 +740,7 @@ function parsePythonError(raw: string): { headline: string; detail: string; isTi
   const isFile = /FileNotFoundError|No such file/i.test(raw);
   const isSyntax = /SyntaxError/i.test(raw);
   const isMemory = /MemoryError|out of memory/i.test(raw);
+  const isPdfFormat = /FPDFException|fpdf/i.test(raw);
 
   let headline = 'Script error';
   if (isTimeout) headline = 'Script timed out';
@@ -747,6 +748,7 @@ function parsePythonError(raw: string): { headline: string; detail: string; isTi
   else if (isFile) headline = 'Input file not found';
   else if (isSyntax) headline = 'Syntax error in generated code';
   else if (isMemory) headline = 'Not enough memory';
+  else if (isPdfFormat) headline = 'PDF formatting error';
 
   // Extract just the last meaningful line for the detail
   const lines = raw.trim().split('\n').filter(l => l.trim());
@@ -764,221 +766,176 @@ export function clearPythonCache(artifactId: string) {
   pythonCache.delete(artifactId);
 }
 
-const DocxViewer = ({ file, onDownload }: { file: any, onDownload: () => void }) => {
+
+
+const PdfViewer = ({ file, onDownload }: { file: { name: string; data: string; mimeType: string }, onDownload: () => void }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const paperRef = useRef<HTMLDivElement>(null);
-  
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [scale, setScale] = useState(1.0);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const renderedRef = useRef(false);
+
   useEffect(() => {
-    const renderDoc = async () => {
+    if (renderedRef.current) return;
+    renderedRef.current = true;
+
+    const renderPdf = async () => {
       try {
-        const docx = await import('docx-preview');
+        setIsLoading(true);
+        const pdfjsLib = await import('pdfjs-dist');
+
+        // Set worker source - use CDN for the worker
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+        }
+
         const binary = atob(file.data);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        
-        if (paperRef.current && !paperRef.current.hasAttribute('data-rendered')) {
-          paperRef.current.setAttribute('data-rendered', 'true');
-          await docx.renderAsync(bytes, paperRef.current, undefined, { 
-            className: 'docx-native-preview', 
-            inWrapper: true, 
-            ignoreWidth: false, 
-            ignoreHeight: false, 
-            ignoreFonts: false, 
-            breakPages: true 
-          });
-        }
-      } catch (err) {
-        console.error("docx-preview error:", err);
-      }
-    };
-    renderDoc();
-    
-    // Setup Responsive Scale Observer
-    const ro = new ResizeObserver((entries) => {
-      if (!entries || !entries.length) return;
-      const { width } = entries[0].contentRect;
-      if (paperRef.current && paperRef.current.firstChild) {
-        const wrapper = paperRef.current.firstChild as HTMLElement;
-        const targetWidth = 816; // Standard docx-preview paper width
-        // Add 64px padding (32px each side)
-        const availableWidth = width - 64; 
-        if (availableWidth < targetWidth) {
-          const scale = availableWidth / targetWidth;
-          wrapper.style.transform = `scale(${scale})`;
-          wrapper.style.transformOrigin = 'top center';
-          // Adjust container height to prevent huge blank space
-          const actualHeight = wrapper.getBoundingClientRect().height;
-          paperRef.current.style.height = `${actualHeight / scale}px`;
-        } else {
-          wrapper.style.transform = 'none';
-        }
-      }
-    });
-    
-    if (containerRef.current) {
-      ro.observe(containerRef.current);
-    }
-    
-    return () => { ro.disconnect(); };
-  }, [file]);
 
-  return (
-    <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', background: '#f3f2f1', border: '1px solid #d4d4d4', display: 'flex', flexDirection: 'column', height: '800px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#2b579a', color: '#fff', padding: '8px 16px', flexShrink: 0, zIndex: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <FileText size={16} />
-          <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-          <span style={{ opacity: 0.8, fontSize: '12px' }}>- Word Preview (Style Preserved)</span>
-        </div>
-        <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
-          <Download size={14} /> Download
-        </button>
-      </div>
-      <div ref={containerRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', background: '#e1e1e1', padding: '20px 0' }}>
-        <div ref={paperRef} style={{ transition: 'transform 0.2s' }} />
-      </div>
-    </div>
-  );
-};
+        const loadingTask = pdfjsLib.getDocument({ data: bytes });
+        const pdf = await loadingTask.promise;
+        setPageCount(pdf.numPages);
 
-const ExcelViewer = ({ file, onDownload }: { file: any, onDownload: () => void }) => {
-  const [htmlString, setHtmlString] = useState<string>('<div style="padding: 16px; color: #605e5c;">Parsing workbook...</div>');
-  
-  useEffect(() => {
-    const renderExcel = async () => {
-      try {
-        const XLSX = await import('xlsx');
-        const binary = atob(file.data);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        
-        let workbook;
-        if (file.name.endsWith('.csv')) {
-          const text = new TextDecoder().decode(bytes);
-          workbook = XLSX.read(text, { type: 'string' });
-        } else {
-          workbook = XLSX.read(bytes, { type: 'array' });
-        }
+        const container = canvasContainerRef.current;
+        if (!container) return;
+        container.innerHTML = '';
 
-        const worksheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[worksheetName];
-        
-        if (!worksheet || !worksheet['!ref']) {
-          setHtmlString('<div style="padding: 16px; color: #605e5c;">Spreadsheet is empty</div>');
-          return;
-        }
+        // Render each page
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.5 });
 
-        const range = XLSX.utils.decode_range(worksheet['!ref']);
-        
-        let html = '<table style="border-collapse: collapse; min-width: 100%;">';
-        
-        // Generate Header (A, B, C...)
-        html += '<thead><tr><th style="width: 40px; background: #f3f2f1; border: 1px solid #d4d4d4; position: sticky; top: 0; left: 0; z-index: 3;"></th>';
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const letter = XLSX.utils.encode_col(C);
-          html += `<th style="min-width: 80px; padding: 2px 6px; background: #f3f2f1; border: 1px solid #d4d4d4; color: #605e5c; font-weight: normal; text-align: center; position: sticky; top: 0; z-index: 2;">${letter}</th>`;
-        }
-        html += '</tr></thead><tbody>';
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = '100%';
+          canvas.style.height = 'auto';
+          canvas.style.display = 'block';
+          canvas.style.marginBottom = pageNum < pdf.numPages ? '12px' : '0';
+          canvas.style.boxShadow = '0 1px 4px rgba(0,0,0,0.12)';
+          canvas.style.borderRadius = '2px';
+          canvas.style.background = '#fff';
 
-        // Limit to 100 rows for preview performance
-        const maxRows = Math.min(range.e.r, range.s.r + 99);
-        
-        for (let R = range.s.r; R <= maxRows; ++R) {
-          html += '<tr>';
-          // Row Header
-          html += `<td style="width: 40px; background: #f3f2f1; border: 1px solid #d4d4d4; color: #605e5c; text-align: center; position: sticky; left: 0; z-index: 1; font-size: 10pt;">${R + 1}</td>`;
-          
-          for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cellAddress = {c: C, r: R};
-            const cellRef = XLSX.utils.encode_cell(cellAddress);
-            const cell = worksheet[cellRef];
-            
-            // Check if cell is master or hidden by merge
-            let isMergedTarget = false;
-            if (worksheet['!merges']) {
-               for (const merge of worksheet['!merges']) {
-                  if (R >= merge.s.r && R <= merge.e.r && C >= merge.s.c && C <= merge.e.c) {
-                     if (R !== merge.s.r || C !== merge.s.c) {
-                        isMergedTarget = true;
-                     }
-                  }
-               }
-            }
-            
-            if (isMergedTarget) continue;
-            
-            let rowspan = 1;
-            let colspan = 1;
-            if (worksheet['!merges']) {
-               for (const merge of worksheet['!merges']) {
-                  if (R === merge.s.r && C === merge.s.c) {
-                     rowspan = merge.e.r - merge.s.r + 1;
-                     colspan = merge.e.c - merge.s.c + 1;
-                  }
-               }
-            }
+          container.appendChild(canvas);
 
-            let styleStr = 'padding: 2px 6px; border: 1px solid #e1dfdd; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;';
-            const val = cell ? (cell.w !== undefined ? cell.w : cell.v) : '';
-            html += `<td style="${styleStr}" rowspan="${rowspan}" colspan="${colspan}">${val === undefined || val === null ? '' : val}</td>`;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            await page.render({ canvasContext: ctx, viewport, canvas }).promise;
           }
-          html += '</tr>';
         }
-        
-        html += '</tbody></table>';
-        if (range.e.r - range.s.r + 1 > 100) {
-           html += `<div style="padding: 8px; text-align: center; font-size: 11px; color: #605e5c; background: #f3f2f1; border-top: 1px solid #d4d4d4;">Showing first 100 rows of ${range.e.r - range.s.r + 1}</div>`;
-        }
-        
-        setHtmlString(`
-          <div style="padding: 8px 16px; background: #fff3cd; color: #856404; font-size: 11px; border-bottom: 1px solid #ffeeba;">
-            <strong>Read Only Preview:</strong> This preview is not completely accurate and may not reflect advanced formatting, colors, or charts. For best results, download and open in native software.
-          </div>
-          ${html}
-        `);
-      } catch (err) {
-        console.error("XLSX Parse Error:", err);
-        setHtmlString('<div style="padding: 16px; color: #b91c1c;">Failed to parse workbook completely.</div>');
+
+        setIsLoading(false);
+      } catch (err: any) {
+        console.error('PDF render error:', err);
+        setRenderError(err.message || 'Failed to render PDF');
+        setIsLoading(false);
       }
     };
-    renderExcel();
+
+    renderPdf();
   }, [file]);
 
-  return (
-    <div style={{ fontFamily: '"Calibri", "Segoe UI", sans-serif', fontSize: '11pt', background: '#fff', border: '1px solid #d4d4d4' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#107c41', color: '#fff', padding: '8px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <FileText size={16} />
-          <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
-          <span style={{ opacity: 0.8, fontSize: '12px' }}>- Read Only Preview</span>
-        </div>
-        <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
-          <Download size={14} /> Download
-        </button>
-      </div>
-      <div style={{ background: '#f3f2f1', borderBottom: '1px solid #d4d4d4', padding: '4px 8px', color: '#605e5c', fontSize: '12px', display: 'flex', alignItems: 'center' }}>
-        <i style={{ fontFamily: 'Times New Roman, serif', fontSize: '14px', fontStyle: 'italic', marginRight: '8px', opacity: 0.8 }}>fx</i> 
-        <div style={{ background: '#fff', border: '1px solid #c8c6c4', padding: '2px 8px', flex: 1, color: '#a19f9d' }}>Formula bar disabled in preview</div>
-      </div>
-      <div style={{ overflowX: 'auto', maxHeight: '500px', background: '#fff' }} dangerouslySetInnerHTML={{ __html: htmlString }} />
-    </div>
-  );
-};
+  // Responsive scaling
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvasContainer = canvasContainerRef.current;
+    if (!container || !canvasContainer) return;
 
-const DocumentPreview = ({ file, onDownload }: { file: { name: string; data: string; mimeType: string }, onDownload: () => void }) => {
-  if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx')) {
-    return <ExcelViewer file={file} onDownload={onDownload} />;
-  } else if (file.name.endsWith('.docx')) {
-    return <DocxViewer file={file} onDownload={onDownload} />;
+    const ro = new ResizeObserver(() => {
+      // Apply zoom scale via CSS transform
+      canvasContainer.style.transform = scale !== 1 ? `scale(${scale})` : 'none';
+      canvasContainer.style.transformOrigin = 'top center';
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [scale]);
+
+  // Apply scale changes
+  useEffect(() => {
+    const canvasContainer = canvasContainerRef.current;
+    if (!canvasContainer) return;
+    canvasContainer.style.transform = scale !== 1 ? `scale(${scale})` : 'none';
+    canvasContainer.style.transformOrigin = 'top center';
+  }, [scale]);
+
+  if (renderError) {
+    return (
+      <div style={{ fontFamily: '"Segoe UI", system-ui, sans-serif', background: '#f8f8f8', border: '1px solid #d4d4d4', borderRadius: '4px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#D32F2F', color: '#fff', padding: '8px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileText size={16} />
+            <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
+            <span style={{ opacity: 0.8, fontSize: '12px' }}>- PDF</span>
+          </div>
+          <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}>
+            <Download size={14} /> Download PDF
+          </button>
+        </div>
+        <div style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
+          <AlertTriangle size={24} style={{ color: '#d97706', marginBottom: '8px' }} />
+          <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>Preview unavailable</div>
+          <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '16px' }}>{renderError}</div>
+          <button onClick={onDownload} style={{ background: '#D32F2F', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+            <Download size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Download your PDF
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div style={{ margin: '16px 0', border: '1px solid var(--bg-inset)', borderRadius: '8px', overflow: 'hidden' }}>
-      <div style={{ padding: '8px 12px', background: 'var(--bg-muted)', fontSize: '0.75rem', fontWeight: 600, borderBottom: '1px solid var(--bg-inset)', color: 'var(--text-secondary)' }}>Preview: {file.name}</div>
-      <div style={{ padding: '16px', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>Preview not available for this file type.</div>
+    <div ref={containerRef} style={{ fontFamily: '"Segoe UI", system-ui, sans-serif', background: '#525659', border: '1px solid #d4d4d4', display: 'flex', flexDirection: 'column', height: '800px' }}>
+      {/* Header bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#D32F2F', color: '#fff', padding: '8px 16px', flexShrink: 0, zIndex: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <FileText size={16} />
+          <strong style={{ fontSize: '14px', fontWeight: 600 }}>{file.name}</strong>
+          {pageCount > 0 && <span style={{ opacity: 0.8, fontSize: '12px' }}>- {pageCount} page{pageCount !== 1 ? 's' : ''}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Zoom controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.15)', borderRadius: '4px', padding: '2px 4px' }}>
+            <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }} title="Zoom out">
+              <ZoomOut size={14} />
+            </button>
+            <span style={{ fontSize: '11px', minWidth: '36px', textAlign: 'center', fontWeight: 600 }}>{Math.round(scale * 100)}%</span>
+            <button onClick={() => setScale(s => Math.min(3, s + 0.25))} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }} title="Zoom in">
+              <ZoomIn size={14} />
+            </button>
+            <button onClick={() => setScale(1)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }} title="Reset zoom">
+              <RotateCcw size={12} />
+            </button>
+          </div>
+          <button onClick={onDownload} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, transition: 'background 0.2s' }}>
+            <Download size={14} /> Download
+          </button>
+        </div>
+      </div>
+      {/* PDF pages container */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '20px', display: 'flex', justifyContent: 'center' }}>
+        {isLoading && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ccc', gap: '12px', padding: '40px' }}>
+            <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.2)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'pdfSpin 0.8s linear infinite' }} />
+            <span style={{ fontSize: '0.85rem' }}>Rendering PDF...</span>
+          </div>
+        )}
+        <div ref={canvasContainerRef} style={{ maxWidth: '100%', transition: 'transform 0.2s ease' }} />
+      </div>
+      <style>{`
+        @keyframes pdfSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
+
+
+
 
 
 interface PythonDocumentRendererProps {
@@ -1292,9 +1249,9 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
   }
 
   const uniqueFiles = [...new Map(result.files.map((f) => [f.name, f])).values()];
-  const documentFiles: any[] = []; // Previews disabled; use native download
+  const pdfFiles = uniqueFiles.filter(f => f.mimeType === 'application/pdf');
   const imageFiles = uniqueFiles.filter(f => f.mimeType.startsWith('image/'));
-  const otherFiles = uniqueFiles.filter(f => !imageFiles.includes(f));
+  const otherFiles = uniqueFiles.filter(f => !imageFiles.includes(f) && !pdfFiles.includes(f));
 
   const handleDownload = (file: { name: string; data: string; mimeType: string }) => {
     const binary = atob(file.data);
@@ -1332,12 +1289,10 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
         </details>
       )}
 
-      {documentFiles.length > 0 && (
+      {pdfFiles.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
-          {documentFiles.map((file) => (
-            <React.Fragment key={file.name}>
-              <DocumentPreview file={file} onDownload={() => handleDownload(file)} />
-            </React.Fragment>
+          {pdfFiles.map((file) => (
+            <PdfViewer key={file.name} file={file} onDownload={() => handleDownload(file)} />
           ))}
         </div>
       )}
@@ -1384,9 +1339,10 @@ const RENDERERS: Record<string, React.FC<RendererProps>> = {
   file: FileRenderer,
   excel: PythonDocumentRenderer as any,
   word: PythonDocumentRenderer as any,
+  pdf: PythonDocumentRenderer as any,
   python: FileRenderer,
 };
-const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python', word: 'python', python: 'python' };
+const LANGUAGE_MAP: Record<string, string> = { html: 'html', svg: 'xml', mermaid: 'mermaid', file: 'text', excel: 'python', word: 'python', pdf: 'python', python: 'python' };
 
 interface ArtifactRendererProps {
   content: string;
@@ -1408,7 +1364,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
 
 
   const language = LANGUAGE_MAP[type] || 'text';
-  if (type === 'excel' || type === 'word') {
+  if (type === 'excel' || type === 'word' || type === 'pdf') {
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';

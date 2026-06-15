@@ -204,7 +204,7 @@ test.describe('Core E2E Flows', () => {
     await page.goto('/');
 
     // Wait for app to load — it should show either the chat area or sign-in form
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify the page loaded with the Lucen title
     await expect(page).toHaveTitle(/Lucen/i);
@@ -222,7 +222,7 @@ test.describe('Core E2E Flows', () => {
     await setupAllMocks(page);
     await page.goto('/');
 
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveTitle(/Lucen/i);
 
     // Verify no fatal crash — app should show something meaningful
@@ -253,7 +253,7 @@ test.describe('Core E2E Flows', () => {
     await setupAuthRoutes(page);
     await setupDatabaseRoutes(page);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Try to find a message input — it may be behind auth or hidden
     const inputSelectors = [
@@ -300,7 +300,7 @@ test.describe('Core E2E Flows', () => {
   test('Flow 4: HTML artifact rendering — iframe sandbox is allow-scripts only', async ({ page }) => {
     await setupAllMocks(page, MOCK_HTML_ARTIFACT_SSE);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // If any artifact iframe is visible, verify its sandbox attribute
     const iframes = page.locator('iframe.artifact-iframe, iframe[title="HTML Preview"]');
@@ -335,7 +335,7 @@ test.describe('Core E2E Flows', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify the page renders — credits UI may be hidden behind auth
     await expect(page).toHaveTitle(/Lucen/i);
@@ -348,7 +348,7 @@ test.describe('Core E2E Flows', () => {
   test('Flow 6: Subscription state — regular plan mock shows correct balance', async ({ page }) => {
     await setupAllMocks(page);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify the app renders correctly
     await expect(page).toHaveTitle(/Lucen/i);
@@ -380,7 +380,7 @@ test.describe('Security Assertions', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify page loaded successfully
     await expect(page).toHaveTitle(/Lucen/i);
@@ -393,7 +393,7 @@ test.describe('Security Assertions', () => {
   test('Iframe sandbox: artifact iframes should not have allow-same-origin', async ({ page }) => {
     await setupAllMocks(page);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Find any artifact iframes
     const iframes = page.locator('iframe');

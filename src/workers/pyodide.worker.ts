@@ -436,6 +436,7 @@ except Exception:
             else if (missingModule === 'PIL') pkgToInstall = 'Pillow';
             else if (missingModule === 'bs4') pkgToInstall = 'beautifulsoup4';
             else if (missingModule === 'sklearn') pkgToInstall = 'scikit-learn';
+            else if (missingModule === 'fpdf') pkgToInstall = 'fpdf2';
             
             await micropip.install(pkgToInstall);
             micropip.destroy();

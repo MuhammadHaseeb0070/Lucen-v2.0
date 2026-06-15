@@ -10,6 +10,7 @@ const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
   file: <FileText size={18} />,
   excel: <FileText size={18} />,
   word: <FileText size={18} />,
+  pdf: <FileText size={18} />,
 };
 
 const TYPE_LABELS: Record<ArtifactType, string> = {
@@ -19,6 +20,7 @@ const TYPE_LABELS: Record<ArtifactType, string> = {
   file: 'File',
   excel: 'Excel',
   word: 'Word',
+  pdf: 'PDF',
 };
 
 interface ArtifactCardProps {
