@@ -231,6 +231,7 @@ Deno.serve(async (req: Request) => {
                     .from('file_attachments')
                     .select('ai_description')
                     .eq('storage_path', filePath)
+                    .eq('user_id', user.id)
                     .eq('question_hash', qHash)
                     .maybeSingle();
 
@@ -258,6 +259,7 @@ Deno.serve(async (req: Request) => {
                             .from('file_attachments')
                             .select('storage_path')
                             .eq('id', imgId)
+                            .eq('user_id', user.id)
                             .single();
                             
                         if (attachErr || !attachRecord?.storage_path) {
@@ -292,6 +294,19 @@ Deno.serve(async (req: Request) => {
 
                 images = successes;
             } else {
+                // Verify ownership of the storage path before attempting to download
+                const { data: existsRecord } = await supabaseAdmin
+                    .from('file_attachments')
+                    .select('id')
+                    .eq('storage_path', filePath)
+                    .eq('user_id', user.id)
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!existsRecord) {
+                    return await fail('auth_error', 404, 'File path unauthorized or not found');
+                }
+
                 // Single filePath fallback (legacy or manual payload)
                 const { data: fileData, error: downloadErr } = await supabaseAdmin
                     .storage

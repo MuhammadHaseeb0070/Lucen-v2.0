@@ -1,27 +1,27 @@
-# Milestone v2.9 Requirements: Pluggable Python Artifact Engine (MS Word Integration)
+# Milestone v3.0 Requirements: Core Messaging & Tool Pipeline Stabilization
 
 ## Goals & Objectives
 
-Evolve the current Pyodide sandbox environment (which is currently hardcoded for Excel) into a highly granular, pluggable artifact engine. It must support generating diverse Python-based artifacts—specifically starting with MS Word (`.docx`) compatibility—without risk of regressions in existing Excel functionality. The architecture should be robust enough to easily add future integrations (e.g., PDF, PowerPoint) independently.
+Secure, harden, and stabilize the client-to-server messaging pipeline, tool execution loop, file/image RAG handlers, and artifact lifecycles. Ensure the application does not leak data horizontally, hang on heavy python computation, show raw XML in the chat bubble, or lose routing context on page refreshes.
 
 ## Functional Requirements
 
-### REQ-01: Pluggable Artifact Architecture
-- **Granular Integration Modules:** Decouple the monolithic `pyodide.worker.ts` into isolated configuration strategies or modules for each supported file type (`excel`, `word`, etc.).
-- **Dynamic Dependency Loading:** The Pyodide worker must dynamically load the appropriate whitelisted packages (e.g., `python-docx` for Word) based on the artifact type, preventing unnecessary downloads and memory bloat.
-- **Fail-Safe Isolation:** A failure in the Word integration (e.g., package installation error, runtime crash) must not affect the Excel integration.
+### REQ-01: Security Boundaries & Sibling Functions
+- **Horizontal Privilege Escalation Prevention:** Ensure [get-file-content](file:///e:/Lucen/Lucen-v2.3%20fresh/supabase/functions/get-file-content/index.ts) and [describe-image](file:///e:/Lucen/Lucen-v2.3%20fresh/supabase/functions/describe-image/index.ts) query DB tables and files checking ownership. Only files linked to conversations owned by the calling `user.id` can be read.
+- **Deno Import Resolving:** Fix the ReferenceError in the [web-search](file:///e:/Lucen/Lucen-v2.3%20fresh/supabase/functions/web-search/index.ts) edge function by importing `createClient` from `@supabase/supabase-js`.
+- **Accurate File API HTTP Statuses:** Return a proper `404 Not Found` if a file is requested but doesn't exist in the database, rather than returning a blank string with a `200 OK`.
 
-### REQ-02: MS Word Integration
-- **Artifact Type Extension:** Extend the `ArtifactType` union to support a generic `document` or specifically `word`/`python` type based on the new architecture.
-- **Dependency Support:** Ensure `python-docx` and required dependencies (`lxml`) are installed seamlessly via Pyodide's `micropip` in the worker environment.
-- **Supported Outputs:** Allow the generation and extraction of `.docx` files from the `/home/pyodide` virtual filesystem.
+### REQ-02: Client Routing & Store Synchronization
+- **React Router URL Bindings:** Enable parametric path mapping `/chat/:id` in the frontend router.
+- **Mount Sync:** On mount of `Layout.tsx`, extract the conversation ID from the URL param and call `setActiveConversation` to hydrate the active chat area.
+- **Navigation Pushes:** Clicking sidebar conversations or creating new conversations must push the new URL path to the router history.
 
-### REQ-03: Premium Unified UI & Error Handling
-- **Responsive Previews:** Expand the existing `ExcelRenderer` UI into a generic `DocumentRenderer` or a dynamic view that adapts its descriptions and visuals to the specific document type.
-- **Lifecycle Feedback:** Provide granular progress tracking (e.g., "Installing python-docx...", "Formatting Word document...").
-- **Download Mechanisms:** Implement clean, responsive cards for downloading generated files.
-- **Error Reporting Feedback Loop:** Provide actionable error messages to the user if a script fails or crashes. Allow the user to "Report to AI", injecting the stack trace back into the chat context so the AI can automatically self-correct.
+### REQ-03: State Management & Artifact Cleanup
+- **Artifact Isolation on Swap/Delete:** Clearing or deleting a conversation must explicitly reset the active workspace artifact. 
+- **Auto-Open Refactoring:** Restrict auto-opening of historic artifacts when switching between chats. Only open the workspace panel automatically when the active message is currently streaming, or in response to direct user click interactions.
+- **Layout Leakage Cleanup:** Ensure the workspace panel is closed/hidden when the main `ChatArea` is unmounted (e.g. going to `OwnerDashboard`).
 
-### REQ-04: Secure Constraints & Prompt Enhancements
-- **Security:** Maintain the 60-second timeout, memory limits, and isolated `/home/pyodide` workspace constraints for all pluggable types.
-- **Prompt Architecture:** Refactor the system prompt (`src/config/prompts.ts`) so the LLM is aware of the different document types it can generate and the specific libraries available for each, minimizing "hallucinated" unsupported library usage.
+### REQ-04: Parser & Runtime Hardening
+- **Code Fence Parser Unwrapping:** Order the parsing sequence in [parseArtifacts](file:///e:/Lucen/Lucen-v2.3%20fresh/src/lib/artifactParser.ts) so markdown code-fence wrappers are stripped *before* neutralizing nested fenced tags, ensuring fully-fenced artifacts open in the workspace automatically.
+- **Worker Hang Termination watchdog:** Implement a client-side execution watchdog timer in [pyodideWorkerClient.ts](file:///e:/Lucen/Lucen-v2.3%20fresh/src/workers/pyodideWorkerClient.ts). If execution runs longer than 60 seconds (indicating an event-loop-blocking python infinite loop), terminate the worker via `worker.terminate()`, re-initialize, and resolve the task as timed out.
+- **Ephemeral Stream Errors:** Keep transient API and credit errors out of the message's permanent `content` field. Render error warnings as metadata or separate UI alert states.

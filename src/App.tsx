@@ -39,7 +39,7 @@ function App() {
         </Route>
         
         <Route path="/chat" element={<Layout />} />
-        <Route path="/chat/*" element={<Layout />} />
+        <Route path="/chat/:id" element={<Layout />} />
         {/* Auth sub-routes */}
         <Route path="/auth/verify-otp" element={<OtpVerifyScreen />} />
         <Route path="/auth/reset-password" element={<NewPasswordScreen />} />

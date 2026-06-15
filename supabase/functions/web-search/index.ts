@@ -1,3 +1,4 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus } from '../_shared/usage.ts';
 import { isKillSwitched } from '../_shared/featureFlags.ts';

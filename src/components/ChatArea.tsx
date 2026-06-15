@@ -409,9 +409,7 @@ const ChatArea: React.FC = () => {
                 console.error('[ChatArea] onError received:', error);
                 const friendlyErr = getUserFriendlyError(error);
                 updateMessage(convId, assistantMsgId, {
-                    content: options.continuation
-                        ? `${renderedContent}\n\n⚠️ Error continuing: ${friendlyErr}`
-                        : `⚠️ Error: ${friendlyErr}`,
+                    content: renderedContent,
                     isStreaming: false,
                     isReasoningStreaming: false,
                     generationStatus: 'failed_recoverable',

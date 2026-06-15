@@ -43,24 +43,41 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - ✓ Dynamic Metadata Header Sync: Return dynamically matched model headers and sync to client stores — v2.7
 - ✓ Configuration Sync Update: Resolve dynamic model config in `/get-model-config` endpoint — v2.7
 - ✓ Generative UI Intelligence Engine: Overhaul system prompts and fpdf2 generation to mandate Google Material aesthetics and fix Unicode/deprecation errors — v2.8
-- ✓ Offline Pyodide Proxy: Fallback system fetching Pyodide packages locally when CDN is blocked — v2.9
 
 ### Active
 
-- **v3.0 - Core Messaging & Tool Pipeline Stabilization:** Rutheless stabilization milestone addressing parser bugs, state synchronization races, execution timeout starvation, and horizontal privilege escalation vulnerabilities.
+- **v2.9 - Pluggable Python Artifact Engine (MS Word Integration):** Evolve the Pyodide sandbox into a generic document generator, starting with `.docx` capabilities via `python-docx`, without regressing Excel/PDF.
 
 ### Out of Scope
 
-- Net-new product features not in CONCERNS.md.
-- Migration off Lemon Squeezy, OpenRouter, Supabase, Vercel.
-- Full rewrite of the 13 Zustand stores.
+- Net-new product features not in CONCERNS.md — this was a stabilization pass, not a feature release.
+- Migration off Lemon Squeezy, OpenRouter, Supabase, Vercel — vendors are stable for this milestone.
+- Full rewrite of the 13 Zustand stores — only broke the cross-store `getState()` chains that were documented; did not redesign the whole state layer.
 - SSR / Next.js migration — Vite SPA stays.
-- Mobile app.
+- Mobile app — explicitly out per `PROJECT_SPEC.md`.
 
 ## Context
 
-- **Codebase state:** Dynamic Deno edge functions and front-end React code. Fully functional and passing compilation.
-- **Verification strategy:** Automated integration tests (Vitest + Playwright) plus manual user validation.
+- **Codebase state:** Stable and refactored. Test suites cover all critical utilities and flows. Built successfully with 0 compilation errors.
+- **User workflow:** User works on `dev` branch locally. Pushes to `dev` trigger Vercel preview and Supabase development deployments automatically.
+- **Verification strategy:** 55 Vitest unit tests + 10 Playwright E2E tests executing network mocks.
+
+## Key Decisions
+
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| Refactor monoliths before fixing bugs inside them | Lower risk — fixes land in small, testable modules instead of 1,700-line files | ✓ Done |
+| Set up tests in an early phase (not the last phase) | Tests guard every subsequent fix; addresses TD-09 from day one | ✓ Done |
+| Use Vitest for unit tests, Playwright for E2E | Vitest pairs naturally with Vite (shared config, fast HMR); Playwright is the standard for browser E2E | ✓ Done |
+| Lazy-load `openrouter.ts` continuation engine | Cuts initial bundle; perf concern (PERF-04) | ✓ Done |
+| Replace regex SVG sanitization with DOMParser | Regex is bypassable; DOMParser (DOMPurify) is the correct primitive (SEC-01) | ✓ Done |
+| Move circuit-breaker state to shared KV | In-memory state is per-isolate; lost on cold start (PERF-05, PROD-03) | ✓ Done |
+| Apply rate limit to every edge function (not just chat-proxy) | Other functions are unprotected; trivial to abuse (SEC-04) | ✓ Done |
+| Use Zustand `subscribe` for cross-store events | Breaks the `getState()` spaghetti (TD-08) | ✓ Done |
+| Log primary model failures to Sentry as warnings with redacted metadata | Keep trace of model fallback events without leaking PII or sensitive message info | ✓ Done |
+| Failover silently without UI system messages, but update dynamic headers | Avoid disrupting user workflow/chat flow while syncing UI capabilities to actual model | ✓ Done |
+| Strip invalid parameters dynamically for reasoning models (o1/o3-mini/DeepSeek R1) | Prevent downstream API validation errors and format clashes automatically | ✓ Done |
+| Enforce <design_strategy> for UI artifacts | Prevent generic "AI signature" designs by forcing the AI to plan story, color, typography, and animation rationale before coding | Active |
 
 ---
-*Last updated: 2026-06-15 after v3.0 Core Messaging & Tool Pipeline Stabilization audit*
+*Last updated: 2026-06-12 after v2.7 Robust OpenRouter Multi-Model System milestone completion*

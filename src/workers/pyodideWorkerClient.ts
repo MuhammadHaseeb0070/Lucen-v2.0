@@ -27,7 +27,7 @@ const pending = new Map<string, {
   runArgs: { artifactId: string, documentType: string, code: string, inputFiles?: Array<{ name: string; data: string }> };
 }>();
 
-export function cancelPythonRun(artifactId: string) {
+export function cancelPythonRun(artifactId: string, reason = 'Cancelled') {
   if (pending.has(artifactId)) {
     const handler = pending.get(artifactId);
     pending.delete(artifactId);
@@ -56,7 +56,7 @@ export function cancelPythonRun(artifactId: string) {
       stdout: '',
       stderr: '',
       files: [],
-      error: 'Cancelled',
+      error: reason,
     });
   }
 }
@@ -103,8 +103,21 @@ export function runPythonDocument(
   cancelPythonRun(artifactId);
 
   return new Promise((resolve) => {
+    // 60-second client-side watchdog timer to terminate infinite loops
+    const timer = setTimeout(() => {
+      cancelPythonRun(
+        artifactId,
+        'Script timed out after 60 seconds. It may contain an infinite loop or process too much data.'
+      );
+    }, 60000);
+
+    const wrappedResolve = (res: PythonDocumentResult) => {
+      clearTimeout(timer);
+      resolve(res);
+    };
+
     pending.set(artifactId, { 
-      resolve, 
+      resolve: wrappedResolve, 
       onProgress, 
       onStream,
       runArgs: { artifactId, documentType, code, inputFiles }

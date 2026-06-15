@@ -77,10 +77,11 @@ Deno.serve(async (req: Request) => {
                 .from('file_attachments')
                 .select('extracted_text, storage_path')
                 .eq('id', fileId)
+                .eq('user_id', user.id)
                 .maybeSingle();
 
-            if (dbError) {
-                return new Response(JSON.stringify({ error: `Attachment with ID ${fileId} not found: ${dbError.message}` }), {
+            if (dbError || !dbRecord) {
+                return new Response(JSON.stringify({ error: `Attachment with ID ${fileId} not found or unauthorized` }), {
                     status: 404,
                     headers: { ...cors, 'Content-Type': 'application/json' }
                 });
@@ -92,9 +93,28 @@ Deno.serve(async (req: Request) => {
                 .from('file_attachments')
                 .select('extracted_text')
                 .eq('storage_path', filePath)
+                .eq('user_id', user.id)
                 .not('extracted_text', 'is', null)
                 .limit(1)
                 .maybeSingle();
+
+            if (dbError || !dbRecord) {
+                // Verify ownership of the storage path before attempting to download
+                const { data: existsRecord } = await supabaseAdmin
+                    .from('file_attachments')
+                    .select('id')
+                    .eq('storage_path', filePath)
+                    .eq('user_id', user.id)
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!existsRecord) {
+                    return new Response(JSON.stringify({ error: `File path unauthorized or not found` }), {
+                        status: 404,
+                        headers: { ...cors, 'Content-Type': 'application/json' }
+                    });
+                }
+            }
             textContent = dbRecord?.extracted_text;
         }
 

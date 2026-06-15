@@ -394,9 +394,12 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         }
 
         if (!openedRef.current) {
-            // First time seeing this artifact — open the workspace.
-            openedRef.current = true;
-            setActiveArtifact({ ...first, isStreaming: message.isStreaming ?? false });
+            // Only auto-open the workspace panel if the message is actively generating (isStreaming: true).
+            // This prevents historical artifacts from automatically opening on page reload or navigation.
+            if (message.isStreaming) {
+                openedRef.current = true;
+                setActiveArtifact({ ...first, isStreaming: true });
+            }
         } else if (message.isStreaming && first.content) {
             // Stream is still running — push live content updates to the
             // workspace so the renderer shows real-time progress.

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
@@ -17,6 +18,7 @@ import { useThemeStore, applyThemeFromStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
 import { useArtifactStore } from '../store/artifactStore';
+import { useChatStore } from '../store/chatStore';
 import { isSupabaseEnabled } from '../lib/supabase';
 import { isAdminUser } from '../config/admin';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -27,6 +29,40 @@ const Layout: React.FC = () => {
     const { setIsAdminView, isAdminView, sidebarCollapsed, toggleSidebar } = useUIStore();
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
     const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+    // useParams & useNavigate for router sync
+    const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
+    const activeConversationId = useChatStore((s) => s.activeConversationId);
+    const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+    const conversations = useChatStore((s) => s.conversations);
+
+    // Sync URL ID to store
+    useEffect(() => {
+        if (id && id !== activeConversationId) {
+            const exists = conversations.some((c) => c.id === id);
+            if (exists) {
+                setActiveConversation(id);
+            } else if (conversations.length > 0) {
+                const latestConv = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+                if (latestConv) {
+                    setActiveConversation(latestConv.id);
+                }
+            }
+        }
+    }, [id, activeConversationId, conversations, setActiveConversation]);
+
+    // Sync store ID to URL
+    useEffect(() => {
+        if (activeConversationId && id !== activeConversationId) {
+            navigate(`/chat/${activeConversationId}`);
+        } else if (!activeConversationId && conversations.length > 0) {
+            const latestConv = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+            if (latestConv) {
+                setActiveConversation(latestConv.id);
+            }
+        }
+    }, [activeConversationId, id, conversations, setActiveConversation, navigate]);
 
     // Initialize auth on mount
     useEffect(() => {

@@ -131,7 +131,19 @@ export function parseArtifacts(
   }
 
   const artifacts: Artifact[] = [];
-  let cleanContent = neutralizeFencedArtifactTags(content);
+  // Strip markdown fences that AI might accidentally wrap around the entire artifact block first.
+  // This must run before neutralizing fenced tags so the unwrap regex matches unmodified tags.
+  // We only unwrap if the code fence starts at the beginning of the content (after optional details/thinking block)
+  // to avoid stripping fences from user/model pasted syntax examples.
+  let cleanContent = content.replace(
+    /^(?:\s*<details>[\s\S]*?<\/details>)?\s*```(?:xml|html|svg|mermaid|file)?\s*\n(<lucen_artifact[\s\S]*?<\/lucen_artifact>)\s*\n?```/i,
+    (match, artifact) => {
+      const detailsMatch = match.match(/^\s*<details>[\s\S]*?<\/details>/i);
+      return (detailsMatch ? detailsMatch[0] + '\n' : '') + artifact;
+    }
+  );
+
+  cleanContent = neutralizeFencedArtifactTags(cleanContent);
   let index = 0;
 
   // Strip <lucen_patch> blocks BEFORE the artifact regex fires. Patches
@@ -147,12 +159,6 @@ export function parseArtifacts(
   // conversational text.
   cleanContent = cleanContent.replace(/<lucen_patch\s*[^>]*>[\s\S]*$/, '');
   cleanContent = cleanContent.replace(/<lucen_patch[^>]*$/, '');
-
-  // Strip markdown fences that AI might accidentally wrap around the entire artifact block
-  cleanContent = cleanContent.replace(
-    /```(?:xml|html|svg|mermaid|file)?\s*\n(<lucen_artifact[\s\S]*?<\/lucen_artifact>)\s*\n?```/g,
-    '$1'
-  );
 
   // Extract all complete artifacts
   cleanContent = cleanContent.replace(

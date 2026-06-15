@@ -955,6 +955,16 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifact?.id);
 
+  if (!artifact) {
+    return (
+      <div className="artifact-render-error" style={{ padding: '16px' }}>
+        <div className="artifact-render-error-banner">
+          <span>No document code or artifact details provided.</span>
+        </div>
+      </div>
+    );
+  }
+
   const inputFile = (artifact as any).meta?.inputFile || (artifact as any).filename;
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -1366,6 +1376,17 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
   const language = LANGUAGE_MAP[type] || 'text';
   if (type === 'excel' || type === 'word' || type === 'pdf') {
     const activeArtifact = useArtifactStore((s) => s.activeArtifact);
+    const artifactToRender: Artifact = (activeArtifact && activeArtifact.id === artifactId)
+      ? activeArtifact
+      : {
+          id: artifactId || 'temp-id',
+          type,
+          title: title || 'Document',
+          content,
+          messageId: '',
+          isStreaming: isStreaming || false,
+        };
+
     const onRetry = () => {
       const error = useArtifactStore.getState().runtimeErrors[artifactId || '']?.message || 'Unknown error';
       const text = `The python script failed with this error:\n\`\`\`\n${error}\n\`\`\`\nPlease fix it.`;
@@ -1390,7 +1411,7 @@ const ArtifactRenderer: React.FC<ArtifactRendererProps> = ({ content, title, typ
     };
     return (
       <RendererErrorBoundary content={content} language={language}>
-        <PythonDocumentRenderer artifact={activeArtifact!} onRetry={onRetry} />
+        <PythonDocumentRenderer artifact={artifactToRender} onRetry={onRetry} />
       </RendererErrorBoundary>
     );
   }

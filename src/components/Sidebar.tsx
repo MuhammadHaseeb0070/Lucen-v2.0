@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Plus,
     Trash2,
@@ -62,7 +63,6 @@ const Sidebar: React.FC = () => {
     const createConversation = useChatStore((s) => s.createConversation);
     const deleteConversation = useChatStore((s) => s.deleteConversation);
     const renameConversation = useChatStore((s) => s.renameConversation);
-    const setActiveConversation = useChatStore((s) => s.setActiveConversation);
     const chatsLoading = useChatStore((s) => s.isLoading);
     const searchQuery = useChatStore((s) => s.searchQuery);
     const setSearchQuery = useChatStore((s) => s.setSearchQuery);
@@ -70,6 +70,8 @@ const Sidebar: React.FC = () => {
     const isSearching = useChatStore((s) => s.isSearching);
     const searchError = useChatStore((s) => s.searchError);
     const performSearch = useChatStore((s) => s.performSearch);
+
+    const navigate = useNavigate();
 
     const {
         sidebarCollapsed,
@@ -103,7 +105,8 @@ const Sidebar: React.FC = () => {
     const isMobile = () => window.innerWidth <= 768;
 
     const handleNewChat = () => {
-        createConversation();
+        const nextId = createConversation();
+        navigate(`/chat/${nextId}`);
         if (isMobile() && !sidebarCollapsed) toggleSidebar();
     };
 
@@ -187,7 +190,8 @@ const Sidebar: React.FC = () => {
                 </button>
                 <button className="new-chat-btn" onClick={() => {
                     setIsAdminView(false);
-                    createConversation();
+                    const nextId = createConversation();
+                    navigate(`/chat/${nextId}`);
                     if (isMobile() && !sidebarCollapsed) toggleSidebar();
                 }}>
                     <Plus size={16} />
@@ -260,7 +264,7 @@ const Sidebar: React.FC = () => {
                                 className={`sidebar-chat-item ${res.conversationId === activeConversationId && !isAdminView ? 'active' : ''}`}
                                 onClick={() => {
                                     setIsAdminView(false);
-                                    setActiveConversation(res.conversationId);
+                                    navigate(`/chat/${res.conversationId}`);
                                     if (isMobile() && !sidebarCollapsed) toggleSidebar();
                                 }}
                                 style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '10px 12px', gap: '4px' }}
@@ -297,9 +301,9 @@ const Sidebar: React.FC = () => {
                             className={`sidebar-chat-item ${conv.id === activeConversationId && !isAdminView ? 'active' : ''
                                 }`}
                             onClick={() => {
-                                setIsAdminView(false);
-                                setActiveConversation(conv.id);
-                                if (isMobile() && !sidebarCollapsed) toggleSidebar();
+                                 setIsAdminView(false);
+                                 navigate(`/chat/${conv.id}`);
+                                 if (isMobile() && !sidebarCollapsed) toggleSidebar();
                             }}
                         >
                             {editingId === conv.id ? (
