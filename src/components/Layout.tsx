@@ -36,33 +36,55 @@ const Layout: React.FC = () => {
     const activeConversationId = useChatStore((s) => s.activeConversationId);
     const setActiveConversation = useChatStore((s) => s.setActiveConversation);
     const conversations = useChatStore((s) => s.conversations);
+    const isSynced = useChatStore((s) => s.isSynced);
+    const chatsLoading = useChatStore((s) => s.isLoading);
 
-    // Sync URL ID to store
+    // Unified URL-to-Store and Store-to-URL synchronization effect
     useEffect(() => {
-        if (id && id !== activeConversationId) {
+        // If conversations are still loading from Supabase for the first time, wait for them.
+        if (chatsLoading && !isSynced) return;
+
+        if (conversations.length === 0) {
+            if (activeConversationId !== null) {
+                setActiveConversation(null);
+            }
+            if (id) {
+                navigate('/chat');
+            }
+            return;
+        }
+
+        if (id) {
+            // Case 1: URL has a chat ID parameter
             const exists = conversations.some((c) => c.id === id);
             if (exists) {
-                setActiveConversation(id);
-            } else if (conversations.length > 0) {
+                if (activeConversationId !== id) {
+                    setActiveConversation(id);
+                }
+            } else {
+                // The chat ID in the URL is invalid or has been deleted.
+                // Fall back to the latest conversation.
                 const latestConv = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
                 if (latestConv) {
                     setActiveConversation(latestConv.id);
+                    navigate(`/chat/${latestConv.id}`);
+                }
+            }
+        } else {
+            // Case 2: URL is just /chat (no ID parameter)
+            if (activeConversationId) {
+                // If there is already an active conversation selected, redirect to its URL
+                navigate(`/chat/${activeConversationId}`);
+            } else {
+                // No active conversation selected yet; default to the latest one
+                const latestConv = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+                if (latestConv) {
+                    setActiveConversation(latestConv.id);
+                    navigate(`/chat/${latestConv.id}`);
                 }
             }
         }
-    }, [id, activeConversationId, conversations, setActiveConversation]);
-
-    // Sync store ID to URL
-    useEffect(() => {
-        if (activeConversationId && id !== activeConversationId) {
-            navigate(`/chat/${activeConversationId}`);
-        } else if (!activeConversationId && conversations.length > 0) {
-            const latestConv = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-            if (latestConv) {
-                setActiveConversation(latestConv.id);
-            }
-        }
-    }, [activeConversationId, id, conversations, setActiveConversation, navigate]);
+    }, [id, activeConversationId, conversations, chatsLoading, isSynced, setActiveConversation, navigate]);
 
     // Initialize auth on mount
     useEffect(() => {
