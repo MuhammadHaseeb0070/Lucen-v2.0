@@ -13,24 +13,30 @@ import { useArtifactStore } from '../store/artifactStore';
 interface MarkdownRendererProps {
     content: string;
     searchQuery?: string;
+    isStreaming?: boolean;
 }
 
 const CodeTool = React.memo<{
     language: string;
     value: string;
-}>(({ language, value }) => {
+    isStreaming?: boolean;
+}>(({ language, value, isStreaming }) => {
     const [copied, setCopied] = useState(false);
     const [wrapped, setWrapped] = useState(false);
     const [html, setHtml] = useState<string>('');
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
 
     React.useEffect(() => {
+        if (isStreaming) {
+            setHtml('');
+            return;
+        }
         let isCancelled = false;
         highlightCode(value, language || 'text').then((res) => {
             if (!isCancelled) setHtml(res);
         }).catch(() => {});
         return () => { isCancelled = true; };
-    }, [value, language]);
+    }, [value, language, isStreaming]);
 
     const handleCopy = async () => {
         await navigator.clipboard.writeText(value);
@@ -223,7 +229,7 @@ const SANITIZE_SCHEMA = {
     ],
 };
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ content, searchQuery }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ content, searchQuery, isStreaming }) => {
     const highlightComponents = useMemo(() => {
         if (!searchQuery) return undefined;
 
@@ -267,7 +273,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ content,
                         const codeString = String(children).replace(/\n$/, '');
 
                         if (match) {
-                            return <CodeTool language={match[1]} value={codeString} />;
+                            return <CodeTool language={match[1]} value={codeString} isStreaming={isStreaming} />;
                         }
 
                         return (

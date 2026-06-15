@@ -60,7 +60,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [searchSourcesOpen, setSearchSourcesOpen] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [stepsOpen, setStepsOpen] = useState(false);
+    const [stepsOpen, setStepsOpen] = useState(true);
     const [receiptOpen, setReceiptOpen] = useState(false);
     const [usageLogs, setUsageLogs] = useState<any[] | null>(null);
     const [loadingReceipt, setLoadingReceipt] = useState(false);
@@ -520,7 +520,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             </button>
                             {reasoningOpen && (
                                 <div className="reasoning-content">
-                                    <MarkdownRenderer content={normalizedReasoning} searchQuery={searchQuery} />
+                                    <MarkdownRenderer content={normalizedReasoning} searchQuery={searchQuery} isStreaming={message.isReasoningStreaming} />
                                 </div>
                             )}
                         </div>
@@ -609,7 +609,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         </div>
                     )}
                     {cleanContent ? (
-                        <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} />
+                        <MarkdownRenderer content={cleanContent} searchQuery={searchQuery} isStreaming={message.isStreaming} />
                     ) : (
                         !message.isStreaming && message.toolSteps && message.toolSteps.length > 0 && (
                             <div className="msg-fallback-error" style={{ opacity: 0.6, fontSize: '0.9em', fontStyle: 'italic' }}>

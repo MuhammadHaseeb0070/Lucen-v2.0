@@ -298,7 +298,7 @@ const ChatArea: React.FC = () => {
         // max, which is enough for smooth UX without saturating the main thread.
         let pendingText = '';
         let pendingReasoning = '';
-        let flushTimer: ReturnType<typeof setInterval> | null = null;
+        let rafId: number | null = null;
         let renderedContent =
             useChatStore
                 .getState()
@@ -313,6 +313,7 @@ const ChatArea: React.FC = () => {
                 ?.reasoning || '';
 
         const flushBatch = () => {
+            rafId = null;
             if (!pendingText && !pendingReasoning) return;
             const updates: Record<string, unknown> = {};
             if (pendingText) {
@@ -335,32 +336,28 @@ const ChatArea: React.FC = () => {
             updateMessage(convId, assistantMsgId, updates);
         };
 
-        const startFlushTimer = () => {
-            if (flushTimer !== null) return;
-            flushTimer = setInterval(flushBatch, 50);
-        };
-
-        const stopFlushTimer = () => {
-            if (flushTimer !== null) {
-                clearInterval(flushTimer);
-                flushTimer = null;
-            }
+        const triggerFlush = () => {
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(flushBatch);
         };
 
         const flushAllPending = () => {
-            stopFlushTimer();
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
             flushBatch();
         };
 
         await streamChat(contextMessages, {
             onChunk: (chunk) => {
                 pendingText += chunk;
-                startFlushTimer();
+                triggerFlush();
             },
             onReasoning: (reasoning) => {
                 if (!options.trackReasoning) return;
                 pendingReasoning += reasoning;
-                startFlushTimer();
+                triggerFlush();
             },
             onDone: (truncated) => {
                 flushAllPending();

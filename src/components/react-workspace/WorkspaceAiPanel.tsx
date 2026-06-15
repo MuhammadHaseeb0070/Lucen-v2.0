@@ -137,7 +137,7 @@ const WorkspaceAiPanel: React.FC<WorkspaceAiPanelProps> = ({ seedPrompt, onSeedC
           aiMessages.map((message) => (
             <div key={message.id} className={`react-workspace-ai-message react-workspace-ai-message--${message.role}`}>
               <div className="react-workspace-ai-message__role">{message.role}</div>
-              <MarkdownRenderer content={message.content || (message.isStreaming ? 'Thinking…' : '')} />
+              <MarkdownRenderer content={message.content || (message.isStreaming ? 'Thinking…' : '')} isStreaming={message.isStreaming} />
             </div>
           ))
         )}

@@ -671,13 +671,16 @@ const SafeHtml: React.FC<{ html: string; className?: string }> = ({ html, classN
 // ── Code Fallback ──
 
 const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content, language, isStreaming }) => {
-  const displayContent = useThrottledContent(content, !!isStreaming, STREAMING_PREVIEW_THROTTLE_MS);
   const [html, setHtml] = useState<string>('');
   const [isError, setIsError] = useState(false);
 
   useEffect(() => {
+    if (isStreaming) {
+      setHtml('');
+      return;
+    }
     let isCancelled = false;
-    highlightCode(displayContent, language || 'text')
+    highlightCode(content, language || 'text')
       .then((result) => {
         if (!isCancelled) {
           setHtml(result);
@@ -688,14 +691,14 @@ const CodeFallback: React.FC<RendererProps & { language?: string }> = ({ content
         if (!isCancelled) setIsError(true);
       });
     return () => { isCancelled = true; };
-  }, [displayContent, language]);
+  }, [content, language, isStreaming]);
   
   return (
     <div className="artifact-code-fallback" data-lenis-prevent="true">
       {html && !isError ? (
          <div dangerouslySetInnerHTML={{ __html: html }} className="shiki-container" />
       ) : (
-         <div className="shiki-container shiki-fallback-text">{displayContent}</div>
+         <div className="shiki-container shiki-fallback-text">{content}</div>
       )}
     </div>
   );
