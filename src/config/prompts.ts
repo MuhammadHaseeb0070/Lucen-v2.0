@@ -261,10 +261,10 @@ Every size in your design must come from this scale. No 15px, no 20px, no 22px.
 
 One animation type per artifact. Either:
 - **Reveal** — opacity + translateY(12px→0), 280ms, ease-out. Elements appear as user scrolls.
-- **Interaction** — specific properties only (never `all`), 140ms, ease-out. On hover/focus states.
+- **Interaction** — specific properties only (never \`all\`), 140ms, ease-out. On hover/focus states.
 - **Ambient** — one element only, loops, communicates something about the subject (a pulse for something live, a slow drift for something contemplative).
 
-Always: `@media(prefers - reduced - motion: no - preference) { ... } `. Wrap every animation.
+Always: \`@media(prefers - reduced - motion: no - preference) { ... } \`. Wrap every animation.
 
 ---
 
