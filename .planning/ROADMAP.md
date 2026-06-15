@@ -44,11 +44,12 @@
 
 </details>
 
-<details open>
-<summary>🏃 v2.8 Generative UI Intelligence Engine (Phase 10)</summary>
+<details>
+<summary>✅ v2.8 Generative UI Intelligence Engine (Phase 10) — SHIPPED 2026-06-15</summary>
 
-- [ ] Phase 10: Enhance `BASE_SYSTEM_PROMPT` to enforce `<design_strategy>` and specific aesthetic constraints.
+- [x] Phase 10: UI Prompt Overhaul & `<design_strategy>` (1/1 plans) — completed 2026-06-15
 
+[View v2.8 Milestone Details](file:///e:/Lucen/Lucen-v2.3%20fresh/.planning/milestones/v2.8-ROADMAP.md)
 </details>
 
 <details open>
@@ -71,5 +72,5 @@
 | 7. Excel-focused Pyodide Rebuild | v2.6 | 1/1 | Complete | 2026-06-10 |
 | 8. Multi-Model Fallback Engine | v2.7 | 1/1 | Complete | 2026-06-10 |
 | 9. Parameter Normalization & Client Synchronization | v2.7 | 1/1 | Complete | 2026-06-10 |
-| 10. UI Prompt Overhaul & `<design_strategy>` | v2.8 | 0/1 | Active | |
+| 10. UI Prompt Overhaul & `<design_strategy>` | v2.8 | 1/1 | Complete | 2026-06-15 |
 | 11. Offline Pyodide Proxy Fallback System | v2.9 | 1/1 | Complete | 2026-06-12 |

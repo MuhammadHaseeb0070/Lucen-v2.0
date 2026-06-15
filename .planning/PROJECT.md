@@ -42,10 +42,11 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - ✓ Parameter Normalization Registry: Normalize reasoning model payloads (strip temperature/top_p, convert to max_completion_tokens) — v2.7
 - ✓ Dynamic Metadata Header Sync: Return dynamically matched model headers and sync to client stores — v2.7
 - ✓ Configuration Sync Update: Resolve dynamic model config in `/get-model-config` endpoint — v2.7
+- ✓ Generative UI Intelligence Engine: Overhaul system prompts and fpdf2 generation to mandate Google Material aesthetics and fix Unicode/deprecation errors — v2.8
 
 ### Active
 
-- **v2.8 - Generative UI Intelligence Engine:** Overhaul the system prompts and artifact generation logic to produce bespoke, story-driven, non-generic designs without the typical "AI signature".
+- **v2.9 - Pluggable Python Artifact Engine (MS Word Integration):** Evolve the Pyodide sandbox into a generic document generator, starting with `.docx` capabilities via `python-docx`, without regressing Excel/PDF.
 
 ### Out of Scope
 
