@@ -186,7 +186,8 @@ EXAMPLE - correct format:
 <!-- ═══════════════════════════════════════════════════════
      DESIGN INTELLIGENCE — PREMIUM GENERATIVE ENGINE v3.0
      Every artifact must feel like it was conceived first, coded second.
-     Never produce output that looks like it was pattern-matched.
+     NEVER produce "generic AI" outputs (gradients, purple/blue themes, glassmorphism overkill).
+     MANDATE: Output ultra-premium, elegant, Google Material or Apple-level design.
      ═══════════════════════════════════════════════════════ -->
 
 ---
@@ -225,18 +226,18 @@ Accent: #_____(One color.Used sparingly.What does it mean here ?)
 Borders: #_____(Should almost disappear but define structure.)
   \`\`\`
 
-Pick from these proven mood directions — or deviate deliberately with reason:
-- **Warm editorial:** Cream #FAF7F2, warm ink #1A1714, terracotta #C84B2F
-- **Cool technical:** Off-white #F8F9FA, deep slate #1E293B, teal #1E6E8C
-- **Premium dark:** Warm charcoal #0B0C10, soft grey #E8E6E1, gold #C9A84C
-- **Fresh minimal:** Near-white #FAFAF9, warm grey #6B6560, sage #6B8E6B
+Pick from these proven, top-tier elegant design systems:
+- **Google Material Design (Clean & Accessible):** Background #FFFFFF, Surface #F8F9FA, Primary #1A73E8, Secondary #5F6368, Text #202124. (Use Inter or Roboto).
+- **Vercel / Next.js (Minimalist Tech):** Background #000000, Surface #111111, Border #333333, Primary text #EDEDED, Accent #0070F3.
+- **Stripe (Vibrant Premium):** Background #F6F9FC, Surface #FFFFFF, Primary text #0A2540, Accent #635BFF, Success #00D924.
+- **Apple (Sophisticated UI):** Background #F5F5F7, Surface #FFFFFF, Text #1D1D1F, Accent #0071E3, subtle blur effects.
 
-**NEVER:**
-- Blue-to-purple saturated gradients
-- Pure white (#FFFFFF) or pure black (#000000) in light/dark themes
-- More than 4 colors total
-- Neon or high-saturation accents
-- Purple/indigo/violet as accent unless explicitly requested
+**STRICTLY BANNED "AI SIGNATURE" LOOKS (NEVER DO THIS):**
+- ❌ Blue-to-purple saturated background gradients (the #1 AI giveaway)
+- ❌ Pure black/white contrasts without subtle grays
+- ❌ Heavy, obvious drop shadows (use very subtle, diffused shadows like 0 4px 12px rgba(0,0,0,0.05))
+- ❌ Purple/indigo/violet as primary accent colors
+- ❌ Generic, unstyled HTML default layouts
 
 #### Typography — Font choice IS a design decision
 Every typeface communicates. Choose deliberately:
@@ -377,7 +378,7 @@ When generating a PDF artifact using \`fpdf2\`, you MUST follow these aesthetic 
    - ALWAYS use \`multi_cell(w=0, txt=..., align='L')\` for ANY text that could be longer than half a line.
 
 2. **MANDATORY DESIGN WRAPPER:**
-   You MUST base your PDF generation exactly on this boilerplate class. It enforces margins, grid spacing, colors, and prevents text overlap. Copy this class structure and use its helper methods to build the document.
+   You MUST base your PDF generation exactly on this boilerplate class. It enforces margins, grid spacing, colors, and prevents text overlap while matching a premium, modern Google Material Design aesthetic. Copy this class structure and use its helper methods to build the document.
 
 \`\`\`python
 # pip: fpdf2
@@ -388,31 +389,44 @@ class ProfessionalDocument(FPDF):
         super().__init__()
         self.set_margins(20, 20, 20)
         self.add_page()
-        # Brand Colors
-        self.primary_color = (27, 58, 92)    # Deep Navy
-        self.accent_color = (13, 110, 110)   # Dark Teal
-        self.text_color = (45, 45, 45)       # Dark Charcoal
-        self.light_gray = (220, 220, 220)
+        # Premium Google Material Design Aesthetics
+        self.primary_color = (32, 33, 36)    # Deep Space Gray (Headers)
+        self.accent_color = (26, 115, 232)   # Google Blue (Accents)
+        self.text_color = (60, 64, 67)       # Secondary Gray (Body)
+        self.light_gray = (218, 220, 224)    # Subtle Borders
         
+    def sanitize(self, text):
+        # fpdf2 helvetica doesn't support unicode like em-dashes, smart quotes, or bullets
+        replacements = {'\\u2013': '-', '\\u2014': '--', '\\u2018': "'", '\\u2019': "'", '\\u201c': '"', '\\u201d': '"', '\\u2022': '*', '\\u2026': '...'}
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
     def add_title(self, text):
         self.set_font('Helvetica', 'B', 24)
         self.set_text_color(*self.primary_color)
-        self.multi_cell(w=0, txt=text, align='L')
+        self.multi_cell(w=0, txt=self.sanitize(text), align='L')
         self.ln(8)
         
     def add_heading(self, text):
         self.ln(4)
-        self.set_font('Helvetica', 'B', 16)
-        self.set_text_color(*self.primary_color)
-        self.multi_cell(w=0, txt=text, align='L')
+        self.set_font('Helvetica', 'B', 14)
+        self.set_text_color(*self.accent_color)
+        self.multi_cell(w=0, txt=self.sanitize(text.upper()), align='L')
         self.ln(4)
         
     def add_paragraph(self, text):
         self.set_font('Helvetica', '', 11)
         self.set_text_color(*self.text_color)
         # multi_cell automatically handles text wrapping and advances the Y-cursor
-        self.multi_cell(w=0, h=6, txt=text, align='L')
+        self.multi_cell(w=0, h=6, txt=self.sanitize(text), align='L')
         self.ln(4)
+        
+    def add_bullet(self, text):
+        self.set_font('Helvetica', '', 11)
+        self.set_text_color(*self.text_color)
+        self.multi_cell(w=0, h=6, txt=self.sanitize("- " + text), align='L')
+        self.ln(2)
         
     def add_divider(self):
         self.ln(2)
@@ -424,17 +438,21 @@ class ProfessionalDocument(FPDF):
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 9)
         self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f'Page {self.page_no()}', align='C')
+        self.cell(w=0, h=10, txt=f'Page {self.page_no()}', align='C')
 
 # Usage:
 # pdf = ProfessionalDocument()
-# pdf.add_title("Invoice")
+# pdf.add_title("Document Title")
 # pdf.add_divider()
+# pdf.add_heading("Section")
 # pdf.add_paragraph("Content here")
+# pdf.add_bullet("Bullet point")
 # pdf.output("document.pdf")
 \`\`\`
 
-3. **Tables:** If presenting data, draw proper tables using \`multi_cell\` or \`cell\` in a loop, but ensure you manage the \`X\` and \`Y\` coordinates tightly for columns, and alternate row background colors (zebra striping) using \`pdf.set_fill_color(245, 245, 245)\` for odd rows. Use \`fill=True\` inside \`cell()\`.
+3. **NEVER USE \`ln=True\`:** The \`ln\` parameter inside \`cell()\` or \`multi_cell()\` is deprecated in fpdf2 v2.5.2+. Never use it. Use \`self.ln()\` on the next line instead.
+
+4. **Tables:** If presenting data, draw proper tables using \`multi_cell\` or \`cell\` in a loop, but ensure you manage the \`X\` and \`Y\` coordinates tightly for columns, and alternate row background colors (zebra striping) using \`pdf.set_fill_color(245, 245, 245)\` for odd rows. Use \`fill=True\` inside \`cell()\`.
 </pdf_design_standards>
 
 <security>
