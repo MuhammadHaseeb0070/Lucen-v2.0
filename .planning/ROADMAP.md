@@ -8,7 +8,7 @@
 - ✅ **v2.7 Robust OpenRouter Multi-Model System** — [Phases 8-9](file:///e:/Lucen/Lucen-v2.3%20fresh/.planning/milestones/v2.7-ROADMAP.md) (shipped 2026-06-10)
 - ✅ **v2.8 Generative UI Intelligence Engine** — Phase 10 (shipped 2026-06-15)
 - ✅ **v2.9 Offline Pyodide Proxy** — Phase 11 (shipped 2026-06-12)
-- 🏃 **v3.0 Core Messaging & Tool Pipeline Stabilization** — Phases 12-14
+- ✅ **v3.0 Core Messaging & Tool Pipeline Stabilization** — Phases 12-14 (shipped 2026-06-16)
 
 ## Phases
 
@@ -59,12 +59,12 @@
 
 </details>
 
-<details open>
-<summary>🏃 v3.0 Core Messaging & Tool Pipeline Stabilization (Phases 12-14) — ACTIVE</summary>
+<details>
+<summary>✅ v3.0 Core Messaging & Tool Pipeline Stabilization (Phases 12-14) — SHIPPED 2026-06-16</summary>
 
-- [ ] Phase 12: Security Boundaries & API Imports (0/1 plans)
-- [ ] Phase 13: Client-Side Routing & State Synchronization (0/1 plans)
-- [ ] Phase 14: Parser, Worker, & Stream Pipeline Hardening (0/1 plans)
+- [x] Phase 12: Security Boundaries & API Imports (1/1 plans) — completed 2026-06-16
+- [x] Phase 13: Client-Side Routing & State Synchronization (1/1 plans) — completed 2026-06-16
+- [x] Phase 14: Parser, Worker, & Stream Pipeline Hardening (1/1 plans) — completed 2026-06-16
 
 </details>
 
@@ -83,6 +83,6 @@
 | 9. Parameter Normalization & Client Synchronization | v2.7 | 1/1 | Complete | 2026-06-10 |
 | 10. UI Prompt Overhaul & `<design_strategy>` | v2.8 | 1/1 | Complete | 2026-06-15 |
 | 11. Offline Pyodide Proxy Fallback System | v2.9 | 1/1 | Complete | 2026-06-12 |
-| 12. Security Boundaries & API Imports | v3.0 | 0/1 | Active | — |
-| 13. Client-Side Routing & State Synchronization | v3.0 | 0/1 | Planned | — |
-| 14. Parser, Worker, & Stream Pipeline Hardening | v3.0 | 0/1 | Planned | — |
+| 12. Security Boundaries & API Imports | v3.0 | 1/1 | Complete | 2026-06-16 |
+| 13. Client-Side Routing & State Synchronization | v3.0 | 1/1 | Complete | 2026-06-16 |
+| 14. Parser, Worker, & Stream Pipeline Hardening | v3.0 | 1/1 | Complete | 2026-06-16 |
