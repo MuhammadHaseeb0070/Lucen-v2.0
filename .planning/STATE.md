@@ -1,39 +1,32 @@
 ---
 gsd_state_version: 1.0
 milestone: v3.0
-milestone_name: Core Messaging & Tool Pipeline Stabilization
-status: Complete
-stopped_at: Milestone complete
-last_updated: "2026-06-16T23:35:00.000Z"
-last_activity: 2026-06-16 — Milestone audit passed and verified
-progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+milestone_name: milestone
+status: Awaiting next milestone
+last_updated: "2026-06-16T06:38:44.904Z"
+last_activity: 2026-06-16 — Milestone v3.0 completed and archived
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-15)
+See: .planning/PROJECT.md (updated 2026-06-16)
 
 **Core value:** Ship a secure, performant, well-tested, and premium-quality AI assistant with robust tools and billing controls.
 **Current focus:** Establish security boundaries, resolve routing/sync inconsistencies, and harden parsing/execution runtimes.
 
 ## Current Position
 
-Milestone: Milestone v3.0 Core Messaging & Tool Pipeline Stabilization
-Phase: Complete
+Phase: Milestone v3.0 complete
 Plan: —
-Status: Complete
-Last activity: 2026-06-16 — Milestone audit passed and verified
+Status: Awaiting next milestone
+Last activity: 2026-06-16 — Milestone v3.0 completed and archived
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: N/A
 - Total execution time: 0 hours
@@ -48,4 +41,4 @@ Last activity: 2026-06-16 — Milestone audit passed and verified
 
 ## Operator Next Steps
 
-1. Run `/gsd-complete-milestone v3.0` to archive the completed milestone and update project metadata.
+- Start the next milestone with /gsd-new-milestone

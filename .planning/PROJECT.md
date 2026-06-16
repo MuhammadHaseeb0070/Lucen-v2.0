@@ -44,10 +44,11 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - ✓ Configuration Sync Update: Resolve dynamic model config in `/get-model-config` endpoint — v2.7
 - ✓ Generative UI Intelligence Engine: Overhaul system prompts and fpdf2 generation to mandate Google Material aesthetics and fix Unicode/deprecation errors — v2.8
 - ✓ Offline Pyodide Proxy: Fallback system fetching Pyodide packages locally when CDN is blocked — v2.9
+- ✓ Core Messaging & Tool Pipeline Stabilization (security scopes in get-file-content/describe-image, web-search Deno import fix, router URL sync, worker infinite loop timeout watchdog, parser unwrap sequence, ephemeral error logs, smooth streaming via requestAnimationFrame, steps expanded by default) — v3.0
 
 ### Active
 
-- **v3.0 - Core Messaging & Tool Pipeline Stabilization:** Rutheless stabilization milestone addressing parser bugs, state synchronization races, execution timeout starvation, and horizontal privilege escalation vulnerabilities.
+- **Next Milestone:** Define next objectives using `/gsd-new-milestone`.
 
 ### Out of Scope
 
@@ -63,4 +64,4 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - **Verification strategy:** Automated integration tests (Vitest + Playwright) plus manual user validation.
 
 ---
-*Last updated: 2026-06-15 after v3.0 Core Messaging & Tool Pipeline Stabilization audit*
+*Last updated: 2026-06-16 after v3.0 Core Messaging & Tool Pipeline Stabilization completion*
