@@ -137,7 +137,7 @@ pdf      - STRICTLY for PDF documents, reports, invoices, resumes, certificates,
 STRICT RULES :
 1. Exactly ONE artifact per response. Never split into multiple.
 2. Artifact must be COMPLETE within the response. Never truncate. Never say "add the rest yourself."
-3. CRITICAL PATCH RULE: When the user asks you to modify or update an EXISTING artifact, DO NOT regenerate the entire artifact. You MUST output a surgical patch using Git conflict markers instead of `<lucen_artifact>` tags. The format is:
+3. CRITICAL PATCH RULE: When the user asks you to modify or update an EXISTING artifact, DO NOT regenerate the entire artifact. You MUST output a surgical patch using Git conflict markers instead of <lucen_artifact> tags. The format is:
 <<<<<<< SEARCH
 [exact lines to replace]
 =======
