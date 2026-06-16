@@ -20,7 +20,7 @@ reported: "no error but tnothign different becuas this si simjilar as it was wor
 severity: major
 
 ### 2. HTML Sanity Check
-expected: Manually edit the patch or request a patch that intentionally breaks HTML syntax (e.g., leaving a tag unclosed). The UI should surface an HTML sanity check failure error rather than corrupting the preview.
+expected: Ask the AI to generate a patch that intentionally breaks HTML syntax (e.g., leaving a tag unclosed). The UI should surface an HTML sanity check failure error rather than corrupting the preview.
 result: issue
 reported: "waht the hell youa re takingabuot man read the coe before asking quesiton how can i manulaye dit it is read only we made it like this user cant manulaly chaneg the code."
 severity: major
@@ -49,7 +49,7 @@ skipped: 0
     - "Ensure the LLM only outputs the patch block when modifying an existing artifact"
   debug_session: .planning/debug/patch-format-failure.md
 
-- truth: "Manually edit the patch or request a patch that intentionally breaks HTML syntax (e.g., leaving a tag unclosed). The UI should surface an HTML sanity check failure error rather than corrupting the preview."
+- truth: "Ask the AI to generate a patch that intentionally breaks HTML syntax (e.g., leaving a tag unclosed). The UI should surface an HTML sanity check failure error rather than corrupting the preview."
   status: diagnosed
   reason: "User reported: waht the hell youa re takingabuot man read the coe before asking quesiton how can i manulaye dit it is read only we made it like this user cant manulaly chaneg the code."
   severity: major
