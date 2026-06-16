@@ -29,7 +29,8 @@ import type { PatchBlock } from './artifactPatchParser';
 export type BlockFailureReason =
   | 'no_match'
   | 'multi_match'
-  | 'empty_search';
+  | 'empty_search'
+  | 'html_sanity_check_failed';
 
 /** Strategy used to locate the search block, when one succeeded. */
 export type MatchStrategy = 'exact' | 'crlf_normalized' | 'indent_normalized' | 'line_trimmed';
@@ -462,7 +463,7 @@ export function applyBlock(content: string, block: PatchBlock): {
  * block's index. The artifact content is NOT modified — the caller is
  * responsible for either rolling back or retrying at the LLM layer.
  */
-export function applyPatch(originalContent: string, blocks: PatchBlock[]): PatchResult {
+export function applyPatch(originalContent: string, blocks: PatchBlock[], language?: string): PatchResult {
   if (blocks.length === 0) {
     return { ok: true, newContent: originalContent, appliedBlocks: [] };
   }
@@ -484,6 +485,19 @@ export function applyPatch(originalContent: string, blocks: PatchBlock[]): Patch
     }
     current = result.newContent;
     applied.push({ ...result.applied, blockIndex: i });
+  }
+
+  if ((language === 'html' || language === 'svg') && typeof DOMParser !== 'undefined') {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(current, 'text/html');
+    if (doc.querySelector('parsererror')) {
+      return {
+        ok: false,
+        blockIndex: blocks.length - 1,
+        reason: 'html_sanity_check_failed',
+        searchExcerpt: 'DOMParser detected invalid HTML after patch application.',
+      };
+    }
   }
 
   return { ok: true, newContent: current, appliedBlocks: applied };

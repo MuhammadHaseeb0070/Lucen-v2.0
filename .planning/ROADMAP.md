@@ -9,6 +9,7 @@
 - ✅ **v2.8 Generative UI Intelligence Engine** — Phase 10 (shipped 2026-06-15)
 - ✅ **v2.9 Offline Pyodide Proxy** — Phase 11 (shipped 2026-06-12)
 - ✅ **v3.0 Core Messaging & Tool Pipeline Stabilization** — [Phases 12-14](file:///e:/Lucen/Lucen-v2.3%20fresh/.planning/milestones/v3.0-ROADMAP.md) (shipped 2026-06-16)
+- 🔵 **v3.1 Smart Artifact Patching System** — Phases 15-18
 
 ## Phases
 
@@ -58,6 +59,14 @@
 - [x] Phase 11: Offline Pyodide Proxy Fallback System (1/1 plans) — completed 2026-06-12
 
 </details>
+
+### 🔵 v3.1 Smart Artifact Patching System
+
+- [ ] Phase 15: Patch Format & Parser Migration
+- [ ] Phase 16: Dedicated Patch System Prompt & Sidecar Call
+- [ ] Phase 17: Inline Update Input & Context Selector
+- [ ] Phase 18: Version History Panel & Post-Patch UX
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -76,3 +85,7 @@
 | 12. Security Boundaries & API Imports | v3.0 | 1/1 | Complete | 2026-06-16 |
 | 13. Client-Side Routing & State Synchronization | v3.0 | 1/1 | Complete | 2026-06-16 |
 | 14. Parser, Worker, & Stream Pipeline Hardening | v3.0 | 1/1 | Complete | 2026-06-16 |
+| 15. Patch Format & Parser Migration | v3.1 | 0/? | Pending | — |
+| 16. Dedicated Patch System Prompt & Sidecar Call | v3.1 | 0/? | Pending | — |
+| 17. Inline Update Input & Context Selector | v3.1 | 0/? | Pending | — |
+| 18. Version History Panel & Post-Patch UX | v3.1 | 0/? | Pending | — |

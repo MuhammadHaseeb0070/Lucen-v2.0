@@ -48,7 +48,7 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 
 ### Active
 
-- **Next Milestone:** Define next objectives using `/gsd-new-milestone`.
+- **v3.1 — Smart Artifact Patching System:** Surgical SEARCH/REPLACE patching pipeline with two triggers (user Update input + auto error-fix), dedicated patch system prompt, post-patch sanity checks, version history panel, and feedback UX.
 
 ### Out of Scope
 
@@ -64,4 +64,4 @@ Ship a secure, performant, well-tested, and premium-quality AI assistant with ro
 - **Verification strategy:** Automated integration tests (Vitest + Playwright) plus manual user validation.
 
 ---
-*Last updated: 2026-06-16 after v3.0 Core Messaging & Tool Pipeline Stabilization completion*
+*Last updated: 2026-06-16 after v3.1 Smart Artifact Patching System milestone creation*
