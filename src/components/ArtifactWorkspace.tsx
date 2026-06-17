@@ -5,6 +5,7 @@ import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactPatchInput from './ArtifactPatchInput';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
+import ArtifactErrorBanner from './ArtifactErrorBanner';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
 import type { ArtifactType } from '../types';
@@ -395,7 +396,7 @@ const ArtifactWorkspace: React.FC = () => {
         </div>
       </div>
 
-      <div className="artifact-workspace-body" style={{ position: 'relative', display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="artifact-workspace-body" style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         {activeArtifact.id && patchStatus[activeArtifact.id] && patchStatus[activeArtifact.id] !== 'idle' && (
           <ArtifactStatusPipeline
             status={patchStatus[activeArtifact.id]}
@@ -403,6 +404,8 @@ const ArtifactWorkspace: React.FC = () => {
           />
         )}
         
+        <ArtifactErrorBanner artifact={activeArtifact} />
+
         {showDiff && previousArtifact ? (
           <div className="artifact-diff-container" style={{ display: 'flex', width: '100%', height: '100%' }}>
             <div className="artifact-diff-pane" style={{ flex: 1, borderRight: '2px solid var(--divider)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>

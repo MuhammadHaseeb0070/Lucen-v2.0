@@ -67,12 +67,26 @@ ${instruction}
            if (activeArtifact && activeArtifact.id === artifactId) {
              const updatedArtifact = { ...activeArtifact, content: patchResult.newContent };
              updateArtifactContent(updatedArtifact);
+             
+             // Persist the new content to the actual message in the chat store
+             // so it survives hard reloads (which re-hydrate from message content).
+             const convId = useChatStore.getState().activeConversationId;
+             if (convId && activeArtifact.messageId) {
+               const msgs = useChatStore.getState().getContextMessages(convId);
+               const parentMsg = msgs.find(m => m.id === activeArtifact.messageId);
+               if (parentMsg && parentMsg.content) {
+                 const regex = new RegExp(`(<lucen_artifact[^>]*id=["']${activeArtifact.id}["'][^>]*>)[\\s\\S]*?(<\\/lucen_artifact>)`);
+                 const newMsgContent = parentMsg.content.replace(regex, `$1\n${patchResult.newContent}\n$2`);
+                 useChatStore.getState().updateMessage(convId, activeArtifact.messageId, { content: newMsgContent });
+               }
+             }
+
              const dbId = useArtifactStore.getState().getDbId(artifactId);
              if (dbId) {
                updateArtifactContentDb(dbId, patchResult.newContent, activeArtifact.title)
                  .catch((err) => console.error('[Patch] DB persist failed:', err));
              } else {
-               console.warn('[Patch] No dbId found for artifact — patch not persisted to DB:', artifactId);
+               console.warn('[Patch] No dbId found for artifact — patch not persisted to Artifacts DB:', artifactId);
              }
            }
         } else {

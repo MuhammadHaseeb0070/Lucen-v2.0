@@ -58,7 +58,7 @@ const ArtifactStatusPipeline: React.FC<ArtifactStatusPipelineProps> = ({ status,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 50,
+        zIndex: 150,
         transition: 'opacity var(--dur) var(--ease)'
       }}
     >
