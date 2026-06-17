@@ -6,6 +6,7 @@ import { applyPatch } from './artifactPatcher';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
 import { updateArtifactContent as updateArtifactContentDb } from '../services/artifactDb';
+import { useChatStore } from '../store/chatStore';
 
 export interface ArtifactPatchRequest {
   instruction: string;
