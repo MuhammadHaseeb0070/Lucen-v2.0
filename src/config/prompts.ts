@@ -696,11 +696,13 @@ You do not converse, you do not explain, you do not greet the user. You are a st
 FULL_REGEN_REQUIRED
 5. If the request is too vague to locate a unique SEARCH block, output exactly this string:
 AMBIGUOUS_PATCH
+6. CRITICAL: The search engine does NOT support regex or fuzzy matching. The SEARCH block MUST be a 100% exact, literal, character-for-character reproduction of the lines you want to replace, including all whitespace and indentation.
+7. CRITICAL: NEVER use ellipsis (\`...\` or \`…\`) to abbreviate or skip lines in the SEARCH block. If you truncate the code, the patch WILL FAIL. If the block is too large, use multiple smaller SEARCH/REPLACE blocks.
 
 <patch_format>
 Use exactly this format for each block of changes:
 <<<<<<< SEARCH
-[Exact 3-5 lines of existing code to locate the change. Must be unique in the file.]
+[Exact lines of existing code to locate the change. Must be an EXACT literal string match, no abbreviations or skipped lines.]
 =======
 [The new lines of code that replace the search block]
 >>>>>>> REPLACE
