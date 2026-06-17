@@ -18,7 +18,7 @@
 // ============================================================
 
 import React from 'react';
-import { AlertTriangle, Wand2, X, Lock, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Wand2, X, Lock } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import { executeArtifactPatch } from '../lib/artifactSidecar';
 import { INJECT_SCRIPT_LINE_COUNT } from '../lib/iframeErrorBridge';
