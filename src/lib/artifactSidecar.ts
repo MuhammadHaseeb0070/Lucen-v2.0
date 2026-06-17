@@ -73,12 +73,14 @@ ${instruction}
              // so it survives hard reloads (which re-hydrate from message content).
              const convId = useChatStore.getState().activeConversationId;
              if (convId && activeArtifact.messageId) {
-               const msgs = useChatStore.getState().getContextMessages(convId);
-               const parentMsg = msgs.find(m => m.id === activeArtifact.messageId);
-               if (parentMsg && parentMsg.content) {
-                 const regex = new RegExp(`(<lucen_artifact[^>]*id=["']${activeArtifact.id}["'][^>]*>)[\\s\\S]*?(<\\/lucen_artifact>)`);
-                 const newMsgContent = parentMsg.content.replace(regex, `$1\n${patchResult.newContent}\n$2`);
-                 useChatStore.getState().updateMessage(convId, activeArtifact.messageId, { content: newMsgContent });
+               const conv = useChatStore.getState().conversations.find(c => c.id === convId);
+               if (conv) {
+                 const parentMsg = conv.messages.find(m => m.id === activeArtifact.messageId);
+                 if (parentMsg && parentMsg.content) {
+                   const regex = new RegExp(`(<lucen_artifact[^>]*id=["']${activeArtifact.id}["'][^>]*>)[\\s\\S]*?(<\\/lucen_artifact>)`);
+                   const newMsgContent = parentMsg.content.replace(regex, `$1\n${patchResult.newContent}\n$2`);
+                   useChatStore.getState().updateMessage(convId, activeArtifact.messageId, { content: newMsgContent });
+                 }
                }
              }
 

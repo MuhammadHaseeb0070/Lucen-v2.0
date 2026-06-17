@@ -74,7 +74,8 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
             className="artifact-error-banner-btn artifact-error-banner-btn--primary"
             onClick={() => useArtifactStore.getState().resetHealAttempts(artifact.id)}
           >
-            <RotateCcw size={13} /> Try again
+            <X size={14} />
+            <span>Dismiss</span>
           </button>
           <button type="button" className="artifact-error-banner-btn" onClick={handleDismiss}>
             <X size={13} />
