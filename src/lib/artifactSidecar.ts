@@ -77,8 +77,22 @@ ${instruction}
                if (conv) {
                  const parentMsg = conv.messages.find(m => m.id === activeArtifact.messageId);
                  if (parentMsg && parentMsg.content) {
-                   const regex = new RegExp(`(<lucen_artifact[^>]*id=["']${activeArtifact.id}["'][^>]*>)[\\s\\S]*?(<\\/lucen_artifact>)`);
-                   const newMsgContent = parentMsg.content.replace(regex, `$1\n${patchResult.newContent}\n$2`);
+                   const indexStr = activeArtifact.id.split('-artifact-')[1];
+                   const targetIndex = parseInt(indexStr, 10);
+                   
+                   let matchIndex = 0;
+                   const newMsgContent = parentMsg.content.replace(
+                     /(<lucen_artifact[^>]*>)[\s\S]*?(<\/lucen_artifact>)/g,
+                     (match, openTag, closeTag) => {
+                       if (matchIndex === targetIndex) {
+                         matchIndex++;
+                         return `${openTag}\n${patchResult.newContent}\n${closeTag}`;
+                       }
+                       matchIndex++;
+                       return match;
+                     }
+                   );
+
                    useChatStore.getState().updateMessage(convId, activeArtifact.messageId, { content: newMsgContent });
                  }
                }
