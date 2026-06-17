@@ -214,7 +214,8 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
     // flash-clear and immediately re-set from the same underlying bug.
     // Errors that re-fire within 2s of a srcDoc change are treated as
     // persistent (the fix didn't work).
-    setRuntimeError(artifactId, null);
+    const cur = useArtifactStore.getState().runtimeErrors[artifactId ?? ''];
+    if (cur?.origin !== 'patch') setRuntimeError(artifactId, null);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let pendingError: Parameters<typeof setRuntimeError>[1] = null;
     const detach = attachErrorListener((e) => {
@@ -482,7 +483,10 @@ const SvgRenderer: React.FC<RendererProps> = ({ content, isStreaming = false, ar
       el.innerHTML = sanitizeSvg(svgContent);
       setRenderError(null);
       // Clear any prior SVG error on successful render.
-      if (artifactId) setRuntimeError(artifactId, null);
+      if (artifactId) {
+        const cur = useArtifactStore.getState().runtimeErrors[artifactId ?? ''];
+        if (cur?.origin !== 'patch') setRuntimeError(artifactId, null);
+      }
       const svgEl = el.querySelector('svg');
       if (svgEl) {
         if (!svgEl.getAttribute('viewBox') && svgEl.getAttribute('width') && svgEl.getAttribute('height')) {
@@ -597,7 +601,10 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
             setSvg(rendered);
             setError(null);
             // Successful render — clear any prior parse error.
-            if (artifactId) setRuntimeError(artifactId, null);
+            if (artifactId) {
+              const cur = useArtifactStore.getState().runtimeErrors[artifactId ?? ''];
+              if (cur?.origin !== 'patch') setRuntimeError(artifactId, null);
+            }
           }
         } catch (firstErr) {
           try {
@@ -611,7 +618,10 @@ const MermaidRenderer: React.FC<RendererProps> = ({ content, isStreaming = false
             if (!cancelled && renderIdRef.current === currentId) {
               setSvg(rendered);
               setError(null);
-              if (artifactId) setRuntimeError(artifactId, null);
+              if (artifactId) {
+                const cur = useArtifactStore.getState().runtimeErrors[artifactId ?? ''];
+                if (cur?.origin !== 'patch') setRuntimeError(artifactId, null);
+              }
             }
           } catch {
             if (!cancelled && renderIdRef.current === currentId) {
@@ -1084,7 +1094,7 @@ const PythonDocumentRenderer: React.FC<PythonDocumentRendererProps> = ({ artifac
           });
         } else {
           const cur = useArtifactStore.getState().runtimeErrors[artifact.id];
-          if (cur) setRuntimeError(artifact.id, null);
+          if (cur?.origin !== 'patch') setRuntimeError(artifact.id, null);
         }
       } catch (err: any) {
         if (!isActive()) return;
