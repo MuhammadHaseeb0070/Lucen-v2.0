@@ -56,7 +56,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
 
   if (runtimeError.origin === 'patch') {
     return (
-      <div className="artifact-error-banner" style={{ borderLeftColor: '#f59e0b' }}>
+      <div className="artifact-error-banner" style={{ borderLeftColor: '#f59e0b', zIndex: 9999, position: 'relative' }}>
         <div className="artifact-error-banner-icon" style={{ color: '#f59e0b' }}>
           <AlertTriangle size={16} />
         </div>
@@ -157,7 +157,7 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
   };
 
   return (
-    <div className="artifact-error-banner">
+    <div className="artifact-error-banner" style={{ zIndex: 9999, position: 'relative' }}>
       <div className="artifact-error-banner-icon">
         <AlertTriangle size={16} />
       </div>

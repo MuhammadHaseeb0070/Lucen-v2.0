@@ -521,6 +521,7 @@ const ChatArea: React.FC = () => {
         attachments?: FileAttachment[],
         opts?: { hideUserMessage?: boolean; forceMode?: ResponseMode },
     ) => {
+        console.log('[forceMode debug]', opts?.forceMode);
         if (!hasEnoughCredits()) return;
         // Prevent stacking a new turn while the model is still streaming.
         // The MessageInput button is already disabled via isStreaming prop,

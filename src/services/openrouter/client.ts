@@ -129,6 +129,7 @@ export async function streamChat(
         : isContinuation
           ? 'artifact'
           : detectResponseMode(messages));
+    console.log('[streamChat forceMode]', options.forceMode, 'resolved mode:', mode);
     const perCallCap = getPerCallOutput(mode, model);
 
     const conversationBudget = Math.max(
