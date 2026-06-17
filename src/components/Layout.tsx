@@ -76,12 +76,9 @@ const Layout: React.FC = () => {
                 // If there is already an active conversation selected, redirect to its URL
                 navigate(`/chat/${activeConversationId}`);
             } else {
-                // No active conversation selected yet; default to the latest one
-                const latestConv = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-                if (latestConv) {
-                    setActiveConversation(latestConv.id);
-                    navigate(`/chat/${latestConv.id}`);
-                }
+                // No active conversation selected yet; open a new chat screen
+                const nextId = useChatStore.getState().createConversation();
+                navigate(`/chat/${nextId}`);
             }
         }
     }, [id, activeConversationId, conversations, chatsLoading, isSynced, setActiveConversation, navigate]);

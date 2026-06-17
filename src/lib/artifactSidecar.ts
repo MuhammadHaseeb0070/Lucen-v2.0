@@ -5,6 +5,7 @@ import { parsePatches } from './artifactPatchParser';
 import { applyPatch } from './artifactPatcher';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
+import { updateArtifactContent as updateArtifactContentDb } from '../services/artifactDb';
 
 export interface ArtifactPatchRequest {
   instruction: string;
@@ -64,7 +65,15 @@ ${instruction}
         if (patchResult.ok) {
            const activeArtifact = useArtifactStore.getState().activeArtifact;
            if (activeArtifact && activeArtifact.id === artifactId) {
-             updateArtifactContent({ ...activeArtifact, content: patchResult.newContent });
+             const updatedArtifact = { ...activeArtifact, content: patchResult.newContent };
+             updateArtifactContent(updatedArtifact);
+             const dbId = useArtifactStore.getState().getDbId(artifactId);
+             if (dbId) {
+               updateArtifactContentDb(dbId, patchResult.newContent, activeArtifact.title)
+                 .catch((err) => console.error('[Patch] DB persist failed:', err));
+             } else {
+               console.warn('[Patch] No dbId found for artifact — patch not persisted to DB:', artifactId);
+             }
            }
         } else {
            console.error("Patch failed to apply:", patchResult);
@@ -80,12 +89,15 @@ ${instruction}
     },
     onError: (err) => {
       console.error("Patch sidecar error:", err);
-      useArtifactStore.getState().setPatchError(artifactId, 'Patch stream failed. The connection was interrupted.');
-      setPatchStatus(artifactId, 'idle');
+      setTimeout(() => {
+        useArtifactStore.getState().setPatchError(artifactId, 'Patch stream failed. The connection was interrupted.');
+        setPatchStatus(artifactId, 'idle');
+      }, 100);
     }
   }, {
     systemPromptOverride: PATCH_SIDECAR_SYSTEM_PROMPT,
     isSideChat: true,
+    forceMode: 'artifact',
   });
 }
 
