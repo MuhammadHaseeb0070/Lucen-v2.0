@@ -93,5 +93,5 @@ function triggerFullRegenFallback(instruction: string, currentCode: string, reas
     `=== END SOURCE ===`,
     `IMPORTANT: Output the COMPLETE fixed artifact wrapped in <lucen_artifact> tags. Do not explain the changes - just output the fully updated artifact.`
   ];
-  useComposerStore.getState().setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: false });
+  useComposerStore.getState().setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: false, forceMode: 'artifact' });
 }

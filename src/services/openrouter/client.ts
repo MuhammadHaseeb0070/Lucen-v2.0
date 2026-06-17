@@ -33,6 +33,7 @@ export interface StreamOptions {
   conversationId?: string;
   messageId?: string;
   continuation?: { priorAssistantText: string };
+  forceMode?: ResponseMode;
 }
 
 export interface CallAccounting {
@@ -122,11 +123,12 @@ export async function streamChat(
     }
 
     const isContinuation = !!options.continuation;
-    const mode: ResponseMode = options.isSideChat
-      ? 'chat'
-      : isContinuation
-        ? 'artifact'
-        : detectResponseMode(messages);
+    const mode: ResponseMode = options.forceMode
+      ?? (options.isSideChat
+        ? 'chat'
+        : isContinuation
+          ? 'artifact'
+          : detectResponseMode(messages));
     const perCallCap = getPerCallOutput(mode, model);
 
     const conversationBudget = Math.max(

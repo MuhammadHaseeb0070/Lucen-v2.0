@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ResponseMode } from '../services/outputBudget';
 
 interface ComposerStore {
   pendingMainComposerPrefill: string | null;
@@ -9,9 +10,9 @@ interface ComposerStore {
    * content — used by the self-heal flow to fire a patch turn without
    * the user typing anything. Cleared by the consumer.
    */
-  pendingAutoSend: { content: string; hideUserMessage?: boolean } | null;
-  setPendingAutoSend: (value: { content: string; hideUserMessage?: boolean }) => void;
-  consumePendingAutoSend: () => { content: string; hideUserMessage?: boolean } | null;
+  pendingAutoSend: { content: string; hideUserMessage?: boolean; forceMode?: ResponseMode } | null;
+  setPendingAutoSend: (value: { content: string; hideUserMessage?: boolean; forceMode?: ResponseMode }) => void;
+  consumePendingAutoSend: () => { content: string; hideUserMessage?: boolean; forceMode?: ResponseMode } | null;
 }
 
 export const useComposerStore = create<ComposerStore>()((set, get) => ({

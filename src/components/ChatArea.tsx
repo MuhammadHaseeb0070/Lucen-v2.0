@@ -20,6 +20,7 @@ import { saveArtifact, updateArtifactContent } from '../services/artifactDb';
 import ChatExchangeRow, { buildExchangeRows, buildMsgIdToRowIndex } from './ChatExchangeRow';
 import { SmoothScroll } from './SmoothScroll';
 import { getUserFriendlyError } from '../lib/errorMessages';
+import type { ResponseMode } from '../services/outputBudget';
 
 // Patch/update flow removed: artifacts are generated from scratch only.
 
@@ -195,7 +196,7 @@ const ChatArea: React.FC = () => {
     // fire it through handleSend so the existing patch flow takes over.
     // We deliberately wait until handleSend is defined before consuming
     // (handleSend is hoisted via closure, so it's always callable here).
-    const handleSendRef = useRef<((payload: { content: string; hideUserMessage?: boolean }) => void) | null>(null);
+    const handleSendRef = useRef<((payload: { content: string; hideUserMessage?: boolean; forceMode?: ResponseMode }) => void) | null>(null);
     useEffect(() => {
         if (!pendingAutoSend) return;
         const payload = consumePendingAutoSend();
@@ -286,6 +287,7 @@ const ChatArea: React.FC = () => {
         options: {
             continuation?: { priorAssistantText: string };
             trackReasoning: boolean;
+            forceMode?: ResponseMode;
         },
     ) => {
         const controller = new AbortController();
@@ -477,11 +479,12 @@ const ChatArea: React.FC = () => {
             conversationId: convId,
             continuation: options.continuation,
             messageId: assistantMsgId,
+            forceMode: options.forceMode,
         });
     };
 
-    const doStreamResponse = (convId: string, assistantMsgId: string) =>
-        runStream(convId, assistantMsgId, { trackReasoning: true });
+    const doStreamResponse = (convId: string, assistantMsgId: string, forceMode?: ResponseMode) =>
+        runStream(convId, assistantMsgId, { trackReasoning: true, forceMode });
 
     // Patch/update flow removed: all artifact requests generate from scratch.
 
@@ -516,7 +519,7 @@ const ChatArea: React.FC = () => {
     const handleSend = async (
         content: string,
         attachments?: FileAttachment[],
-        opts?: { hideUserMessage?: boolean },
+        opts?: { hideUserMessage?: boolean; forceMode?: ResponseMode },
     ) => {
         if (!hasEnoughCredits()) return;
         // Prevent stacking a new turn while the model is still streaming.
@@ -566,13 +569,13 @@ const ChatArea: React.FC = () => {
         }
 
         // Start streaming — user message is already in DB.
-        await doStreamResponse(convId, assistantMsgId);
+        await doStreamResponse(convId, assistantMsgId, opts?.forceMode);
     };
 
     // Expose handleSend to the auto-heal effect above so it can fire a
     // patch turn programmatically without typing.
     handleSendRef.current = (payload) => {
-        void handleSend(payload.content, undefined, { hideUserMessage: !!payload.hideUserMessage });
+        void handleSend(payload.content, undefined, { hideUserMessage: !!payload.hideUserMessage, forceMode: payload.forceMode });
     };
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
