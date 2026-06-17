@@ -60,7 +60,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [searchSourcesOpen, setSearchSourcesOpen] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [stepsOpen, setStepsOpen] = useState(true);
+    const [stepsOpen, setStepsOpen] = useState(false);
     const [receiptOpen, setReceiptOpen] = useState(false);
     const [usageLogs, setUsageLogs] = useState<any[] | null>(null);
     const [loadingReceipt, setLoadingReceipt] = useState(false);
@@ -463,51 +463,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     <span>Pinned Message</span>
                 </div>
             )}
-            {/* Tool Steps Block */}
-            {message.toolSteps && message.toolSteps.length > 0 && (
-                <div className="tool-steps-block">
-                    {completedTools.length > 0 && (
-                        <button className="tool-steps-toggle" onClick={() => setStepsOpen(!stepsOpen)}>
-                            {stepsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            <span className="tool-steps-toggle-label">Steps taken ({completedTools.length})</span>
-                        </button>
-                    )}
-                    {stepsOpen && (
-                        <div className="tool-steps-list">
-                            {message.toolSteps.map((step) => {
-                                const isRunning = step.status === 'running';
-                                const isFailed = step.status === 'failed';
 
-                                let IconComponent = Settings;
-                                if (step.tool === 'analyze_image') IconComponent = Image;
-                                else if (step.tool === 'web_search') IconComponent = Globe;
-                                else if (step.tool === 'process_file') IconComponent = FileText;
-
-                                return (
-                                    <div key={step.id} className={`tool-step-item tool-step-item--${step.status}`}>
-                                        <div className="tool-step-icon-wrapper">
-                                            {isRunning ? (
-                                                <Loader2 size={13} className="tool-step-spinner" />
-                                            ) : isFailed ? (
-                                                <span className="tool-step-status-icon tool-step-status-icon--failed">✕</span>
-                                            ) : (
-                                                <span className="tool-step-status-icon tool-step-status-icon--completed">✓</span>
-                                            )}
-                                            <IconComponent size={13} className="tool-step-icon" />
-                                        </div>
-                                        <div className="tool-step-content">
-                                            <span className="tool-step-label">{step.label}</span>
-                                            {step.status === 'completed' && step.durationMs !== undefined && (
-                                                <span className="tool-step-duration">({(step.durationMs / 1000).toFixed(1)}s)</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            )}
 
             {!disableReasoning && normalizedReasoning && (
                         <div className="reasoning-block">
@@ -617,6 +573,53 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             </div>
                         )
                     )}
+                    
+                    {/* Tool Steps Block (Moved to bottom) */}
+                    {message.toolSteps && message.toolSteps.length > 0 && (
+                        <div className="tool-steps-block" style={{ marginTop: '12px' }}>
+                            {completedTools.length > 0 && (
+                                <button className="tool-steps-toggle" onClick={() => setStepsOpen(!stepsOpen)}>
+                                    {stepsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    <span className="tool-steps-toggle-label">Steps taken ({completedTools.length})</span>
+                                </button>
+                            )}
+                            {stepsOpen && (
+                                <div className="tool-steps-list">
+                                    {message.toolSteps.map((step) => {
+                                        const isRunning = step.status === 'running';
+                                        const isFailed = step.status === 'failed';
+
+                                        let IconComponent = Settings;
+                                        if (step.tool === 'analyze_image') IconComponent = Image;
+                                        else if (step.tool === 'web_search') IconComponent = Globe;
+                                        else if (step.tool === 'process_file') IconComponent = FileText;
+
+                                        return (
+                                            <div key={step.id} className={`tool-step-item tool-step-item--${step.status}`}>
+                                                <div className="tool-step-icon-wrapper">
+                                                    {isRunning ? (
+                                                        <Loader2 size={13} className="tool-step-spinner" />
+                                                    ) : isFailed ? (
+                                                        <span className="tool-step-status-icon tool-step-status-icon--failed">✕</span>
+                                                    ) : (
+                                                        <span className="tool-step-status-icon tool-step-status-icon--completed">✓</span>
+                                                    )}
+                                                    <IconComponent size={13} className="tool-step-icon" />
+                                                </div>
+                                                <div className="tool-step-content">
+                                                    <span className="tool-step-label">{step.label}</span>
+                                                    {step.status === 'completed' && step.durationMs !== undefined && (
+                                                        <span className="tool-step-duration">({(step.durationMs / 1000).toFixed(1)}s)</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}

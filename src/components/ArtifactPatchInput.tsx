@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, ArrowUpCircle } from 'lucide-react';
+import { Loader2, ArrowUpCircle, MessageSquare } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
 import { executeArtifactPatch } from '../lib/artifactSidecar';
@@ -10,7 +10,7 @@ interface ArtifactPatchInputProps {
 
 const ArtifactPatchInput: React.FC<ArtifactPatchInputProps> = ({ artifactId }) => {
   const [instruction, setInstruction] = useState('');
-  const [contextTurns, setContextTurns] = useState<number>(0);
+  const [includeContext, setIncludeContext] = useState(false);
   const patchStatus = useArtifactStore(s => s.patchStatus[artifactId]);
   const isPatching = patchStatus === 'patching' || patchStatus === 'verifying';
 
@@ -22,9 +22,9 @@ const ArtifactPatchInput: React.FC<ArtifactPatchInputProps> = ({ artifactId }) =
 
     const convId = useChatStore.getState().activeConversationId;
     let chatContext: any[] = [];
-    if (convId && contextTurns > 0) {
+    if (convId && includeContext) {
        const msgs = useChatStore.getState().getContextMessages(convId);
-       chatContext = msgs.slice(-contextTurns * 2); // 1 turn = user + assistant
+       chatContext = msgs.slice(-4); // Include last 4 messages (2 turns)
     }
 
     const currentInst = instruction;
@@ -39,19 +39,46 @@ const ArtifactPatchInput: React.FC<ArtifactPatchInputProps> = ({ artifactId }) =
   };
 
   return (
-    <div className="artifact-patch-input-container" style={{ padding: '12px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-panel)' }}>
-      <select 
-        value={contextTurns} 
-        onChange={e => setContextTurns(Number(e.target.value))}
-        className="patch-context-select"
-        style={{ padding: '6px', borderRadius: '4px', border: '1px solid var(--border-light)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '12px' }}
-        title="Recent chat messages to include for context"
+    <div 
+      className="artifact-patch-input-container" 
+      style={{ 
+        position: 'absolute', 
+        bottom: '24px', 
+        left: '50%', 
+        transform: 'translateX(-50%)',
+        width: '90%',
+        maxWidth: '600px',
+        display: 'flex', 
+        gap: '8px', 
+        alignItems: 'center', 
+        background: 'var(--bg-panel)',
+        padding: '8px',
+        borderRadius: '24px',
+        border: '1px solid var(--border-light)',
+        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.12)',
+        zIndex: 100
+      }}
+    >
+      <button
+        onClick={() => setIncludeContext(!includeContext)}
+        className="patch-context-toggle"
+        title={includeContext ? "Chat context included" : "Include chat context"}
+        style={{ 
+          padding: '8px', 
+          borderRadius: '50%', 
+          border: 'none', 
+          background: includeContext ? 'var(--accent-color)' : 'transparent', 
+          color: includeContext ? 'white' : 'var(--text-secondary)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.2s ease'
+        }}
       >
-        <option value={0}>0 turns</option>
-        <option value={1}>1 turn</option>
-        <option value={2}>2 turns</option>
-        <option value={3}>3 turns</option>
-      </select>
+        <MessageSquare size={16} />
+      </button>
+
       <input
         type="text"
         placeholder="Ask AI to update this artifact..."
@@ -59,16 +86,37 @@ const ArtifactPatchInput: React.FC<ArtifactPatchInputProps> = ({ artifactId }) =
         onChange={(e) => setInstruction(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
         className="patch-instruction-input"
-        style={{ flex: 1, padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-light)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '13px' }}
+        style={{ 
+          flex: 1, 
+          padding: '8px 4px', 
+          border: 'none', 
+          background: 'transparent', 
+          color: 'var(--text-primary)', 
+          fontSize: '14px',
+          outline: 'none'
+        }}
         disabled={isPatching}
       />
+      
       <button 
         className="patch-submit-btn"
         onClick={handleSend}
         disabled={!instruction.trim() || isPatching}
-        style={{ padding: '8px 12px', borderRadius: '4px', background: 'var(--accent-color)', color: 'white', border: 'none', cursor: instruction.trim() && !isPatching ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '6px' }}
+        style={{ 
+          padding: '8px 16px', 
+          borderRadius: '16px', 
+          background: instruction.trim() && !isPatching ? 'var(--accent-color)' : 'var(--bg-hover)', 
+          color: instruction.trim() && !isPatching ? 'white' : 'var(--text-tertiary)', 
+          border: 'none', 
+          cursor: instruction.trim() && !isPatching ? 'pointer' : 'not-allowed', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px',
+          fontWeight: 500,
+          transition: 'all 0.2s ease'
+        }}
       >
-        {isPatching ? <Loader2 size={14} className="apm-spin" /> : <ArrowUpCircle size={14} />}
+        {isPatching ? <Loader2 size={16} className="apm-spin" /> : <ArrowUpCircle size={16} />}
         <span>Update</span>
       </button>
     </div>
