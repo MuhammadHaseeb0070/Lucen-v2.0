@@ -405,10 +405,10 @@ const ArtifactWorkspace: React.FC = () => {
         
         {showDiff && previousArtifact ? (
           <div className="artifact-diff-container" style={{ display: 'flex', width: '100%', height: '100%' }}>
-            <div className="artifact-diff-pane" style={{ flex: 1, borderRight: '2px solid var(--border-light)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '8px 12px', background: 'var(--bg-hover)', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between' }}>
+            <div className="artifact-diff-pane" style={{ flex: 1, borderRight: '2px solid var(--divider)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+              <div style={{ position: 'sticky', top: 0, zIndex: 10, padding: '8px 16px', background: 'var(--bg-surface-hover)', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-ui)', backdropFilter: 'blur(4px)' }}>
                 <span>V{previousArtifact.versionNo} (Previous)</span>
-                <span style={{ color: 'var(--error-color)' }}>Red indicates removed</span>
+                <span style={{ color: 'var(--danger)' }}>Red indicates removed</span>
               </div>
               <div style={{ flex: 1, position: 'relative' }}>
                 <ArtifactRenderer
@@ -423,10 +423,10 @@ const ArtifactWorkspace: React.FC = () => {
                 />
               </div>
             </div>
-            <div className="artifact-diff-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '8px 12px', background: 'var(--bg-hover)', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between' }}>
+            <div className="artifact-diff-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+              <div style={{ position: 'sticky', top: 0, zIndex: 10, padding: '8px 16px', background: 'var(--bg-surface-hover)', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-ui)', backdropFilter: 'blur(4px)' }}>
                 <span>V{activeArtifact.version || 'Current'} (Updated)</span>
-                <span style={{ color: 'var(--success-color)' }}>Green indicates added</span>
+                <span style={{ color: 'var(--success)' }}>Green indicates added</span>
               </div>
               <div style={{ flex: 1, position: 'relative' }}>
                 <ArtifactRenderer

@@ -53,38 +53,40 @@ const ArtifactStatusPipeline: React.FC<ArtifactStatusPipelineProps> = ({ status,
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'rgba(0, 0, 0, 0.4)',
-        backdropFilter: 'blur(4px)',
+        background: 'rgba(0, 0, 0, 0.15)',
+        backdropFilter: 'blur(2px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 50,
-        transition: 'opacity 0.2s ease'
+        transition: 'opacity var(--dur) var(--ease)'
       }}
     >
       <div 
         className="patch-pipeline-card"
         style={{
-          background: 'var(--bg-panel)',
-          border: '1px solid var(--border-light)',
-          borderRadius: '12px',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--divider)',
+          borderRadius: 'var(--r-lg)',
           padding: '24px 32px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+          gap: '20px',
+          boxShadow: '0 24px 64px var(--shadow-color)',
+          minWidth: '320px',
+          fontFamily: 'var(--font-ui)'
         }}
       >
-        <div className="patch-pipeline-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', borderBottom: 'none', padding: 0 }}>
+        <div className="patch-pipeline-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: 0 }}>
           {isFailed || status === 'partial_saved' ? (
-            <AlertTriangle size={32} style={{ color: 'var(--error-color)' }} />
+            <AlertTriangle size={36} style={{ color: 'var(--danger)' }} />
           ) : isDoneStatus ? (
-            <ShieldCheck size={32} style={{ color: 'var(--success-color)' }} />
+            <ShieldCheck size={36} style={{ color: 'var(--success)' }} />
           ) : (
-            <Loader2 size={32} className="patch-pipeline-spinner" style={{ color: 'var(--accent-color)' }} />
+            <Loader2 size={36} className="apm-spin" style={{ color: 'var(--accent)' }} />
           )}
-          <span className="patch-pipeline-headline" style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+          <span className="patch-pipeline-headline" style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
             {status === 'reading' && (title ? `Reading ${title}…` : 'Reading artifact…')}
             {status === 'patching' && 'Applying patches…'}
             {status === 'planning' && 'Planning artifact…'}
@@ -96,7 +98,7 @@ const ArtifactStatusPipeline: React.FC<ArtifactStatusPipelineProps> = ({ status,
             {status === 'failed' && 'Patch failed — retrying…'}
           </span>
         </div>
-        <div className="patch-pipeline-steps" style={{ display: 'flex', gap: '8px', padding: '12px', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+        <div className="patch-pipeline-steps" style={{ display: 'flex', gap: '10px', padding: '12px 16px', background: 'var(--bg-muted)', borderRadius: 'var(--r-md)', border: '1px solid var(--divider)', width: '100%', justifyContent: 'center' }}>
           {STEPS.map((step, idx) => {
             const isActive = idx === stepIndex && !isFailed;
             const isDone = !isFailed && idx < stepIndex;
@@ -109,11 +111,13 @@ const ArtifactStatusPipeline: React.FC<ArtifactStatusPipelineProps> = ({ status,
                   alignItems: 'center',
                   gap: '6px',
                   padding: '6px 10px',
-                  borderRadius: '6px',
-                  background: isActive ? 'var(--accent-color-transparent)' : 'transparent',
-                  color: isActive ? 'var(--accent-color)' : isDone ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                  fontWeight: isActive ? 500 : 400,
-                  fontSize: '13px'
+                  borderRadius: 'var(--r-sm)',
+                  background: isActive ? 'var(--bg-surface)' : 'transparent',
+                  color: isActive ? 'var(--accent)' : isDone ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                  fontWeight: isActive ? 600 : 500,
+                  fontSize: '0.8rem',
+                  boxShadow: isActive ? '0 2px 8px var(--shadow-color)' : 'none',
+                  transition: 'all var(--dur-fast) var(--ease)'
                 }}
               >
                 <span className="patch-pipeline-step-icon">{step.icon}</span>
