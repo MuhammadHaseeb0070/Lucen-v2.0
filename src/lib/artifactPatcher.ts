@@ -30,7 +30,8 @@ export type BlockFailureReason =
   | 'no_match'
   | 'multi_match'
   | 'empty_search'
-  | 'html_sanity_check_failed';
+  | 'html_sanity_check_failed'
+  | 'overlapping_blocks';
 
 /** Strategy used to locate the search block, when one succeeded. */
 export type MatchStrategy = 'exact' | 'crlf_normalized' | 'indent_normalized' | 'line_trimmed';
@@ -468,25 +469,62 @@ export function applyPatch(originalContent: string, blocks: PatchBlock[], langua
     return { ok: true, newContent: originalContent, appliedBlocks: [] };
   }
 
-  let current = originalContent;
-  const applied: AppliedBlock[] = [];
+  interface ResolvedBlock {
+    blockIndex: number;
+    origStart: number;
+    origEnd: number; // origStart + origLength
+    adjustedReplace: string;
+    strategy: MatchStrategy;
+  }
 
+  const targetEnding = detectLineEnding(originalContent);
+  const resolved: ResolvedBlock[] = [];
+
+  // Step 1 — Pre-flight: resolve all blocks against original
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    const result = applyBlock(current, block);
+    const result = applyBlock(originalContent, block);
     if (!result.ok) {
       return {
         ok: false,
         blockIndex: i,
-        reason: result.reason,
+        reason: result.reason as BlockFailureReason,
         matchCount: result.matchCount,
         searchExcerpt: block.search.slice(0, 500),
       };
     }
-    current = result.newContent;
-    applied.push({ ...result.applied, blockIndex: i });
+    const adjustedReplace = applyLineEnding(block.replace, targetEnding);
+    resolved.push({
+      blockIndex: i,
+      origStart: result.applied.matchStart,
+      origEnd: result.applied.matchStart + result.applied.matchLength,
+      adjustedReplace,
+      strategy: result.applied.strategy,
+    });
   }
 
+  // Step 2 — Overlap detection
+  const sortedAscending = [...resolved].sort((a, b) => a.origStart - b.origStart);
+  for (let i = 0; i < sortedAscending.length - 1; i++) {
+    if (sortedAscending[i].origEnd > sortedAscending[i + 1].origStart) {
+      const nextBlockIndex = sortedAscending[i + 1].blockIndex;
+      return {
+        ok: false,
+        blockIndex: nextBlockIndex,
+        reason: 'overlapping_blocks',
+        searchExcerpt: blocks[nextBlockIndex].search.slice(0, 500),
+      };
+    }
+  }
+
+  // Step 3 — Bottom-up application
+  const sortedDescending = [...resolved].sort((a, b) => b.origStart - a.origStart);
+  let current = originalContent;
+  for (const r of sortedDescending) {
+    current = spliceString(current, r.origStart, r.origEnd - r.origStart, r.adjustedReplace);
+  }
+
+  // Step 4 — HTML/SVG sanity check (same as before, unchanged)
   if ((language === 'html' || language === 'svg') && typeof DOMParser !== 'undefined') {
     const parser = new DOMParser();
     const doc = parser.parseFromString(current, 'text/html');
@@ -499,6 +537,14 @@ export function applyPatch(originalContent: string, blocks: PatchBlock[], langua
       };
     }
   }
+
+  // Step 5 — Return success with appliedBlocks reconstructed from resolved blocks.
+  const applied: AppliedBlock[] = resolved.map((r) => ({
+    blockIndex: r.blockIndex,
+    strategy: r.strategy,
+    matchStart: r.origStart,
+    matchLength: r.origEnd - r.origStart,
+  }));
 
   return { ok: true, newContent: current, appliedBlocks: applied };
 }

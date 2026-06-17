@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import type { Artifact, Conversation, Message } from '../types';
-import { hasActiveSessionSync, supabase } from '../lib/supabase';
+import { hasActiveSessionSync, supabase, ensureFreshSession } from '../lib/supabase';
 import * as db from '../services/database';
 import { sanitizeMinimaxTags } from '../lib/stringUtil';
 import type { SearchResult } from '../services/database';
@@ -112,19 +112,13 @@ async function maybeGenerateTitle(
     assistantMessage: string,
     applyTitle: (title: string) => void,
 ): Promise<void> {
-    if (!hasActiveSessionSync() || !supabase) return;
+    if (!supabase) return;
+    if (!(await ensureFreshSession())) return;
     if (!userMessage.trim()) return;
     if (titleGenInFlight.has(convId)) return;
     titleGenInFlight.add(convId);
 
     try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) return;
-
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !anonKey) return;
-
         const requestId = (crypto as Crypto & { randomUUID?: () => string }).randomUUID
             ? crypto.randomUUID()
             : `${Date.now()}-${Math.random()}`;
@@ -136,6 +130,7 @@ async function maybeGenerateTitle(
             assistant_message: assistantMessage,
         };
 
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
         const endpoint = `${supabaseUrl}/functions/v1/generate-title`;
         const finalize = captureCall({
             id: requestId,
@@ -145,25 +140,17 @@ async function maybeGenerateTitle(
         });
 
         try {
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${session.access_token}`,
-                    'apikey': anonKey,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody),
+            const { data, error } = await supabase.functions.invoke('generate-title', {
+                body: requestBody,
             });
 
-            if (!res.ok) {
-                const errText = await res.text().catch(() => '');
-                finalize({ status: res.status, response: errText.slice(0, 1000), error: `HTTP ${res.status}` });
+            if (error) {
+                finalize({ error: error.message || String(error) });
                 return;
             }
 
-            const data = (await res.json().catch(() => null)) as { title?: string | null } | null;
-            finalize({ status: res.status, response: data });
-            const title = data?.title?.trim();
+            finalize({ status: 200, response: data });
+            const title = (data as { title?: string | null } | null)?.title?.trim();
             if (title && title !== 'New Chat') {
                 applyTitle(title);
                 // Server usually persists; this keeps the row in sync if the edge update raced or failed.
