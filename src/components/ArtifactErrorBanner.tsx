@@ -18,7 +18,7 @@
 // ============================================================
 
 import React from 'react';
-import { AlertTriangle, Wand2, X, Lock } from 'lucide-react';
+import { AlertTriangle, Wand2, X, Lock, RotateCcw } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import { executeArtifactPatch } from '../lib/artifactSidecar';
 import { INJECT_SCRIPT_LINE_COUNT } from '../lib/iframeErrorBridge';
@@ -53,6 +53,36 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
   const capped = attempts >= MAX_HEAL_ATTEMPTS;
 
   const handleDismiss = () => setRuntimeError(artifact.id, null);
+
+  if (runtimeError.origin === 'patch') {
+    return (
+      <div className="artifact-error-banner" style={{ borderLeftColor: '#f59e0b' }}>
+        <div className="artifact-error-banner-icon" style={{ color: '#f59e0b' }}>
+          <AlertTriangle size={16} />
+        </div>
+        <div className="artifact-error-banner-body">
+          <div className="artifact-error-banner-title">
+            Update Failed
+          </div>
+          <div className="artifact-error-banner-message">
+            {runtimeError.message}
+          </div>
+        </div>
+        <div className="artifact-error-banner-actions">
+          <button
+            type="button"
+            className="artifact-error-banner-btn artifact-error-banner-btn--primary"
+            onClick={() => useArtifactStore.getState().resetHealAttempts(artifact.id)}
+          >
+            <RotateCcw size={13} /> Try again
+          </button>
+          <button type="button" className="artifact-error-banner-btn" onClick={handleDismiss}>
+            <X size={13} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleFix = () => {
     if (capped) return;

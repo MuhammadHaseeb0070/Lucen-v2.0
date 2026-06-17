@@ -68,13 +68,19 @@ ${instruction}
            }
         } else {
            console.error("Patch failed to apply:", patchResult);
-           triggerFullRegenFallback(instruction, currentCode, "PATCH_APPLY_FAILED");
+           const attempts = useArtifactStore.getState().incHealAttempts(artifactId);
+           if (attempts >= 3) {
+             useArtifactStore.getState().setPatchError(artifactId, 'Update failed after multiple attempts. Please try rephrasing your request or making a smaller change.');
+           } else {
+             triggerFullRegenFallback(instruction, currentCode, "PATCH_APPLY_FAILED");
+           }
         }
       }
       setPatchStatus(artifactId, 'idle');
     },
     onError: (err) => {
       console.error("Patch sidecar error:", err);
+      useArtifactStore.getState().setPatchError(artifactId, 'Patch stream failed. The connection was interrupted.');
       setPatchStatus(artifactId, 'idle');
     }
   }, {

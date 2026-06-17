@@ -66,6 +66,7 @@ interface ArtifactStore {
   getCurrentVersion: (lineageId: string | undefined) => number | undefined;
   setRuntimeError: (artifactId: string, error: ArtifactRuntimeError | null) => void;
   getRuntimeError: (artifactId: string | undefined) => ArtifactRuntimeError | null;
+  setPatchError: (artifactId: string, message: string) => void;
   setPatchStatus: (artifactId: string, status: ArtifactPatchStatus) => void;
   getPatchStatus: (artifactId: string | undefined) => ArtifactPatchStatus;
   incHealAttempts: (artifactId: string) => number;
@@ -118,6 +119,7 @@ export const useArtifactStore = create<ArtifactStore>()(
     // Only update if this is the currently open artifact.
     if (!activeArtifact || activeArtifact.id !== artifact.id) return;
     set({ activeArtifact: artifact });
+    get().resetHealAttempts(artifact.id);
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -227,6 +229,10 @@ export const useArtifactStore = create<ArtifactStore>()(
     return get().runtimeErrors[artifactId] ?? null;
   },
 
+  setPatchError: (artifactId, message) => {
+    get().setRuntimeError(artifactId, { message, origin: 'patch', capturedAt: Date.now() });
+  },
+
   setPatchStatus: (artifactId, status) => {
     set((state) => {
       const next = { ...state.patchStatus };
@@ -253,9 +259,11 @@ export const useArtifactStore = create<ArtifactStore>()(
 
   resetHealAttempts: (artifactId) => {
     set((state) => {
-      const next = { ...state.healAttempts };
-      delete next[artifactId];
-      return { healAttempts: next };
+      const nextHeal = { ...state.healAttempts };
+      delete nextHeal[artifactId];
+      const nextRuntime = { ...state.runtimeErrors };
+      delete nextRuntime[artifactId];
+      return { healAttempts: nextHeal, runtimeErrors: nextRuntime };
     });
   },
 
