@@ -20,7 +20,7 @@
 import React from 'react';
 import { AlertTriangle, Wand2, X, Lock } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
-import { useComposerStore } from '../store/composerStore';
+import { executeArtifactPatch } from '../lib/artifactSidecar';
 import { INJECT_SCRIPT_LINE_COUNT } from '../lib/iframeErrorBridge';
 import type { Artifact } from '../types';
 
@@ -37,7 +37,6 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
   const setRuntimeError = useArtifactStore((s) => s.setRuntimeError);
   const incHealAttempts = useArtifactStore((s) => s.incHealAttempts);
   const getHealAttempts = useArtifactStore((s) => s.getHealAttempts);
-  const setPendingAutoSend = useComposerStore((s) => s.setPendingAutoSend);
 
   if (!runtimeError) return null;
 
@@ -110,34 +109,21 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
       }
     }
 
-    // Include the FULL artifact source so the model can see and fix the code.
-    // Truncate at 15K chars to avoid blowing the context window.
-    if (artifact.content) {
-      const MAX_SOURCE_CHARS = 15_000;
-      const src = artifact.content.length > MAX_SOURCE_CHARS
-        ? artifact.content.slice(0, MAX_SOURCE_CHARS) + '\n... [truncated]'
-        : artifact.content;
-      lines.push('');
-      lines.push('=== FULL ARTIFACT SOURCE CODE (fix and re-output this) ===');
-      lines.push(src);
-      lines.push('=== END SOURCE ===');
-    }
-
     lines.push('');
-    // Escape title to prevent prompt injection via artifact title.
-    const safeTitle = artifact.title.replace(/["'<>]/g, (c) =>
-      c === '"' ? '&quot;' : c === "'" ? '&#39;' : c === '<' ? '&lt;' : '&gt;'
-    );
-    // Build artifact opening tag with all preserved attributes.
-    let artifactTag = `<lucen_artifact type="${artifact.type}" title="${safeTitle}">`;
-    lines.push(`IMPORTANT: Output the COMPLETE fixed artifact wrapped in ${artifactTag}...</lucen_artifact> tags. Do not explain the changes - just output the corrected artifact.`);
     lines.push(`(Self-heal attempt ${next}/${MAX_HEAL_ATTEMPTS})`);
 
     // Clear the current error so the banner disappears and the new artifact
     // gets a clean rendering slate.
     setRuntimeError(artifact.id, null);
 
-    setPendingAutoSend({ content: lines.join('\n'), hideUserMessage: true });
+    if (artifact.content) {
+      void executeArtifactPatch({
+        instruction: lines.join('\n'),
+        currentCode: artifact.content,
+        chatContext: [],
+        artifactId: artifact.id
+      });
+    }
   };
 
   return (

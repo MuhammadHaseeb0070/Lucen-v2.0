@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, Download, Monitor, Tablet, Smartphone, Maximize2, Globe, Zap, Loader2 } from 'lucide-react';
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
+import ArtifactPatchInput from './ArtifactPatchInput';
 import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
 import { useArtifactStore } from '../store/artifactStore';
@@ -385,6 +386,9 @@ const ArtifactWorkspace: React.FC = () => {
           isStreaming={!!activeArtifact.isStreaming}
           artifactId={activeArtifact.id}
         />
+        {!activeArtifact.isStreaming && (
+          <ArtifactPatchInput artifactId={activeArtifact.id} />
+        )}
       </div>
 
       {publishModalOpen && (
