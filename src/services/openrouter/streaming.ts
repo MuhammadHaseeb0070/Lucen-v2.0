@@ -98,7 +98,7 @@ export async function processStream(
   const reasoningSanitizer = new StreamSanitizer({
     defaultChannel: 'reasoning',
     routeThinkToReasoning: true, // If DeepSeek puts <think> in reasoning, keep it in reasoning
-    routeArtifactsToContent: true // If DeepSeek hallucinates <lucen_artifact> in reasoning, pull it to content
+    routeArtifactsToContent: false // DO NOT pull artifacts from reasoning to content, it causes duplicate/empty artifacts
   });
 
   const emitContent = (text: string) => {
