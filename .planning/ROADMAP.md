@@ -62,10 +62,60 @@
 
 ### 🔵 v3.1 Smart Artifact Patching System
 
-- [ ] Phase 15: Patch Format & Parser Migration
+- [x] Phase 15: Patch Format & Parser Migration (completed 2026-06-18)
 - [ ] Phase 16: Dedicated Patch System Prompt & Sidecar Call
 - [ ] Phase 17: Inline Update Input & Context Selector
 - [ ] Phase 18: Version History Panel & Post-Patch UX
+
+### Phase 15: Patch Format & Parser Migration
+
+**Goal:** Migrate to Git conflict search/replace markers, support sentinels, and add post-patch HTML sanity checking via DOMParser.
+**Mode:** standard
+**Success Criteria:**
+
+1. Git conflict markers are parsed correctly.
+2. DOMParser check blocks invalid HTML patches.
+
+**Plans:**
+2/2 plans complete
+
+- [x] 15-02-PLAN.md
+
+### Phase 16: Dedicated Patch System Prompt & Sidecar Call
+
+**Goal:** Create a dedicated system prompt for patching and execute it via a sidecar call.
+**Mode:** standard
+**Success Criteria:**
+
+1. Dedicated patch prompt is created.
+
+**Plans:**
+
+- [ ] 16-01-PLAN.md
+
+### Phase 17: Inline Update Input & Context Selector
+
+**Goal:** Build the inline update input box and context selector below artifacts.
+**Mode:** standard
+**Success Criteria:**
+
+1. Inline update input and context selector exist and are functional.
+
+**Plans:**
+
+- [ ] 17-01-PLAN.md
+
+### Phase 18: Version History Panel & Post-Patch UX
+
+**Goal:** Implement the version history panel and post-patch feedback UX.
+**Mode:** standard
+**Success Criteria:**
+
+1. Version history panel and post-patch feedback UX are functional.
+
+**Plans:**
+
+- [ ] 18-01-PLAN.md
 
 ## Progress
 
@@ -85,7 +135,7 @@
 | 12. Security Boundaries & API Imports | v3.0 | 1/1 | Complete | 2026-06-16 |
 | 13. Client-Side Routing & State Synchronization | v3.0 | 1/1 | Complete | 2026-06-16 |
 | 14. Parser, Worker, & Stream Pipeline Hardening | v3.0 | 1/1 | Complete | 2026-06-16 |
-| 15. Patch Format & Parser Migration | v3.1 | 0/? | Pending | — |
+| 15. Patch Format & Parser Migration | v3.1 | 2/2 | Complete    | 2026-06-18 |
 | 16. Dedicated Patch System Prompt & Sidecar Call | v3.1 | 0/? | Pending | — |
 | 17. Inline Update Input & Context Selector | v3.1 | 0/? | Pending | — |
 | 18. Version History Panel & Post-Patch UX | v3.1 | 0/? | Pending | — |

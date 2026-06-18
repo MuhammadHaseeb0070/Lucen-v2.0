@@ -1,9 +1,9 @@
 ---
 phase: 15
 slug: patch-format-parser
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-16
 ---
 
@@ -38,7 +38,11 @@ created: 2026-06-16
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 15-01-01 | 01 | 1 | FR1, FR4 | — | N/A | unit | `npm run test` | ❌ W0 | ⬜ pending |
+| 15-01-01 | 01 | 1 | FR1, FR4 | — | N/A | unit | `npm run test` | ❌ W0 | ✅ green |
+| 15-01-02 | 01 | 1 | FR1 | — | N/A | unit | `npm run test` | ❌ W0 | ✅ green |
+| 15-01-03 | 01 | 1 | FR4 | — | N/A | unit | `npm run test` | ❌ W0 | ✅ green |
+| 15-02-01 | 02 | 1 | FR1 | — | N/A | unit | `npm run test` | ❌ W0 | ✅ green |
+| 15-02-02 | 02 | 1 | FR4 | — | N/A | unit | `npm run test` | ❌ W0 | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -46,8 +50,8 @@ created: 2026-06-16
 
 ## Wave 0 Requirements
 
-- [ ] `src/lib/__tests__/artifactPatchParser.test.ts` — new unit tests for lenient git marker parsing
-- [ ] `src/lib/__tests__/artifactPatcher.test.ts` — new unit tests for HTML sanity check
+- [x] `src/lib/__tests__/artifactPatchParser.test.ts` — new unit tests for lenient git marker parsing
+- [x] `src/lib/__tests__/artifactPatcher.test.ts` — new unit tests for HTML sanity check
 
 *If none: "Existing infrastructure covers all phase requirements."*
 
@@ -65,11 +69,11 @@ created: 2026-06-16
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 10s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 10s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved
