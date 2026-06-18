@@ -1,7 +1,9 @@
 /* ArtifactPatchInput.css — Premium Glassmorphic Styles */
 /* Replaced Premium Glassmorphism with Clean Theme Integration */
 .artifact-patch-input-wrapper {
+  margin-top: 10px;
   width: 100%;
+  border-radius: 10px;
   box-sizing: border-box;
   padding: 12px 20px;
   /* Slightly tighter top/bottom padding */
