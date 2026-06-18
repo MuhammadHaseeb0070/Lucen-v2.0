@@ -1,0 +1,223 @@
+/* ArtifactPatchInput.css — Premium Glassmorphic Styles */
+
+.artifact-patch-input-wrapper {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 20px;
+  background: rgba(30, 41, 59, 0.45); /* HSL desaturated transparent slate */
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border-top: 1px solid var(--divider);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 50;
+  box-shadow: 0 -8px 32px var(--shadow-color);
+  transition: all var(--dur) var(--ease);
+  font-family: var(--font-ui), system-ui, -apple-system, sans-serif;
+}
+
+/* Light theme overrides if root has light theme */
+:root[data-theme='light'] .artifact-patch-input-wrapper {
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.05);
+}
+
+.artifact-patch-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Glassmorphic main bar */
+.artifact-patch-bar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--divider);
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--r-full);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.artifact-patch-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Context selector segmented control */
+.patch-context-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.patch-context-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+
+.patch-context-selector {
+  display: flex;
+  background: var(--bg-muted);
+  border: 1px solid var(--divider);
+  padding: 2px;
+  border-radius: var(--r-full);
+  align-items: center;
+}
+
+.patch-context-pill {
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.patch-context-pill:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme='light'] .patch-context-pill:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.patch-context-pill--active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Main text input field */
+.patch-text-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  padding: 6px 2px;
+}
+
+.patch-text-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Action button styles */
+.patch-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--r-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.patch-action-btn--primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.patch-action-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover, var(--accent));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--accent-soft);
+}
+
+.patch-action-btn--primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.patch-action-btn--disabled {
+  background: var(--bg-muted);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Step-by-step inline status layout */
+.patch-inline-status-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.patch-status-text {
+  font-weight: 500;
+}
+
+/* Success / Failure status states */
+.artifact-patch-input-wrapper.patch-state--success {
+  border-top-color: var(--success);
+  box-shadow: 0 -8px 32px rgba(16, 185, 129, 0.15);
+  animation: success-flash 2.5s ease-in-out;
+}
+
+.artifact-patch-input-wrapper.patch-state--error {
+  border-top-color: var(--danger);
+  box-shadow: 0 -8px 32px rgba(239, 68, 68, 0.15);
+  animation: error-flash 2.5s ease-in-out;
+}
+
+.patch-error-text {
+  color: var(--danger);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.patch-success-text {
+  color: var(--success);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Animations */
+@keyframes success-flash {
+  0%, 100% { border-top-color: var(--divider); }
+  10%, 90% { border-top-color: var(--success); }
+}
+
+@keyframes error-flash {
+  0%, 100% { border-top-color: var(--divider); }
+  10%, 90% { border-top-color: var(--danger); }
+}
+
+.apm-spin {
+  animation: apm-spin 1s linear infinite;
+}
+
+@keyframes apm-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

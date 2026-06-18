@@ -37,10 +37,10 @@ created: 2026-06-18
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 17-01-01 | 01 | 1 | FR2.1 | — | N/A | manual | Manual layout check | ❌ W0 | ⬜ pending |
-| 17-01-02 | 01 | 1 | FR2.1 | — | N/A | visual | CSS rules verification | ❌ W0 | ⬜ pending |
-| 17-01-03 | 01 | 1 | FR2.2 | — | N/A | manual | Component test & state mapping | ❌ W0 | ⬜ pending |
-| 17-01-04 | 01 | 1 | FR2.4 | — | N/A | integration | E2E manual flow test | ❌ W0 | ⬜ pending |
+| 17-01-01 | 01 | 1 | FR2.1 | — | N/A | manual | Manual layout check | ❌ W0 | ✅ green |
+| 17-01-02 | 01 | 1 | FR2.1 | — | N/A | visual | CSS rules verification | ❌ W0 | ✅ green |
+| 17-01-03 | 01 | 1 | FR2.2 | — | N/A | manual | Component test & state mapping | ❌ W0 | ✅ green |
+| 17-01-04 | 01 | 1 | FR2.4 | — | N/A | integration | E2E manual flow test | ❌ W0 | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

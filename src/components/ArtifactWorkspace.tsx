@@ -407,7 +407,7 @@ const ArtifactWorkspace: React.FC = () => {
         <ArtifactErrorBanner artifact={activeArtifact} />
 
         {showDiff && previousArtifact ? (
-          <div className="artifact-diff-container" style={{ display: 'flex', width: '100%', height: '100%' }}>
+          <div className="artifact-diff-container" style={{ display: 'flex', width: '100%', flex: 1, minHeight: 0 }}>
             <div className="artifact-diff-pane" style={{ flex: 1, borderRight: '2px solid var(--divider)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
               <div style={{ position: 'sticky', top: 0, zIndex: 10, padding: '8px 16px', background: 'var(--bg-surface-hover)', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-ui)', backdropFilter: 'blur(4px)' }}>
                 <span>V{previousArtifact.versionNo} (Previous)</span>
@@ -446,7 +446,7 @@ const ArtifactWorkspace: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
+          <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0 }}>
             <ArtifactRenderer
               key={`${activeArtifact.id}`}
               content={activeArtifact.content}
