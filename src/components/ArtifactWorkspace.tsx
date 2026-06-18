@@ -3,13 +3,11 @@ import { X, Copy, Check, Code, Eye, FileCode2, Image, GitBranch, GripVertical, D
 import ArtifactRenderer from './ArtifactRenderer';
 import ArtifactPublishModal from './ArtifactPublishModal';
 import ArtifactPatchInput from './ArtifactPatchInput';
-import ArtifactVersionSelector from './ArtifactVersionSelector';
 import ArtifactStatusPipeline from './ArtifactStatusPipeline';
 import ArtifactErrorBanner from './ArtifactErrorBanner';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
 import type { ArtifactType } from '../types';
-import ArtifactVersionHistoryPanel from './ArtifactVersionHistoryPanel';
 import ArtifactFeedbackToast from './ArtifactFeedbackToast';
 
 const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> = {
@@ -298,7 +296,6 @@ const ArtifactWorkspace: React.FC = () => {
               Generating
             </span>
           )}
-          {!activeArtifact.isStreaming && <ArtifactVersionSelector artifact={activeArtifact} />}
         </div>
         <div className="artifact-workspace-actions">
           {showViewportSwitcher && (
@@ -463,10 +460,7 @@ const ArtifactWorkspace: React.FC = () => {
         )}
         
         {!activeArtifact.isStreaming && (
-          <>
-            <ArtifactVersionHistoryPanel artifact={activeArtifact} />
-            <ArtifactPatchInput artifactId={activeArtifact.id} />
-          </>
+          <ArtifactPatchInput artifactId={activeArtifact.id} />
         )}
         <ArtifactFeedbackToast />
       </div>

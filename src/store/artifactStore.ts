@@ -23,13 +23,12 @@ interface ArtifactStore {
   dbIds: Record<string, string>;
   // Hub panel open state
   artifactHubOpen: boolean;
-  // History panel open state
-  historyPanelOpen: boolean;
-
   // Feedback toast state
   showFeedbackToast: boolean;
-  toastLineageId: string | null;
-  toastParentVersionNo: number | null;
+
+  // In-memory undo buffer for single patch revert
+  lastPatchedContent: string | null;
+  lastPatchedArtifactId: string | null;
 
   // ─── Patching-engine state ──────────────────────────────────────────
   // Cached version chains keyed by lineageId. Lazy-loaded by the version
@@ -63,10 +62,10 @@ interface ArtifactStore {
   patchActiveArtifact: (patch: Partial<Artifact>) => void;
   // Hub
   setArtifactHubOpen: (open: boolean) => void;
-  // History
-  setHistoryPanelOpen: (open: boolean) => void;
   // Feedback toast
-  setShowFeedbackToast: (show: boolean, lineageId?: string | null, parentVersionNo?: number | null) => void;
+  setShowFeedbackToast: (show: boolean) => void;
+  // In-memory undo buffer setter
+  setLastPatchedContent: (artifactId: string | null, content: string | null) => void;
 
   // ─── Patching-engine actions ────────────────────────────────────────
   setLineage: (lineageId: string, versions: ArtifactVersion[]) => void;
@@ -96,10 +95,9 @@ export const useArtifactStore = create<ArtifactStore>()(
   dismissedIds: new Set<string>(),
   dbIds: {},
   artifactHubOpen: false,
-  historyPanelOpen: false,
   showFeedbackToast: false,
-  toastLineageId: null,
-  toastParentVersionNo: null,
+  lastPatchedContent: null,
+  lastPatchedArtifactId: null,
   lineages: {},
   currentVersionByLineage: {},
   runtimeErrors: {},
@@ -174,9 +172,8 @@ export const useArtifactStore = create<ArtifactStore>()(
   },
 
   setArtifactHubOpen: (open) => set({ artifactHubOpen: open }),
-  setHistoryPanelOpen: (open) => set({ historyPanelOpen: open }),
-  setShowFeedbackToast: (show, lineageId = null, parentVersionNo = null) =>
-    set({ showFeedbackToast: show, toastLineageId: lineageId, toastParentVersionNo: parentVersionNo }),
+  setShowFeedbackToast: (show) => set({ showFeedbackToast: show }),
+  setLastPatchedContent: (artifactId, content) => set({ lastPatchedArtifactId: artifactId, lastPatchedContent: content }),
 
   // ─── Patching-engine actions ────────────────────────────────────────
   setLineage: (lineageId, versions) => {
