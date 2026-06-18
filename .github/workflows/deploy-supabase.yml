@@ -24,7 +24,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 1.225.0
 
       - name: Link Project
         run: |
