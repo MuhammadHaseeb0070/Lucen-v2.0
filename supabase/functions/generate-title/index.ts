@@ -96,7 +96,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: titleModel,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: mode === 'summary' ? 300 : 30,
+        max_tokens: mode === 'summary' ? 500 : 300,
         temperature: 0.7,
       }),
     });
@@ -132,6 +132,8 @@ serve(async (req) => {
     }
 
     if (title) {
+      // Strip any reasoning <think>...</think> blocks if they leaked into the content
+      title = title.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       title = title.replace(/^["']|["']$/g, '').trim();
       if (title.length > 60) title = title.slice(0, 60);
     }
