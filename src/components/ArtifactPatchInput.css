@@ -221,39 +221,3 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-
-/* History toggle button next to context pills */
-.patch-history-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--divider);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: var(--r-full);
-  cursor: pointer;
-  transition: all var(--dur-fast) var(--ease);
-  height: 30px;
-}
-
-.patch-history-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-:root[data-theme='light'] .patch-history-toggle-btn:hover {
-  background: rgba(0, 0, 0, 0.03);
-  color: var(--text-primary);
-  border-color: rgba(0, 0, 0, 0.1);
-}
-
-.patch-history-toggle-btn--active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}

@@ -23,6 +23,7 @@ import { useArtifactStore } from '../store/artifactStore';
 import { executeArtifactPatch } from '../lib/artifactSidecar';
 import { INJECT_SCRIPT_LINE_COUNT } from '../lib/iframeErrorBridge';
 import type { Artifact } from '../types';
+import './ArtifactErrorBanner.css';
 
 const ERROR_KEYWORDS_RE = /\b(Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError|Uncaught|unhandled|FATAL|failed to|cannot read|is not a function|is not defined|unexpected token)\b/i;
 
@@ -56,9 +57,9 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
 
   if (runtimeError.origin === 'patch') {
     return (
-      <div className="artifact-error-banner" style={{ borderLeftColor: '#f59e0b', zIndex: 9999, position: 'relative' }}>
-        <div className="artifact-error-banner-icon" style={{ color: '#f59e0b' }}>
-          <AlertTriangle size={16} />
+      <div className="artifact-error-banner">
+        <div className="artifact-error-banner-icon">
+          <AlertTriangle size={15} />
         </div>
         <div className="artifact-error-banner-body">
           <div className="artifact-error-banner-title">
@@ -71,14 +72,11 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
         <div className="artifact-error-banner-actions">
           <button
             type="button"
-            className="artifact-error-banner-btn artifact-error-banner-btn--primary"
+            className="artifact-error-banner-btn"
             onClick={() => useArtifactStore.getState().resetHealAttempts(artifact.id)}
           >
-            <X size={14} />
-            <span>Dismiss</span>
-          </button>
-          <button type="button" className="artifact-error-banner-btn" onClick={handleDismiss}>
             <X size={13} />
+            <span>Dismiss</span>
           </button>
         </div>
       </div>
@@ -158,9 +156,9 @@ const ArtifactErrorBanner: React.FC<ArtifactErrorBannerProps> = ({ artifact }) =
   };
 
   return (
-    <div className="artifact-error-banner" style={{ zIndex: 9999, position: 'relative' }}>
+    <div className="artifact-error-banner">
       <div className="artifact-error-banner-icon">
-        <AlertTriangle size={16} />
+        <AlertTriangle size={15} />
       </div>
       <div className="artifact-error-banner-body">
         <div className="artifact-error-banner-title">
