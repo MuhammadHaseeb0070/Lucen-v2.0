@@ -1,18 +1,26 @@
 /**
- * Helper utility to filter out MiniMax internal XML tags and leaked tool calls.
- * Uses 3 clean regex patterns instead of 15 individual ones.
+ * Helper utility to filter out MiniMax internal XML tags.
+ * Strips any text matching these patterns:
+ *  - <minimax:tool_call>...</minimax:tool_call> (full tag + content)
+ *  - <minimax:tool_call ...any attributes...>
+ *  - </minimax:tool_call>
+ *  - Any opening or closing tag starting with <minimax: or </minimax:
+ *  - The text content BETWEEN these tags if the tags are present
  */
 export function sanitizeMinimaxTags(text: string): string {
     if (!text || typeof text !== 'string') return text ?? '';
-    const tags = 'minimax:[a-z_]+|invoke|tool_call|query|search_query|web_search|parameter|max_results|search_title|analysis_title|extraction_title|file_id|image_ids|image_id|argument|arguments|tool_args|tool_arguments|call|execute';
-    const pairedRegex = new RegExp(`<(${tags})[^>]*>[\\s\\S]*?<\\/\\1>`, 'gi');
-    const unpairedRegex = new RegExp(`<\\/?(${tags})[^>]*>`, 'gi');
-    const malformedRegex = new RegExp(`(?:search_query|web_search|query|invoke|tool_call|parameter|max_results)>[^\\n]*`, 'gi');
-    const partialRegex = new RegExp(`<(${tags})[^>]*$`, 'i');
-
     return text
-        .replace(pairedRegex, '')
-        .replace(unpairedRegex, '')
-        .replace(malformedRegex, '')
-        .replace(partialRegex, '');
+        .replace(/<minimax:tool_call[\s\S]*?<\/minimax:tool_call>/g, '')
+        .replace(/<\/?minimax:[^>]*>/g, '')
+        .replace(/<(?:query|search_query|web_search)[^>]*>[\s\S]*?<\/(?:query|search_query|web_search)>/gi, '')
+        .replace(/(?:search_query|web_search|query)>[^\n]*/gi, '')
+        .replace(/<\/?(?:query|search_query|web_search)[^>]*>/gi, '')
+        .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
+        .replace(/<\/?tool_call[^>]*>/gi, '')
+        .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
+        .replace(/<parameter[\s\S]*?<\/parameter>/gi, '')
+        .replace(/<\/?invoke[^>]*>/gi, '')
+        .replace(/<\/?parameter[^>]*>/gi, '')
+        .replace(/<[a-z_:]+\s[^>]*>[\s\S]*?<\/[a-z_:]+>/gi, '')
+        .replace(/<[a-z_:]+>[\s\S]*?<\/[a-z_:]+>/gi, '')
 }

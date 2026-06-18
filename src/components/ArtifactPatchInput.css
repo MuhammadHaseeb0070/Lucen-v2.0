@@ -1,27 +1,26 @@
 /* ArtifactPatchInput.css — Premium Glassmorphic Styles */
-
+/* Replaced Premium Glassmorphism with Clean Theme Integration */
 .artifact-patch-input-wrapper {
   width: 100%;
   box-sizing: border-box;
-  padding: 14px 20px;
-  background: rgba(30, 41, 59, 0.45); /* HSL desaturated transparent slate */
-  backdrop-filter: blur(12px) saturate(180%);
-  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  padding: 12px 20px;
+  /* Slightly tighter top/bottom padding */
+  background: var(--bg-surface, #ffffff);
+  /* Use your theme's surface color */
   border-top: 1px solid var(--divider);
   display: flex;
   flex-direction: column;
   gap: 10px;
   z-index: 50;
-  box-shadow: 0 -8px 32px var(--shadow-color);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
+  /* Softer, less aggressive shadow */
   transition: all var(--dur) var(--ease);
   font-family: var(--font-ui), system-ui, -apple-system, sans-serif;
 }
 
-/* Light theme overrides if root has light theme */
-:root[data-theme='light'] .artifact-patch-input-wrapper {
-  background: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.05);
-}
+/* Delete the entire :root[data-theme='light'] .artifact-patch-input-wrapper block! */
+
+
 
 .artifact-patch-input-row {
   display: flex;
@@ -30,23 +29,25 @@
   width: 100%;
 }
 
-/* Glassmorphic main bar */
+/* Simplified main bar */
 .artifact-patch-bar {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-surface);
+  background: var(--bg-muted, transparent);
+  /* Use a muted background or transparent */
   border: 1px solid var(--divider);
-  padding: 6px 8px 6px 12px;
+  padding: 6px 8px 6px 16px;
+  /* A bit more breathing room on the left */
   border-radius: var(--r-full);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
   transition: all var(--dur-fast) var(--ease);
 }
 
+/* Remove the inset box-shadow from the focus state to keep it modern and flat */
 .artifact-patch-bar:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 /* Context selector segmented control */
@@ -68,8 +69,10 @@
 
 .patch-context-selector {
   display: flex;
-  background: var(--bg-muted);
+  background: transparent;
+  /* Removed the heavy muted background */
   border: 1px solid var(--divider);
+  /* Keep a subtle outline */
   padding: 2px;
   border-radius: var(--r-full);
   align-items: center;
@@ -204,13 +207,29 @@
 
 /* Animations */
 @keyframes success-flash {
-  0%, 100% { border-top-color: var(--divider); }
-  10%, 90% { border-top-color: var(--success); }
+
+  0%,
+  100% {
+    border-top-color: var(--divider);
+  }
+
+  10%,
+  90% {
+    border-top-color: var(--success);
+  }
 }
 
 @keyframes error-flash {
-  0%, 100% { border-top-color: var(--divider); }
-  10%, 90% { border-top-color: var(--danger); }
+
+  0%,
+  100% {
+    border-top-color: var(--divider);
+  }
+
+  10%,
+  90% {
+    border-top-color: var(--danger);
+  }
 }
 
 .apm-spin {
@@ -218,6 +237,11 @@
 }
 
 @keyframes apm-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
