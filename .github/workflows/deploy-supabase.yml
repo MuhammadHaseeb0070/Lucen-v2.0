@@ -24,7 +24,7 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: 1.225.0
+          version: latest
 
       - name: Link Project
         run: |
@@ -46,31 +46,20 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Push Database Migrations
-        run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            PROJECT_ID="${{ secrets.PROD_SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_ID }}"
-          else
-            PROJECT_ID="${{ secrets.DEV_SUPABASE_PROJECT_ID }}"
-          fi
-          supabase db push --project-ref "$PROJECT_ID"
+        run: supabase db push
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy Edge Functions
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            PROJECT_ID="${{ secrets.PROD_SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_ID }}"
-          else
-            PROJECT_ID="${{ secrets.DEV_SUPABASE_PROJECT_ID }}"
-          fi
-          supabase functions deploy chat-proxy        --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy deduct-credits    --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy ls-checkout       --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy ls-webhook        --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy classify-intent   --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy describe-image    --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy generate-title    --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy embed             --project-ref "$PROJECT_ID" --no-verify-jwt
-          supabase functions deploy retrieve-chunks   --project-ref "$PROJECT_ID" --no-verify-jwt
+          supabase functions deploy chat-proxy        --no-verify-jwt
+          supabase functions deploy deduct-credits    --no-verify-jwt
+          supabase functions deploy ls-checkout       --no-verify-jwt
+          supabase functions deploy ls-webhook        --no-verify-jwt
+          supabase functions deploy classify-intent   --no-verify-jwt
+          supabase functions deploy describe-image    --no-verify-jwt
+          supabase functions deploy generate-title    --no-verify-jwt
+          supabase functions deploy embed             --no-verify-jwt
+          supabase functions deploy retrieve-chunks   --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
