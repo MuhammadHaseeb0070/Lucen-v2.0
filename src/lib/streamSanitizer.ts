@@ -23,12 +23,16 @@ export class StreamSanitizer {
   
   // Tags whose inner content AND the tags themselves should be routed to content
   private artifactTags = ['lucen_artifact', 'lucen_patch'];
+  
+  private config: StreamSanitizerConfig;
 
-  constructor(private config: StreamSanitizerConfig = {
+  constructor(config: StreamSanitizerConfig = {
     defaultChannel: 'content',
     routeThinkToReasoning: true,
     routeArtifactsToContent: false
-  }) {}
+  }) {
+    this.config = config;
+  }
 
   /**
    * Process a chunk of text.
@@ -88,7 +92,6 @@ export class StreamSanitizer {
         
         let matchedHiddenTag: string | null = null;
         let matchedRoutingTag: string | null = null;
-        let routingTagIsArtifact = false;
         let partialMatch = false;
         
         const lowerBuffer = this.buffer.toLowerCase();
@@ -104,7 +107,6 @@ export class StreamSanitizer {
               if (tagType === 'hidden') matchedHiddenTag = tag;
               else {
                 matchedRoutingTag = tag;
-                routingTagIsArtifact = tagType === 'artifact';
               }
               if (tagType !== 'artifact') {
                 this.buffer = this.buffer.slice(openStr1.length);
@@ -118,7 +120,6 @@ export class StreamSanitizer {
                 if (tagType === 'hidden') matchedHiddenTag = tag;
                 else {
                   matchedRoutingTag = tag;
-                  routingTagIsArtifact = tagType === 'artifact';
                 }
                 if (tagType !== 'artifact') {
                   this.buffer = this.buffer.slice(endBracket + 1);
