@@ -5,6 +5,7 @@ import { applyPatch } from './artifactPatcher';
 import { useArtifactStore } from '../store/artifactStore';
 import { useComposerStore } from '../store/composerStore';
 import { updateArtifactContent as updateArtifactContentDb } from '../services/artifactDb';
+import { ensureLineageId, createPatchedVersion } from '../services/artifactVersionDb';
 import { useChatStore } from '../store/chatStore';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -90,34 +91,65 @@ export async function executeArtifactPatch({
              }
            }
 
-           const dbId = useArtifactStore.getState().getDbId(artifactId);
-           if (dbId) {
-             updateArtifactContentDb(dbId, patchResult.newContent, activeArtifact.title)
-               .catch((err) => console.error('[Patch] DB persist failed:', err));
-           } else {
-             console.warn('[Patch] No dbId found for artifact — patch not persisted to Artifacts DB:', artifactId);
-           }
+            const dbId = useArtifactStore.getState().getDbId(artifactId);
+            if (dbId) {
+              ensureLineageId(dbId).then(async (lineageId) => {
+                if (lineageId) {
+                  const userMsgId = uuidv4();
+                  const assistantMsgId = uuidv4();
 
-           // Save successfully applied patch & user instruction to conversation history
-           if (convId) {
-             const userMsg: Message = {
-               id: uuidv4(),
-               role: 'user',
-               content: instruction,
-               timestamp: Date.now(),
-               isPatch: true
-             };
-             const assistantMsg: Message = {
-               id: uuidv4(),
-               role: 'assistant',
-               content: responseText,
-               timestamp: Date.now() + 1,
-               isPatch: true
-             };
-             // Add messages to store and DB
-             await useChatStore.getState().addMessage(convId, userMsg);
-             await useChatStore.getState().addMessage(convId, assistantMsg);
-           }
+                  try {
+                    const newVersion = await createPatchedVersion({
+                      lineageId,
+                      parentDbId: dbId,
+                      conversationId: convId,
+                      messageId: assistantMsgId,
+                      type: activeArtifact.type,
+                      title: activeArtifact.title,
+                      content: patchResult.newContent,
+                    });
+
+                    if (newVersion) {
+                      useArtifactStore.getState().setDbId(artifactId, newVersion.dbId);
+                      useArtifactStore.getState().appendLineageVersion(lineageId, newVersion);
+                      if (newVersion.versionNo > 1) {
+                        useArtifactStore.getState().setShowFeedbackToast(true, lineageId, newVersion.versionNo - 1);
+                      }
+                    }
+                  } catch (vErr) {
+                    console.error('[Patch] DB version save failed:', vErr);
+                  }
+
+                  if (convId) {
+                    const userMsg: Message = {
+                      id: userMsgId,
+                      role: 'user',
+                      content: instruction,
+                      timestamp: Date.now(),
+                      isPatch: true
+                    };
+                    const assistantMsg: Message = {
+                      id: assistantMsgId,
+                      role: 'assistant',
+                      content: responseText,
+                      timestamp: Date.now() + 1,
+                      isPatch: true
+                    };
+                    await useChatStore.getState().addMessage(convId, userMsg);
+                    await useChatStore.getState().addMessage(convId, assistantMsg);
+                  }
+                } else {
+                  updateArtifactContentDb(dbId, patchResult.newContent, activeArtifact.title)
+                    .catch((err) => console.error('[Patch] Fallback DB persist failed:', err));
+                }
+              }).catch((err) => {
+                console.error('[Patch] ensureLineageId failed, falling back:', err);
+                updateArtifactContentDb(dbId, patchResult.newContent, activeArtifact.title)
+                  .catch((errDb) => console.error('[Patch] Fallback DB persist failed:', errDb));
+              });
+            } else {
+              console.warn('[Patch] No dbId found for artifact — patch not persisted to Artifacts DB:', artifactId);
+            }
          }
       } else {
          console.error("Patch failed to apply:", patchResult);

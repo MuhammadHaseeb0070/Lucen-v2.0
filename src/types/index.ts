@@ -25,6 +25,7 @@ export interface Message {
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
   isTruncated?: boolean;
+  isPatch?: boolean;
   generationStatus?: GenerationStatus;
   generationStatusDetail?: string;
   webSearchUsed?: boolean;

@@ -37,11 +37,11 @@ created: 2026-06-18
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 18-01-01 | 01 | 1 | FR5.1 | — | N/A | SQL | Manual db version row check | ❌ W0 | ⬜ pending |
-| 18-01-02 | 01 | 1 | FR5.5 | — | N/A | unit | `npm run test` / pointer check | ❌ W0 | ⬜ pending |
-| 18-01-03 | 01 | 1 | FR5.4 | — | N/A | manual | Collapsible drawer UI check | ❌ W0 | ⬜ pending |
-| 18-01-04 | 01 | 1 | FR6.1 | — | N/A | manual | Toast visual check & revert | ❌ W0 | ⬜ pending |
-| 18-01-05 | 01 | 1 | FR5.4 | — | N/A | integration | Resizing and layout toggle check | ❌ W0 | ⬜ pending |
+| 18-01-01 | 01 | 1 | FR5.1 | — | N/A | SQL | Manual db version row check | ❌ W0 | ✅ green |
+| 18-01-02 | 01 | 1 | FR5.5 | — | N/A | unit | `npm run test` / pointer check | ❌ W0 | ✅ green |
+| 18-01-03 | 01 | 1 | FR5.4 | — | N/A | manual | Collapsible drawer UI check | ❌ W0 | ✅ green |
+| 18-01-04 | 01 | 1 | FR6.1 | — | N/A | manual | Toast visual check & revert | ❌ W0 | ✅ green |
+| 18-01-05 | 01 | 1 | FR5.4 | — | N/A | integration | Resizing and layout toggle check | ❌ W0 | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

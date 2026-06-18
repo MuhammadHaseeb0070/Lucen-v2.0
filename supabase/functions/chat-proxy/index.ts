@@ -31,6 +31,36 @@ Sentry.init({
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+const PATCH_SIDECAR_SYSTEM_PROMPT = `<lucen_system>
+<identity>
+You are the Lucen Patch Engine. Your ONLY job is to surgically modify existing code artifacts based on user instructions or error messages.
+You do not converse, you do not explain, you do not greet the user. You are a strictly machine-to-machine component.
+</identity>
+
+<rules>
+1. Output ONLY Git conflict marker patches.
+2. NEVER wrap your patches in artifact tags (like <lucen_artifact>), markdown code fences (\`\`\`), or any other formatting.
+3. NEVER output conversational text (e.g. "Here is the patch:", "Sure, I can fix that."). The UI will discard any explanation text.
+4. If the requested change requires modifying more than 30% of the file, or if the file structure is fundamentally changing, output exactly this string:
+FULL_REGEN_REQUIRED
+5. If the request is too vague to locate a unique SEARCH block, output exactly this string:
+AMBIGUOUS_PATCH
+6. CRITICAL: The search engine does NOT support regex or fuzzy matching. The SEARCH block MUST be a 100% exact, literal, character-for-character reproduction of the lines you want to replace, including all whitespace and indentation.
+7. CRITICAL: NEVER use ellipsis (\`...\` or \`…\`) to abbreviate or skip lines in the SEARCH block. If you truncate the code, the patch WILL FAIL. If the block is too large, use multiple smaller SEARCH/REPLACE blocks.
+
+<patch_format>
+Use exactly this format for each block of changes:
+<<<<<<< SEARCH
+[Exact lines of existing code to locate the change. Must be an EXACT literal string match, no abbreviations or skipped lines.]
+=======
+[The new lines of code that replace the search block]
+>>>>>>> REPLACE
+</patch_format>
+
+You may output multiple SEARCH/REPLACE blocks in a single response to modify different parts of the file.
+</rules>
+</lucen_system>`;
+
 function getReasoningTokens(usage: Record<string, unknown> | undefined): number {
   if (!usage || typeof usage !== 'object') return 0;
   const details = usage.completion_tokens_details as Record<string, unknown> | undefined;
@@ -156,6 +186,7 @@ Deno.serve(async (req: Request) => {
       call_kind,
       input_cost_per_1m,
       output_cost_per_1m,
+      patch,
     } = body ?? {};
 
     if (typeof request_id === 'string') accounting.requestId = request_id;
@@ -165,11 +196,23 @@ Deno.serve(async (req: Request) => {
     if (typeof call_kind === 'string') {
       accounting.callKind = call_kind as UsageCallKind;
     }
+    if (patch) {
+      accounting.callKind = 'patch';
+    }
     if (typeof input_cost_per_1m === 'number' && Number.isFinite(input_cost_per_1m)) {
       accounting.inputCostPer1M = input_cost_per_1m;
     }
     if (typeof output_cost_per_1m === 'number' && Number.isFinite(output_cost_per_1m)) {
       accounting.outputCostPer1M = output_cost_per_1m;
+    }
+
+    if (patch && messages && Array.isArray(messages)) {
+      const systemIndex = messages.findIndex((m: any) => m.role === 'system');
+      if (systemIndex !== -1) {
+        messages[systemIndex].content = PATCH_SIDECAR_SYSTEM_PROMPT;
+      } else {
+        messages.unshift({ role: 'system', content: PATCH_SIDECAR_SYSTEM_PROMPT });
+      }
     }
 
     if (!messages || !Array.isArray(messages)) {
@@ -343,7 +386,7 @@ Deno.serve(async (req: Request) => {
         ABSOLUTE_OUTPUT_CEILING,
       );
 
-    const shouldStream = stream !== false;
+    const shouldStream = patch ? false : (stream !== false);
 
     if (!await circuitAllow('openrouter')) {
       log.warn('Circuit breaker OPEN — OpenRouter unavailable');

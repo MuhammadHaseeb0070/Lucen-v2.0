@@ -221,7 +221,7 @@ const ChatArea: React.FC = () => {
     const conversationForMessageList = isStreaming ? activeConv : deferredActiveConv;
     const listConv = conversationForMessageList ?? activeConv;
     const exchangeRows = useMemo(
-        () => buildExchangeRows(listConv?.messages ?? []),
+        () => buildExchangeRows((listConv?.messages ?? []).filter((m) => !m.isPatch)),
         [listConv?.messages],
     );
     const msgIdToRowIndex = useMemo(() => buildMsgIdToRowIndex(exchangeRows), [exchangeRows]);

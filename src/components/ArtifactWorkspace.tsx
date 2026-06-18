@@ -9,6 +9,8 @@ import ArtifactErrorBanner from './ArtifactErrorBanner';
 import { useArtifactStore } from '../store/artifactStore';
 import type { PreviewViewport } from '../store/artifactStore';
 import type { ArtifactType } from '../types';
+import ArtifactVersionHistoryPanel from './ArtifactVersionHistoryPanel';
+import ArtifactFeedbackToast from './ArtifactFeedbackToast';
 
 const TYPE_META: Record<ArtifactType, { label: string; icon: React.ReactNode }> = {
   html: { label: 'HTML', icon: <FileCode2 size={14} /> },
@@ -461,8 +463,12 @@ const ArtifactWorkspace: React.FC = () => {
         )}
         
         {!activeArtifact.isStreaming && (
-          <ArtifactPatchInput artifactId={activeArtifact.id} />
+          <>
+            <ArtifactVersionHistoryPanel artifact={activeArtifact} />
+            <ArtifactPatchInput artifactId={activeArtifact.id} />
+          </>
         )}
+        <ArtifactFeedbackToast />
       </div>
 
       {publishModalOpen && (

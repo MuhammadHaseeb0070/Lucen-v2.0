@@ -9,7 +9,7 @@
 - ✅ **v2.8 Generative UI Intelligence Engine** — Phase 10 (shipped 2026-06-15)
 - ✅ **v2.9 Offline Pyodide Proxy** — Phase 11 (shipped 2026-06-12)
 - ✅ **v3.0 Core Messaging & Tool Pipeline Stabilization** — [Phases 12-14](file:///e:/Lucen/Lucen-v2.3%20fresh/.planning/milestones/v3.0-ROADMAP.md) (shipped 2026-06-16)
-- 🔵 **v3.1 Smart Artifact Patching System** — Phases 15-18
+- ✅ **v3.1 Smart Artifact Patching System** — Phases 15-18
 
 ## Phases
 
@@ -62,10 +62,10 @@
 
 ### 🔵 v3.1 Smart Artifact Patching System
 
-- [x] Phase 15: Patch Format & Parser Migration (completed 2026-06-18)
-- [ ] Phase 16: Dedicated Patch System Prompt & Sidecar Call
-- [ ] Phase 17: Inline Update Input & Context Selector
-- [ ] Phase 18: Version History Panel & Post-Patch UX
+- [x] Phase 15: Patch Format & Parser Migration (completed 2026-06-18)
+- [x] Phase 16: Dedicated Patch System Prompt & Sidecar Call (completed 2026-06-18)
+- [x] Phase 17: Inline Update Input & Context Selector (completed 2026-06-18)
+- [x] Phase 18: Version History Panel & Post-Patch UX (completed 2026-06-18)
 
 ### Phase 15: Patch Format & Parser Migration
 
@@ -90,8 +90,9 @@
 1. Dedicated patch prompt is created.
 
 **Plans:**
+1/1 plans complete
 
-- [ ] 16-01-PLAN.md
+- [x] 16-01-PLAN.md
 
 ### Phase 17: Inline Update Input & Context Selector
 
@@ -102,8 +103,9 @@
 1. Inline update input and context selector exist and are functional.
 
 **Plans:**
+1/1 plans complete
 
-- [ ] 17-01-PLAN.md
+- [x] 17-01-PLAN.md
 
 ### Phase 18: Version History Panel & Post-Patch UX
 
@@ -114,8 +116,9 @@
 1. Version history panel and post-patch feedback UX are functional.
 
 **Plans:**
+1/1 plans complete
 
-- [ ] 18-01-PLAN.md
+- [x] 18-01-PLAN.md
 
 ## Progress
 
@@ -136,6 +139,6 @@
 | 13. Client-Side Routing & State Synchronization | v3.0 | 1/1 | Complete | 2026-06-16 |
 | 14. Parser, Worker, & Stream Pipeline Hardening | v3.0 | 1/1 | Complete | 2026-06-16 |
 | 15. Patch Format & Parser Migration | v3.1 | 2/2 | Complete    | 2026-06-18 |
-| 16. Dedicated Patch System Prompt & Sidecar Call | v3.1 | 0/? | Pending | — |
-| 17. Inline Update Input & Context Selector | v3.1 | 0/? | Pending | — |
-| 18. Version History Panel & Post-Patch UX | v3.1 | 0/? | Pending | — |
+| 16. Dedicated Patch System Prompt & Sidecar Call | v3.1 | 1/1 | Complete | 2026-06-18 |
+| 17. Inline Update Input & Context Selector | v3.1 | 1/1 | Complete | 2026-06-18 |
+| 18. Version History Panel & Post-Patch UX | v3.1 | 1/1 | Complete | 2026-06-18 |

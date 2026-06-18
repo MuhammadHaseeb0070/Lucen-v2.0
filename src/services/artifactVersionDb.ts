@@ -251,3 +251,76 @@ export async function ensureLineageId(dbId: string): Promise<string | null> {
   }
   return (updated?.lineage_id as string) ?? null;
 }
+
+/**
+ * Permanently delete a version from history and repair the version lineage pointers.
+ * If deleting the active head, moves the head pointer to the remaining version with the highest version number.
+ */
+export async function deleteVersion(dbId: string): Promise<boolean> {
+  if (!hasActiveSessionSync() || !supabase) return false;
+
+  // 1. Fetch target version properties
+  const { data: target, error: fetchErr } = await supabase
+    .from('artifacts')
+    .select('lineage_id, parent_id, is_head')
+    .eq('id', dbId)
+    .maybeSingle();
+
+  if (fetchErr || !target) {
+    console.warn('[artifactVersionDb] deleteVersion read error or target not found:', fetchErr);
+    return false;
+  }
+
+  const lineageId = target.lineage_id;
+  const parentDbId = target.parent_id;
+  const isHead = target.is_head;
+
+  // 2. Re-link child versions: update child parent_id to parentDbId
+  const { error: updateChildErr } = await supabase
+    .from('artifacts')
+    .update({ parent_id: parentDbId })
+    .eq('parent_id', dbId)
+    .eq('lineage_id', lineageId);
+
+  if (updateChildErr) {
+    console.warn('[artifactVersionDb] deleteVersion child link repair failed:', updateChildErr);
+    return false;
+  }
+
+  // 3. Delete the version row
+  const { error: deleteErr } = await supabase
+    .from('artifacts')
+    .delete()
+    .eq('id', dbId);
+
+  if (deleteErr) {
+    console.warn('[artifactVersionDb] deleteVersion row delete failed:', deleteErr);
+    return false;
+  }
+
+  // 4. If the deleted row was the head, select new head and mark it as is_head = true
+  if (isHead) {
+    const { data: newHead, error: selectHeadErr } = await supabase
+      .from('artifacts')
+      .select('id')
+      .eq('lineage_id', lineageId)
+      .order('version_no', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (selectHeadErr) {
+      console.warn('[artifactVersionDb] deleteVersion find new head failed:', selectHeadErr);
+    } else if (newHead) {
+      const { error: updateHeadErr } = await supabase
+        .from('artifacts')
+        .update({ is_head: true })
+        .eq('id', newHead.id);
+
+      if (updateHeadErr) {
+        console.warn('[artifactVersionDb] deleteVersion set new head failed:', updateHeadErr);
+      }
+    }
+  }
+
+  return true;
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, ArrowUp, MessageSquare, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Loader2, ArrowUp, MessageSquare, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { useArtifactStore } from '../store/artifactStore';
 import { useChatStore } from '../store/chatStore';
 import { executeArtifactPatch } from '../lib/artifactSidecar';
@@ -16,6 +16,11 @@ const ArtifactPatchInput: React.FC<ArtifactPatchInputProps> = ({ artifactId }) =
   const patchStatus = useArtifactStore(s => s.patchStatus[artifactId]) || 'idle';
   const runtimeErrors = useArtifactStore(s => s.runtimeErrors);
   const runtimeError = runtimeErrors[artifactId];
+  
+  const activeArtifact = useArtifactStore(s => s.activeArtifact);
+  const lineages = useArtifactStore(s => s.lineages);
+  const historyPanelOpen = useArtifactStore(s => s.historyPanelOpen);
+  const setHistoryPanelOpen = useArtifactStore(s => s.setHistoryPanelOpen);
   
   const isPatching = patchStatus !== 'idle';
   
@@ -134,6 +139,28 @@ const ArtifactPatchInput: React.FC<ArtifactPatchInputProps> = ({ artifactId }) =
               ))}
             </div>
           </div>
+
+          {/* History Toggle Button */}
+          {activeArtifact && (
+            <button
+              type="button"
+              className={`patch-history-toggle-btn ${historyPanelOpen ? 'patch-history-toggle-btn--active' : ''}`}
+              onClick={() => setHistoryPanelOpen(!historyPanelOpen)}
+              title="Toggle Version History panel"
+            >
+              <Clock size={14} />
+              <span>
+                History (v{
+                  (() => {
+                    const lineageId = activeArtifact.lineageId || activeArtifact.dbId;
+                    const chain = lineageId ? lineages[lineageId] || [] : [];
+                    const headEntry = chain.find((v) => v.isHead) || (chain.length > 0 ? chain[chain.length - 1] : undefined);
+                    return headEntry?.versionNo ?? activeArtifact.version ?? 1;
+                  })()
+                })
+              </span>
+            </button>
+          )}
 
           {/* Main Input Bar */}
           <div className="artifact-patch-bar">

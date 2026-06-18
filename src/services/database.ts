@@ -110,6 +110,7 @@ export interface DbMessage {
     attachments?: Record<string, unknown>[];
     created_at: string;
     tools_used?: any[];
+    is_patch?: boolean;
 }
 
 /** Fetch all messages for a conversation, ordered by creation time */
@@ -213,6 +214,7 @@ export async function saveMessage(
             is_truncated: message.isTruncated || false,
             is_pinned: message.isPinned || false,
             is_streaming: message.isStreaming || false,
+            is_patch: message.isPatch || false,
             // Save attachment metadata only (no file content)
             attachments: message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) || null,
             tools_used: message.toolSteps || null,
@@ -263,7 +265,7 @@ export async function saveMessage(
 /** Update an existing message (e.g., after streaming completes) */
 export async function updateMessageInDb(
     messageId: string,
-    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming' | 'toolSteps'>>
+    updates: Partial<Pick<Message, 'content' | 'reasoning' | 'isTruncated' | 'isStreaming' | 'toolSteps' | 'isPatch'>>
 ): Promise<boolean> {
     if (!hasActiveSessionSync() || !supabase) return false;
 
@@ -273,6 +275,7 @@ export async function updateMessageInDb(
     if (updates.isTruncated !== undefined) dbUpdates.is_truncated = updates.isTruncated;
     if (updates.isStreaming !== undefined) dbUpdates.is_streaming = updates.isStreaming;
     if (updates.toolSteps !== undefined) dbUpdates.tools_used = updates.toolSteps;
+    if (updates.isPatch !== undefined) dbUpdates.is_patch = updates.isPatch;
 
     const { error } = await supabase
         .from('messages')
@@ -312,6 +315,7 @@ export async function upsertStreamingMessage(
                 is_truncated: message.isTruncated || false,
                 is_pinned: message.isPinned || false,
                 is_streaming: message.isStreaming === true,
+                is_patch: message.isPatch || false,
                 attachments:
                     message.attachments?.map(({ textContent: _t, dataUrl: _d, ...rest }) => rest) ||
                     null,
@@ -471,6 +475,7 @@ function dbToMessage(row: DbMessage): Message {
         timestamp: new Date(row.created_at).getTime(),
         isTruncated: row.is_truncated,
         isPinned: row.is_pinned,
+        isPatch: row.is_patch || false,
         toolSteps: row.tools_used || undefined,
         // Restore attachment metadata (no file content — that's transient)
         attachments: row.attachments?.map((a: Record<string, unknown>) => ({
