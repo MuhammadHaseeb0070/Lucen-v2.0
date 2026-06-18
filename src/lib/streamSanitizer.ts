@@ -1,7 +1,14 @@
+export interface StreamSanitizerConfig {
+  defaultChannel: 'content' | 'reasoning';
+  routeThinkToReasoning: boolean;
+  routeArtifactsToContent: boolean;
+}
+
 export class StreamSanitizer {
   private buffer = '';
   private insideHiddenTag: string | null = null;
   private insideRoutingTag: string | null = null;
+  private routingTagTarget: 'content' | 'reasoning' = 'content';
   
   // Tags that should be completely hidden from the user output
   private hiddenTags = [
@@ -12,7 +19,16 @@ export class StreamSanitizer {
   ];
   
   // Tags whose inner content should be routed to reasoning
-  private routingTags = ['think'];
+  private thinkTags = ['think'];
+  
+  // Tags whose inner content AND the tags themselves should be routed to content
+  private artifactTags = ['lucen_artifact', 'lucen_patch'];
+
+  constructor(private config: StreamSanitizerConfig = {
+    defaultChannel: 'content',
+    routeThinkToReasoning: true,
+    routeArtifactsToContent: false
+  }) {}
 
   /**
    * Process a chunk of text.
@@ -23,6 +39,8 @@ export class StreamSanitizer {
   public processChunk(chunk: string, emitContent: (text: string) => void, emitReasoning: (text: string) => void) {
     this.buffer += chunk;
     
+    const emitDefault = this.config.defaultChannel === 'content' ? emitContent : emitReasoning;
+
     while (this.buffer.length > 0) {
       if (this.insideHiddenTag) {
         const closeTag = `</${this.insideHiddenTag}>`;
@@ -40,14 +58,16 @@ export class StreamSanitizer {
       } else if (this.insideRoutingTag) {
         const closeTag = `</${this.insideRoutingTag}>`;
         const closeIdx = this.buffer.toLowerCase().indexOf(closeTag.toLowerCase());
+        const emitTarget = this.routingTagTarget === 'content' ? emitContent : emitReasoning;
+        
         if (closeIdx !== -1) {
-          emitReasoning(this.buffer.slice(0, closeIdx));
+          emitTarget(this.buffer.slice(0, closeIdx + (this.routingTagTarget === 'content' ? closeTag.length : 0)));
           this.buffer = this.buffer.slice(closeIdx + closeTag.length);
           this.insideRoutingTag = null;
         } else {
           const safeLen = Math.max(0, this.buffer.length - closeTag.length);
           if (safeLen > 0) {
-            emitReasoning(this.buffer.slice(0, safeLen));
+            emitTarget(this.buffer.slice(0, safeLen));
             this.buffer = this.buffer.slice(safeLen);
           }
           return;
@@ -56,23 +76,24 @@ export class StreamSanitizer {
         const openIdx = this.buffer.indexOf('<');
         if (openIdx === -1) {
           // Fast path: no tags in buffer
-          emitContent(this.buffer);
+          emitDefault(this.buffer);
           this.buffer = '';
           return;
         }
         
         if (openIdx > 0) {
-          emitContent(this.buffer.slice(0, openIdx));
+          emitDefault(this.buffer.slice(0, openIdx));
           this.buffer = this.buffer.slice(openIdx);
         }
         
         let matchedHiddenTag: string | null = null;
         let matchedRoutingTag: string | null = null;
+        let routingTagIsArtifact = false;
         let partialMatch = false;
         
         const lowerBuffer = this.buffer.toLowerCase();
 
-        const checkTags = (tags: string[], isHidden: boolean) => {
+        const checkTags = (tags: string[], tagType: 'hidden' | 'think' | 'artifact') => {
           for (const tag of tags) {
             const openTag = `<${tag.toLowerCase()}`;
             const openStr1 = `${openTag}>`;
@@ -80,16 +101,28 @@ export class StreamSanitizer {
             const openStr3 = `${openTag}\n`;
             
             if (lowerBuffer.startsWith(openStr1)) {
-              if (isHidden) matchedHiddenTag = tag;
-              else matchedRoutingTag = tag;
-              this.buffer = this.buffer.slice(openStr1.length);
+              if (tagType === 'hidden') matchedHiddenTag = tag;
+              else {
+                matchedRoutingTag = tag;
+                routingTagIsArtifact = tagType === 'artifact';
+              }
+              if (tagType !== 'artifact') {
+                this.buffer = this.buffer.slice(openStr1.length);
+              } else {
+                // Keep the opening tag in the buffer so it emits
+              }
               return true;
             } else if (lowerBuffer.startsWith(openStr2) || lowerBuffer.startsWith(openStr3)) {
               const endBracket = this.buffer.indexOf('>');
               if (endBracket !== -1) {
-                if (isHidden) matchedHiddenTag = tag;
-                else matchedRoutingTag = tag;
-                this.buffer = this.buffer.slice(endBracket + 1);
+                if (tagType === 'hidden') matchedHiddenTag = tag;
+                else {
+                  matchedRoutingTag = tag;
+                  routingTagIsArtifact = tagType === 'artifact';
+                }
+                if (tagType !== 'artifact') {
+                  this.buffer = this.buffer.slice(endBracket + 1);
+                }
                 return true;
               } else {
                 partialMatch = true;
@@ -103,21 +136,29 @@ export class StreamSanitizer {
           return false;
         };
 
-        if (checkTags(this.hiddenTags, true)) {
+        if (checkTags(this.hiddenTags, 'hidden')) {
           if (partialMatch) return;
           this.insideHiddenTag = matchedHiddenTag;
           continue;
         }
         
-        if (checkTags(this.routingTags, false)) {
+        if (this.config.routeThinkToReasoning && checkTags(this.thinkTags, 'think')) {
           if (partialMatch) return;
           this.insideRoutingTag = matchedRoutingTag;
+          this.routingTagTarget = 'reasoning';
+          continue;
+        }
+
+        if (this.config.routeArtifactsToContent && checkTags(this.artifactTags, 'artifact')) {
+          if (partialMatch) return;
+          this.insideRoutingTag = matchedRoutingTag;
+          this.routingTagTarget = 'content';
           continue;
         }
         
         // Not a hidden/routing tag. Emit the '<' and continue.
         if (this.buffer.length > 0) {
-          emitContent(this.buffer[0]);
+          emitDefault(this.buffer[0]);
           this.buffer = this.buffer.slice(1);
         }
       }
@@ -129,11 +170,14 @@ export class StreamSanitizer {
    */
   public flush(emitContent: (text: string) => void, emitReasoning: (text: string) => void) {
     if (this.insideRoutingTag && this.buffer.length > 0) {
-      emitReasoning(this.buffer);
+      const emitTarget = this.routingTagTarget === 'content' ? emitContent : emitReasoning;
+      emitTarget(this.buffer);
       this.buffer = '';
     } else if (!this.insideHiddenTag && this.buffer.length > 0) {
-      emitContent(this.buffer);
+      const emitDefault = this.config.defaultChannel === 'content' ? emitContent : emitReasoning;
+      emitDefault(this.buffer);
       this.buffer = '';
     }
   }
 }
+

@@ -89,8 +89,17 @@ export async function processStream(
   let accContent = '';
   let accReasoning = '';
 
-  const contentSanitizer = new StreamSanitizer();
-  const reasoningSanitizer = new StreamSanitizer();
+  const contentSanitizer = new StreamSanitizer({
+    defaultChannel: 'content',
+    routeThinkToReasoning: true,
+    routeArtifactsToContent: false
+  });
+  
+  const reasoningSanitizer = new StreamSanitizer({
+    defaultChannel: 'reasoning',
+    routeThinkToReasoning: true, // If DeepSeek puts <think> in reasoning, keep it in reasoning
+    routeArtifactsToContent: true // If DeepSeek hallucinates <lucen_artifact> in reasoning, pull it to content
+  });
 
   const emitContent = (text: string) => {
     wrappedCallbacks.onChunk(text);
@@ -311,10 +320,6 @@ export async function processStream(
               contentSanitizer.processChunk(reasoningChunk, emitContent, emitReasoning);
               contentChunkCount++;
               lastContentTail = reasoningChunk.slice(-220);
-            } else if (reasoningChunk.includes('<lucen_artifact')) {
-              contentSanitizer.processChunk(reasoningChunk, emitContent, emitReasoning);
-              contentChunkCount++;
-              lastContentTail = reasoningChunk.slice(-220);
             } else {
               reasoningSanitizer.processChunk(reasoningChunk, emitContent, emitReasoning);
             }
@@ -377,7 +382,7 @@ export async function processStream(
             }
             if (delta?.reasoning || delta?.reasoning_content) {
               const rawRc = String(delta.reasoning || delta.reasoning_content || '');
-              if (treatReasoningAsContent || rawRc.includes('<lucen_artifact')) {
+              if (treatReasoningAsContent) {
                 contentSanitizer.processChunk(rawRc, emitContent, emitReasoning);
                 contentChunkCount++;
               } else {
