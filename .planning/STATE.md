@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-16)
 
 Phase: 18
 Plan: Not started
-Status: Phase 17 executed and verified, ready for Phase 18 discuss
+Status: Phase 18 discussion completed, ready for Phase 18 planning
 Last activity: 2026-06-18
 
 ## Open Questions (Block Execution)
@@ -52,4 +52,4 @@ None.
 
 ## Operator Next Steps
 
-- Run /gsd-discuss-phase 18 to discuss Phase 18 before planning
+- Run /gsd-plan-phase 18 to create the implementation plan for Phase 18
