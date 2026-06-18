@@ -4445,7 +4445,8 @@ h4 {
 
 .artifact-code-fallback {
     border-radius: var(--r-sm);
-    overflow: hidden;
+    overflow: auto;
+    height: 100%;
 }
 
 .artifact-file-preview {

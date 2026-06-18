@@ -20,7 +20,5 @@ export function sanitizeMinimaxTags(text: string): string {
         .replace(/<invoke[\s\S]*?<\/invoke>/gi, '')
         .replace(/<parameter[\s\S]*?<\/parameter>/gi, '')
         .replace(/<\/?invoke[^>]*>/gi, '')
-        .replace(/<\/?parameter[^>]*>/gi, '')
-        .replace(/<[a-z_:]+\s[^>]*>[\s\S]*?<\/[a-z_:]+>/gi, '')
-        .replace(/<[a-z_:]+>[\s\S]*?<\/[a-z_:]+>/gi, '')
+        .replace(/<\/?parameter[^>]*>/gi, '');
 }

@@ -1,6 +1,7 @@
 import { STREAM_IDLE_TIMEOUT_MS } from '../../config/models';
 import { sanitizeMinimaxTags } from '../../lib/stringUtil';
 import { logger } from '../../lib/logger';
+import { StreamSanitizer } from '../../lib/streamSanitizer';
 
 const OPENROUTER_RAW_DEBUG = false;
 const OPENROUTER_RAW_DEBUG_MAX_CHARS = 250_000;
@@ -29,24 +30,6 @@ export interface StreamFinalizeSummary {
   error?: string;
 }
 
-export function sanitizeAssistantOutput(t: string): string {
-  if (!t || typeof t !== 'string') return t ?? '';
-
-  t = t ? sanitizeMinimaxTags(t) : (t ?? '');
-
-  t = t.replace(/^(?:\s*(?:assistant|system|user)\s*:\s*)+/i, '');
-
-  t = t.replace(/<lucen_system>[\s\S]*?<\/lucen_system>/gi, '');
-  t = t.replace(/<active_template>[\s\S]*?<\/active_template>/gi, '');
-  t = t.replace(/<template[\s\S]*?<\/template>/gi, '');
-  t = t.replace(/<assistant_vision_notice>[\s\S]*?<\/assistant_vision_notice>/gi, '');
-  t = t.replace(/<runtime_context>[\s\S]*?<\/runtime_context>/gi, '');
-  t = t.replace(/<image_perception>[\s\S]*?<\/image_perception>/gi, '');
-
-  t = t.replace(/<(?:lucen_system|runtime_context|assistant_vision_notice|image_perception)[^>\n]{0,80}$/gi, '');
-
-  return t;
-}
 
 export async function processStream(
   response: Response,
@@ -75,6 +58,8 @@ export async function processStream(
     onFinalize = (summary) => {
       originalOnFinalize({
         ...summary,
+        // The accumulators are built from sanitized emits, so we don't need to re-sanitize heavily, 
+        // but we apply Minimax tags fallback just in case.
         content: summary.content ? sanitizeMinimaxTags(summary.content) : (summary.content ?? ''),
         reasoning: summary.reasoning ? sanitizeMinimaxTags(summary.reasoning) : (summary.reasoning ?? ''),
       });
@@ -103,10 +88,23 @@ export async function processStream(
   const FINALIZE_CONTENT_CAP = 120_000;
   let accContent = '';
   let accReasoning = '';
-  let accContentRaw = '';
-  let accReasoningRaw = '';
-  let sentContentLength = 0;
-  let sentReasoningLength = 0;
+
+  const contentSanitizer = new StreamSanitizer();
+  const reasoningSanitizer = new StreamSanitizer();
+
+  const emitContent = (text: string) => {
+    wrappedCallbacks.onChunk(text);
+    if (accContent.length < FINALIZE_CONTENT_CAP) {
+      accContent += text;
+    }
+  };
+
+  const emitReasoning = (text: string) => {
+    wrappedCallbacks.onReasoning(text);
+    if (accReasoning.length < FINALIZE_CONTENT_CAP) {
+      accReasoning += text;
+    }
+  };
 
   const decoder = new TextDecoder();
   let buffer = '';
@@ -193,6 +191,8 @@ export async function processStream(
 
         const data = trimmed.slice(6);
         if (data === '[DONE]') {
+          contentSanitizer.flush(emitContent, emitReasoning);
+          reasoningSanitizer.flush(emitContent, emitReasoning);
           wrappedCallbacks.onDone(wasTruncated);
           logStreamSummary('done');
           onFinalize?.({
@@ -308,45 +308,18 @@ export async function processStream(
             const shouldRouteToChunk = treatReasoningAsContent;
 
             if (shouldRouteToChunk) {
-              accContentRaw += reasoningChunk;
-              const newSanitized = sanitizeAssistantOutput(accContentRaw);
-              const deltaToSend = newSanitized.slice(sentContentLength);
-              if (deltaToSend) {
-                wrappedCallbacks.onChunk(deltaToSend);
-                sentContentLength += deltaToSend.length;
-              }
+              contentSanitizer.processChunk(reasoningChunk, emitContent, emitReasoning);
               contentChunkCount++;
               lastContentTail = reasoningChunk.slice(-220);
-              if (accContent.length < FINALIZE_CONTENT_CAP) {
-                accContent += reasoningChunk;
-              }
             } else if (reasoningChunk.includes('<lucen_artifact')) {
-              accContentRaw += reasoningChunk;
-              const newSanitized = sanitizeAssistantOutput(accContentRaw);
-              const deltaToSend = newSanitized.slice(sentContentLength);
-              if (deltaToSend) {
-                wrappedCallbacks.onChunk(deltaToSend);
-                sentContentLength += deltaToSend.length;
-              }
+              contentSanitizer.processChunk(reasoningChunk, emitContent, emitReasoning);
               contentChunkCount++;
               lastContentTail = reasoningChunk.slice(-220);
-              if (accContent.length < FINALIZE_CONTENT_CAP) {
-                accContent += reasoningChunk;
-              }
             } else {
-              accReasoningRaw += reasoningChunk;
-              const newSanitized = sanitizeAssistantOutput(accReasoningRaw);
-              const deltaToSend = newSanitized.slice(sentReasoningLength);
-              if (deltaToSend) {
-                wrappedCallbacks.onReasoning(deltaToSend);
-                sentReasoningLength += deltaToSend.length;
-              }
+              reasoningSanitizer.processChunk(reasoningChunk, emitContent, emitReasoning);
             }
             reasoningChunkCount++;
             lastReasoningTail = reasoningChunk.slice(-220);
-            if (accReasoning.length < FINALIZE_CONTENT_CAP) {
-              accReasoning += reasoningChunk;
-            }
             if (OPENROUTER_RAW_DEBUG && reasoningSamples.length < 6 && reasoningChunk.trim()) {
               reasoningSamples.push(reasoningChunk.slice(0, 400));
             }
@@ -354,18 +327,9 @@ export async function processStream(
 
           if (delta.content) {
             const contentStr = String(delta.content);
-            accContentRaw += contentStr;
-            const newSanitized = sanitizeAssistantOutput(accContentRaw);
-            const deltaToSend = newSanitized.slice(sentContentLength);
-            if (deltaToSend) {
-              wrappedCallbacks.onChunk(deltaToSend);
-              sentContentLength += deltaToSend.length;
-            }
+            contentSanitizer.processChunk(contentStr, emitContent, emitReasoning);
             contentChunkCount++;
             lastContentTail = contentStr.slice(-220);
-            if (accContent.length < FINALIZE_CONTENT_CAP) {
-              accContent += contentStr;
-            }
             if (OPENROUTER_RAW_DEBUG && contentSamples.length < 6 && contentStr.trim()) {
               contentSamples.push(contentStr.slice(0, 400));
             }
@@ -382,6 +346,8 @@ export async function processStream(
       if (finalLine.startsWith('data: ')) {
         const data = finalLine.slice(6);
         if (data === '[DONE]') {
+          contentSanitizer.flush(emitContent, emitReasoning);
+          reasoningSanitizer.flush(emitContent, emitReasoning);
           wrappedCallbacks.onDone(wasTruncated);
           logStreamSummary('done');
           onFinalize?.({
@@ -406,39 +372,18 @@ export async function processStream(
             const delta = choice.delta;
             if (delta?.content) {
               const contentStr = String(delta.content);
-              accContentRaw += contentStr;
-              const newSanitized = sanitizeAssistantOutput(accContentRaw);
-              const deltaToSend = newSanitized.slice(sentContentLength);
-              if (deltaToSend) {
-                wrappedCallbacks.onChunk(deltaToSend);
-                sentContentLength += deltaToSend.length;
-              }
+              contentSanitizer.processChunk(contentStr, emitContent, emitReasoning);
               contentChunkCount++;
-              if (accContent.length < FINALIZE_CONTENT_CAP) accContent += contentStr;
             }
             if (delta?.reasoning || delta?.reasoning_content) {
               const rawRc = String(delta.reasoning || delta.reasoning_content || '');
               if (treatReasoningAsContent || rawRc.includes('<lucen_artifact')) {
-                accContentRaw += rawRc;
-                const newSanitized = sanitizeAssistantOutput(accContentRaw);
-                const deltaToSend = newSanitized.slice(sentContentLength);
-                if (deltaToSend) {
-                  wrappedCallbacks.onChunk(deltaToSend);
-                  sentContentLength += deltaToSend.length;
-                }
+                contentSanitizer.processChunk(rawRc, emitContent, emitReasoning);
                 contentChunkCount++;
-                if (accContent.length < FINALIZE_CONTENT_CAP) accContent += rawRc;
               } else {
-                accReasoningRaw += rawRc;
-                const newSanitized = sanitizeAssistantOutput(accReasoningRaw);
-                const deltaToSend = newSanitized.slice(sentReasoningLength);
-                if (deltaToSend) {
-                  wrappedCallbacks.onReasoning(deltaToSend);
-                  sentReasoningLength += deltaToSend.length;
-                }
+                reasoningSanitizer.processChunk(rawRc, emitContent, emitReasoning);
               }
               reasoningChunkCount++;
-              if (accReasoning.length < FINALIZE_CONTENT_CAP) accReasoning += rawRc;
             }
           }
         } catch { /* ignore */ }
@@ -454,6 +399,8 @@ export async function processStream(
         correlationId,
       });
     }
+    contentSanitizer.flush(emitContent, emitReasoning);
+    reasoningSanitizer.flush(emitContent, emitReasoning);
     wrappedCallbacks.onDone(eofTruncated);
     logStreamSummary('eof');
     onFinalize?.({
@@ -475,6 +422,8 @@ export async function processStream(
         idleMs: Date.now() - lastDataAt,
         correlationId,
       });
+      contentSanitizer.flush(emitContent, emitReasoning);
+      reasoningSanitizer.flush(emitContent, emitReasoning);
       wrappedCallbacks.onDone(true);
       logStreamSummary('watchdog');
       onFinalize?.({
@@ -489,6 +438,8 @@ export async function processStream(
         reasoning: accReasoning,
       });
     } else if (userAborted || (err instanceof Error && err.name === 'AbortError')) {
+      contentSanitizer.flush(emitContent, emitReasoning);
+      reasoningSanitizer.flush(emitContent, emitReasoning);
       wrappedCallbacks.onDone(false);
       logStreamSummary('abort');
       onFinalize?.({
@@ -506,6 +457,8 @@ export async function processStream(
       logger.error('[processStream] EXCEPTION:', err, { correlationId });
       const msg = err instanceof Error ? err.message : 'Unknown error';
       wrappedCallbacks.onError(msg);
+      contentSanitizer.flush(emitContent, emitReasoning);
+      reasoningSanitizer.flush(emitContent, emitReasoning);
       wrappedCallbacks.onDone(false);
       logStreamSummary('error');
       onFinalize?.({
