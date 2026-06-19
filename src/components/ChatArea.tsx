@@ -439,21 +439,11 @@ const ChatArea: React.FC = () => {
                 const mappedEvent = { ...event, label };
 
                 const existingIndex = currentSteps.findIndex(s => s.id === mappedEvent.id);
-                let nextSteps = [...currentSteps];
+                const nextSteps = [...currentSteps];
                 if (existingIndex !== -1) {
                     nextSteps[existingIndex] = { ...nextSteps[existingIndex], ...mappedEvent };
                 } else {
-                    // FIX 3B — Deduplication: only show one "running" indicator at a time.
-                    if (mappedEvent.status === 'running') {
-                        const runningIndex = nextSteps.findIndex(s => s.status === 'running');
-                        if (runningIndex !== -1) {
-                            nextSteps[runningIndex] = mappedEvent;
-                        } else {
-                            nextSteps.push(mappedEvent);
-                        }
-                    } else {
-                        nextSteps.push(mappedEvent);
-                    }
+                    nextSteps.push(mappedEvent);
                 }
                 updateMessage(convId, assistantMsgId, { toolSteps: nextSteps });
             },
