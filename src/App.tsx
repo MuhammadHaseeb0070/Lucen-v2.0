@@ -14,6 +14,7 @@ import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import RefundPage from './pages/RefundPage';
 import { useAuthStore } from './store/authStore';
+import { ExecutionOrchestrator } from './services/executionOrchestrator';
 import './App.css';
 
 function App() {
@@ -22,6 +23,10 @@ function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    ExecutionOrchestrator.start();
+  }, []);
 
   return (
     <BrowserRouter>

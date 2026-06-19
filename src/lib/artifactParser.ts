@@ -84,8 +84,6 @@ export interface ParseResult {
 const COMPLETE_PLAN_RE = /<lucen_execution_plan\s+title=["']([^"']+)["']>([\s\S]*?)<\/lucen_execution_plan>/g;
 // Matches partial execution plan opening tag
 const PARTIAL_PLAN_OPEN_RE = /<lucen_execution_plan\s+title=["']([^"']+)["']>([\s\S]*)$/;
-// Matches steps inside the execution plan
-const PLAN_STEP_RE = /<step\s+title=["']([^"']+)["']\s+description=["']([^"']+)["']\s*\/>/g;
 
 /**
  * Parse artifact tags from AI response content.
@@ -175,12 +173,12 @@ export function parseArtifacts(
   // Extract execution plan
   cleanContent = cleanContent.replace(COMPLETE_PLAN_RE, (_match, title: string, stepsContent: string) => {
     const steps: ExecutionStep[] = [];
-    const stepNodeRegex = /<step([^>]*?)\/>/gi;
+    const stepNodeRegex = /<\s*step\s+([^>]*?)(?:\s*\/>|>)/gi;
     let stepMatch;
     while ((stepMatch = stepNodeRegex.exec(stepsContent)) !== null) {
         const attrs = stepMatch[1];
-        const titleMatch = /title="([^"]+)"/i.exec(attrs);
-        const descMatch = /description="([^"]+)"/i.exec(attrs);
+        const titleMatch = /title="([^"]+?)"/i.exec(attrs);
+        const descMatch = /description="([^"]+?)"/i.exec(attrs);
         if (titleMatch && descMatch) {
             steps.push({
                 title: titleMatch[1],
@@ -198,13 +196,19 @@ export function parseArtifacts(
   if (partialPlanMatch && !executionPlan) {
     const [fullMatch, title, stepsContent] = partialPlanMatch;
     const steps: ExecutionStep[] = [];
+    const stepNodeRegex = /<\s*step\s+([^>]*?)(?:\s*\/>|>)/gi;
     let stepMatch;
-    while ((stepMatch = PLAN_STEP_RE.exec(stepsContent || '')) !== null) {
-      steps.push({
-        title: stepMatch[1],
-        description: stepMatch[2],
-        status: 'pending'
-      });
+    while ((stepMatch = stepNodeRegex.exec(stepsContent || '')) !== null) {
+        const attrs = stepMatch[1];
+        const titleMatch = /title="([^"]+?)"/i.exec(attrs);
+        const descMatch = /description="([^"]+?)"/i.exec(attrs);
+        if (titleMatch && descMatch) {
+            steps.push({
+                title: titleMatch[1],
+                description: descMatch[1],
+                status: 'pending'
+            });
+        }
     }
     executionPlan = { title, steps };
     cleanContent = cleanContent.slice(0, cleanContent.indexOf(fullMatch));
