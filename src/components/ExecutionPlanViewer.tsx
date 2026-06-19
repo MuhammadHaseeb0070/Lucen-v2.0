@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Circle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import type { ExecutionPlan } from '../types';
 import { useExecutionQueueStore } from '../store/executionQueueStore';
 
@@ -15,59 +15,42 @@ const ExecutionPlanViewer: React.FC<ExecutionPlanViewerProps> = ({ messageId, pl
     const handleRetry = () => {
         if (!queueItem) return;
         const store = useExecutionQueueStore.getState();
-        // Reset failed steps to pending
-        activePlan.steps.forEach((step, idx) => {
-            if (step.status !== 'success') {
-                store.updateStepStatus(messageId, idx, 'pending');
-            }
-        });
         store.updateQueueItemStatus(messageId, 'idle');
     };
 
+    const status = queueItem?.status || 'idle';
+    
     return (
         <div className="execution-plan-viewer">
             <div className="execution-plan-header">
-                <h3>Execution Plan</h3>
+                <h3>{activePlan.title}</h3>
                 <span className="execution-plan-status">
-                    {activePlan.steps.filter(s => s.status === 'success').length} / {activePlan.steps.length} steps
+                    {status === 'idle' && "Queued..."}
+                    {status === 'running' && (
+                        <span className="flex items-center gap-2">
+                            <Loader2 size={14} className="animate-spin text-blue-500" /> Building artifact...
+                        </span>
+                    )}
+                    {status === 'completed' && (
+                        <span className="flex items-center gap-2 text-green-500">
+                            <CheckCircle2 size={14} /> Done
+                        </span>
+                    )}
+                    {status === 'failed' && (
+                        <span className="flex items-center gap-2 text-red-500">
+                            <AlertCircle size={14} /> Failed to generate
+                        </span>
+                    )}
                 </span>
-                {queueItem?.status === 'failed' && (
+                {status === 'failed' && (
                     <button 
                         className="execution-plan-retry-btn"
                         onClick={handleRetry}
-                        title="Retry failed steps"
+                        title="Retry generation"
                     >
                         <RefreshCw size={14} /> Retry
                     </button>
                 )}
-            </div>
-            
-            <div className="execution-plan-steps">
-                {activePlan.steps.map((step, idx) => {
-                    const isCompleted = step.status === 'success';
-                    const isRunning = step.status === 'running';
-                    const isFailed = step.status === 'failed';
-                    const isPending = step.status === 'pending';
-
-                    return (
-                        <div key={idx} className={`execution-plan-step execution-plan-step--${step.status}`}>
-                            <div className="execution-plan-step-icon">
-                                {isCompleted && <CheckCircle2 size={16} className="text-green-500" />}
-                                {isRunning && <Loader2 size={16} className="animate-spin text-blue-500" />}
-                                {isFailed && <AlertCircle size={16} className="text-red-500" />}
-                                {isPending && <Circle size={16} className="text-gray-400" />}
-                            </div>
-                            <div className="execution-plan-step-content">
-                                <div className="execution-plan-step-title">
-                                    {step.title}
-                                    {isRunning && (
-                                        <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', fontWeight: 'normal' }}>Usually takes 10–20s</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
             </div>
         </div>
     );

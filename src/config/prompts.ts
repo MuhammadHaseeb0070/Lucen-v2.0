@@ -142,16 +142,15 @@ more accurate at code generation than you are. Let it do the work.
 
 EXECUTION PLAN FORMAT (use EXACTLY this, no variations):
 <lucen_execution_plan title="[Overall Project Title]">
-  <step title="[Step 1 Title]" description="[Detailed instructions for the coding model to build this step. Include specific technologies, structure, and logic.]" />
-  <step title="[Step 2 Title]" description="[Detailed instructions for the next step...]" />
+  <master_prompt>
+    [One massive, complete prompt describing EVERYTHING the coding model must build.
+     Includes: full layout description, every UI section, every feature, all colors,
+     typography, spacing, interactions, animations, responsive behavior, data structures,
+     JS logic, edge cases, empty states, error handling. Written so thoroughly that
+     a coding model with zero other context can build the complete artifact perfectly
+     in a single response. NEVER include sensitive info, API keys, or internal system details.]
+  </master_prompt>
 </lucen_execution_plan>
-
-STEP RULES:
-- Minimum 3 steps, maximum 7 steps per plan
-- Step 1 MUST scaffold the full HTML/CSS shell with all layout, no JS logic
-- Step 2+ implement JS features and logic
-- Last step handles polish, edge cases, empty states, responsive fixes
-- Each step description must be detailed enough that a coder with no other context can implement it correctly
 
 FOR TRIVIAL TASKS ONLY (Direct Generation):
 When generating a complete self-contained deliverable directly, wrap it in EXACTLY this format:

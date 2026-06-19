@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactType, ExecutionPlan, ExecutionStep } from '../types';
+import type { Artifact, ArtifactType, ExecutionPlan } from '../types';
 
 const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 'excel', 'word', 'pdf']);
 
@@ -170,24 +170,13 @@ export function parseArtifacts(
   cleanContent = cleanContent.replace(/<lucen_patch\s*[^>]*>[\s\S]*$/, '');
   cleanContent = cleanContent.replace(/<lucen_patch[^>]*$/, '');
 
+  const MASTER_PROMPT_RE = /<master_prompt>([\s\S]*?)<\/master_prompt>/i;
+
   // Extract execution plan
   cleanContent = cleanContent.replace(COMPLETE_PLAN_RE, (_match, title: string, stepsContent: string) => {
-    const steps: ExecutionStep[] = [];
-    const stepNodeRegex = /<\s*step\s+([^>]*?)(?:\s*\/>|>)/gi;
-    let stepMatch;
-    while ((stepMatch = stepNodeRegex.exec(stepsContent)) !== null) {
-        const attrs = stepMatch[1];
-        const titleMatch = /title="([^"]+?)"/i.exec(attrs);
-        const descMatch = /description="([^"]+?)"/i.exec(attrs);
-        if (titleMatch && descMatch) {
-            steps.push({
-                title: titleMatch[1],
-                description: descMatch[1],
-                status: 'pending'
-            });
-        }
-    }
-    executionPlan = { title, steps };
+    const promptMatch = MASTER_PROMPT_RE.exec(stepsContent);
+    const masterPrompt = promptMatch ? promptMatch[1].trim() : stepsContent.trim();
+    executionPlan = { title, masterPrompt };
     return '';
   });
 
@@ -195,22 +184,9 @@ export function parseArtifacts(
   const partialPlanMatch = cleanContent.match(PARTIAL_PLAN_OPEN_RE);
   if (partialPlanMatch && !executionPlan) {
     const [fullMatch, title, stepsContent] = partialPlanMatch;
-    const steps: ExecutionStep[] = [];
-    const stepNodeRegex = /<\s*step\s+([^>]*?)(?:\s*\/>|>)/gi;
-    let stepMatch;
-    while ((stepMatch = stepNodeRegex.exec(stepsContent || '')) !== null) {
-        const attrs = stepMatch[1];
-        const titleMatch = /title="([^"]+?)"/i.exec(attrs);
-        const descMatch = /description="([^"]+?)"/i.exec(attrs);
-        if (titleMatch && descMatch) {
-            steps.push({
-                title: titleMatch[1],
-                description: descMatch[1],
-                status: 'pending'
-            });
-        }
-    }
-    executionPlan = { title, steps };
+    const promptMatch = MASTER_PROMPT_RE.exec(stepsContent);
+    const masterPrompt = promptMatch ? promptMatch[1].trim() : stepsContent.replace(/<master_prompt>/i, '').trim();
+    executionPlan = { title, masterPrompt };
     cleanContent = cleanContent.slice(0, cleanContent.indexOf(fullMatch));
   } else if (!executionPlan) {
     const incompletePlanMatch = cleanContent.match(/<lucen_execution_plan[^>]*$/);

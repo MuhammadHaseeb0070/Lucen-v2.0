@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ExecutionPlan, ExecutionStep } from '../types';
+import type { ExecutionPlan } from '../types';
 
 export interface QueueItem {
     messageId: string;
@@ -16,9 +16,6 @@ interface ExecutionQueueStore {
     
     // Add a new plan to the queue
     enqueuePlan: (messageId: string, conversationId: string, plan: ExecutionPlan) => void;
-    
-    // Update the status of a specific step in a plan
-    updateStepStatus: (messageId: string, stepIndex: number, status: ExecutionStep['status']) => void;
     
     // Update the status of a queue item
     updateQueueItemStatus: (messageId: string, status: QueueItem['status']) => void;
@@ -53,31 +50,6 @@ export const useExecutionQueueStore = create<ExecutionQueueStore>()(
                 }));
             },
             
-            updateStepStatus: (messageId, stepIndex, status) => {
-                set((state) => {
-                    const item = state.queue[messageId];
-                    if (!item) return state;
-                    
-                    const newSteps = [...item.plan.steps];
-                    if (newSteps[stepIndex]) {
-                        newSteps[stepIndex] = { ...newSteps[stepIndex], status };
-                    }
-                    
-                    return {
-                        queue: {
-                            ...state.queue,
-                            [messageId]: {
-                                ...item,
-                                plan: {
-                                    ...item.plan,
-                                    steps: newSteps
-                                }
-                            }
-                        }
-                    };
-                });
-            },
-            
             updateQueueItemStatus: (messageId, status) => {
                 set((state) => {
                     const item = state.queue[messageId];
@@ -88,7 +60,7 @@ export const useExecutionQueueStore = create<ExecutionQueueStore>()(
                             ...state.queue,
                             [messageId]: {
                                 ...item,
-                                status
+                                status,
                             }
                         }
                     };

@@ -24,7 +24,8 @@ export interface ExecutionStep {
 
 export interface ExecutionPlan {
   title: string;
-  steps: ExecutionStep[];
+  masterPrompt: string;
+  steps?: ExecutionStep[];
 }
 
 export interface Message {
