@@ -221,10 +221,11 @@ export async function processStream(
         if (currentEvent === 'tool_activity') {
           try {
             const activityData = JSON.parse(data);
+            logger.info('[processStream] tool_activity event:', activityData);
             sawToolActivityEvent = true;
             wrappedCallbacks.onToolActivity?.(activityData);
-          } catch {
-            // skip
+          } catch (err) {
+            logger.error('[processStream] Failed to parse tool_activity JSON data:', err, data);
           }
           currentEvent = null;
           continue;
@@ -232,32 +233,41 @@ export async function processStream(
         if (currentEvent === 'usage_receipt') {
           try {
             const eventData = JSON.parse(data);
+            logger.info('[processStream] usage_receipt event:', eventData);
             wrappedCallbacks.onUsageReceipt?.(eventData);
-          } catch { /* ignore */ }
+          } catch (err) {
+            logger.error('[processStream] Failed to parse usage_receipt JSON data:', err, data);
+          }
           currentEvent = null;
           continue;
         }
         if (currentEvent === 'content_start') {
           try {
             const eventData = JSON.parse(data);
+            logger.info('[processStream] content_start event:', eventData);
             if (eventData?.model) {
               modelId = eventData.model;
             }
             if (eventData?.after_tool_calls) {
               treatReasoningAsContent = true;
             }
-          } catch { /* ignore */ }
+          } catch (err) {
+            logger.error('[processStream] Failed to parse content_start JSON data:', err, data);
+          }
           currentEvent = null;
           continue;
         }
         if (currentEvent === 'web_search_results') {
           try {
             const eventData = JSON.parse(data);
+            logger.info('[processStream] web_search_results event:', eventData);
             if (eventData?.urls && Array.isArray(eventData.urls)) {
               const urlStrings = eventData.urls.map((u: any) => u.url);
               wrappedCallbacks.onWebSearchUsed?.(urlStrings);
             }
-          } catch { /* ignore */ }
+          } catch (err) {
+            logger.error('[processStream] Failed to parse web_search_results JSON data:', err, data);
+          }
           currentEvent = null;
           continue;
         }

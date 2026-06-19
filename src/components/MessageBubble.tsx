@@ -61,7 +61,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const [reasoningOpen, setReasoningOpen] = useState(false);
     const [searchSourcesOpen, setSearchSourcesOpen] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [stepsOpen, setStepsOpen] = useState(false);
+    const [stepsOpen, setStepsOpen] = useState(() => {
+        return (message.toolSteps && message.toolSteps.length > 0) ?? false;
+    });
     const [receiptOpen, setReceiptOpen] = useState(false);
     const [usageLogs, setUsageLogs] = useState<any[] | null>(null);
     const [loadingReceipt, setLoadingReceipt] = useState(false);
@@ -75,10 +77,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, [message.toolSteps]);
 
     useEffect(() => {
-        if (hasRunningTools) {
+        if (message.toolSteps && message.toolSteps.length > 0) {
             setStepsOpen(true);
         }
-    }, [hasRunningTools]);
+    }, [message.toolSteps?.length, hasRunningTools]);
 
     const prevIdRef = useRef(message.id);
     const prevIsStreamingRef = useRef(message.isStreaming);

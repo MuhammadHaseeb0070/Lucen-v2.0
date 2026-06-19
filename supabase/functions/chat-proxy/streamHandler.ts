@@ -214,6 +214,13 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
       let keepaliveTimer: any = null;
+
+      const flushStream = () => {
+        try {
+          // Write a 2KB comment padding to force proxies like Cloudflare to flush the buffer
+          controller.enqueue(encoder.encode(`:${' '.repeat(2048)}\n`));
+        } catch { /* ignore */ }
+      };
       
       let currentMessages = [...messages];
       let rounds = 0;
@@ -598,6 +605,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
               };
               try {
                 controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                flushStream();
               } catch { /* ignore */ }
             }
 
@@ -644,6 +652,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                  flushStream();
                 } catch { /* ignore */ }
 
                 return {
@@ -678,6 +687,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                  flushStream();
                 } catch { /* ignore */ }
 
                 return {
@@ -713,6 +723,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                  flushStream();
                 } catch { /* ignore */ }
 
                 return {
@@ -801,6 +812,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                  flushStream();
                 } catch { /* ignore */ }
 
                 return {
@@ -879,6 +891,21 @@ ${rawCode.trim()}
                   output = artifactContent;
                   res = { content: artifactContent };
 
+                  // Inline artifact streaming: write the generated artifact directly to the client's text stream
+                  try {
+                    const contentPayload = {
+                      choices: [{
+                        delta: {
+                          content: `\n\n${artifactContent}\n\n`
+                        }
+                      }]
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(contentPayload)}\n\n`));
+                    flushStream();
+                  } catch (streamErr) {
+                    console.error('[chat-proxy] Failed to stream inline artifact content to client:', streamErr);
+                  }
+
                   // Track coding model token usage if available
                   if (codingData.usage) {
                     totalPromptTokens += codingData.usage.prompt_tokens || 0;
@@ -950,6 +977,7 @@ ${rawCode.trim()}
               };
               try {
                 controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                flushStream();
               } catch { /* ignore */ }
 
               if (success && tc.name === 'web_search' && res && res.organic && Array.isArray(res.organic) && res.organic.length > 0) {
