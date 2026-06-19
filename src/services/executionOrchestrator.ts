@@ -94,12 +94,12 @@ async function processPlan(item: ReturnType<typeof useExecutionQueueStore.getSta
                 artifactStore.setActiveArtifact(newArtifact);
                 queueStore.setArtifactId(item.messageId, newArtifact.id);
 
-                const msgId = uuidv4();
-                await chatStore.addMessage(item.conversationId, {
-                    id: msgId,
-                    role: 'assistant',
-                    content: content, // use raw content so it parses naturally in UI
-                    timestamp: Date.now(),
+                const conv = chatStore.conversations.find(c => c.id === item.conversationId);
+                const msg = conv?.messages.find(m => m.id === item.messageId);
+                const currentContent = msg?.content || '';
+                
+                chatStore.updateMessage(item.conversationId, item.messageId, {
+                    content: currentContent + "\n\n" + content,
                     isStreaming: false,
                 });
                 
@@ -114,6 +114,13 @@ async function processPlan(item: ReturnType<typeof useExecutionQueueStore.getSta
     }
 
     if (!success) {
+        const conv = chatStore.conversations.find(c => c.id === item.conversationId);
+        const msg = conv?.messages.find(m => m.id === item.messageId);
+        const currentContent = msg?.content || '';
+        chatStore.updateMessage(item.conversationId, item.messageId, {
+            content: currentContent + "\n\n*(Failed to generate artifact)*",
+            isStreaming: false,
+        });
         throw new Error(`Failed to generate artifact after ${MAX_RETRIES} retries`);
     }
 }

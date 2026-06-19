@@ -5,6 +5,7 @@ import type { Artifact, Conversation, Message } from '../types';
 import { hasActiveSessionSync, supabase, ensureFreshSession } from '../lib/supabase';
 import * as db from '../services/database';
 import { sanitizeMinimaxTags } from '../lib/stringUtil';
+import { parseArtifacts } from '../lib/artifactParser';
 import type { SearchResult } from '../services/database';
 import { MIDSTREAM_PERSIST_MS } from '../config/models';
 import { captureCall } from './debugStore';
@@ -587,30 +588,34 @@ export const useChatStore = create<ChatStore>()(
 
 
                     if (msg && msg.role === 'assistant') {
-                        import('../lib/artifactParser').then(({ parseArtifacts }) => {
-                            const parsed = parseArtifacts(updates.content ?? msg.content, msgId, true);
+                        const parsed = parseArtifacts(updates.content ?? msg.content, msgId, true);
+                        
+                        if (parsed.executionPlan) {
+                            // If we just finished streaming the main response but found a plan,
+                            // KEEP it streaming so the UI spins while the background model works.
+                            set((state) => ({
+                                conversations: state.conversations.map((c) =>
+                                    c.id === convId
+                                        ? {
+                                                ...c,
+                                                messages: c.messages.map((m) =>
+                                                    m.id === msgId ? { ...m, executionPlan: parsed.executionPlan, isStreaming: true } : m
+                                                ),
+                                            }
+                                        : c
+                                ),
+                            }));
                             
-                            if (parsed.executionPlan) {
-                                set((state) => ({
-                                    conversations: state.conversations.map((c) =>
-                                        c.id === convId
-                                            ? {
-                                                  ...c,
-                                                  messages: c.messages.map((m) =>
-                                                      m.id === msgId ? { ...m, executionPlan: parsed.executionPlan } : m
-                                                  ),
-                                              }
-                                            : c
-                                    ),
-                                }));
-                                import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
-                                    const queueStore = useExecutionQueueStore.getState();
-                                    if (!queueStore.getItem(msgId)) {
-                                        queueStore.enqueuePlan(msgId, convId, parsed.executionPlan!);
-                                    }
-                                });
-                            }
-                        });
+                            // Re-save DB with isStreaming: true since we just wrote false
+                            db.updateMessageInDb(msgId, { isStreaming: true }).catch(() => {});
+
+                            import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
+                                const queueStore = useExecutionQueueStore.getState();
+                                if (!queueStore.getItem(msgId)) {
+                                    queueStore.enqueuePlan(msgId, convId, parsed.executionPlan!);
+                                }
+                            });
+                        }
                     }
 
                     return;

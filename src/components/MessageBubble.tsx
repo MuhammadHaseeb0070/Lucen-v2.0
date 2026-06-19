@@ -3,7 +3,7 @@ import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, 
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
-import ExecutionPlanViewer from './ExecutionPlanViewer';
+
 import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
@@ -625,9 +625,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         </div>
                     )}
 
-                    {message.executionPlan && (
-                        <ExecutionPlanViewer messageId={message.id} plan={message.executionPlan} />
-                    )}
+
 
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
