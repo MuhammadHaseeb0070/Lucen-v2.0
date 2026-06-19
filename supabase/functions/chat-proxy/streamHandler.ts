@@ -502,7 +502,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 const dataStr = trimmed.slice(6);
                 if (dataStr === '[DONE]') {
                   finalSawDone = true;
-                  filteredText += line + '\n';
+                  // DO NOT append to filteredText! The proxy controls when to send [DONE] to the client.
                   continue;
                 }
                 try {
