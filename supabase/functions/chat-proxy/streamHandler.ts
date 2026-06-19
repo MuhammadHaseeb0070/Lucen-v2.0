@@ -447,101 +447,49 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
           }
 
           const reader = openrouterResponse.body!.getReader();
+          const toolCallsMap = new Map<number, {
+            id?: string;
+            name?: string;
+            arguments: string;
+          }>();
+          let hasContentStartSent = false;
 
-          
-          let isToolCall = false;
-          const firstChunks: Uint8Array[] = [];
-          const flushedChunks: boolean[] = [];
-          let accumulatedText = '';
-          let chunkCount = 0;
-
-          outerLoop: while (true) {
-            if (chunkCount >= 1000) {
-              isToolCall = false;
-              break;
+          while (true) {
+            const currentSecs = Math.floor(Date.now() / 1000);
+            if (expiry && currentSecs >= expiry && !jwtVerifiedMidStream) {
+              jwtVerifiedMidStream = true;
+              const { data: midUser, error: midErr } = await supabaseAdmin.auth.admin.getUserById(userId);
+              if (midErr || !midUser?.user) {
+                try {
+                  controller.enqueue(encoder.encode(
+                    `event: error\ndata: ${JSON.stringify({ error: "Session expired. Please sign in again.", code: 401 })}\n\n`
+                  ));
+                  controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                } catch { /* ignore */ }
+                throw new Error('JWT expired mid-stream and refresh validation failed');
+              }
             }
 
             const { done, value } = await reader.read();
             if (done) break;
             if (value) {
-              chunkCount++;
-              firstChunks.push(value);
-              flushedChunks.push(false);
               const text = decoder.decode(value, { stream: true });
-              accumulatedText += text;
-
               const lines = text.split('\n');
+              let filteredText = '';
+              let hasContent = false;
+
               for (const line of lines) {
                 const trimmed = line.trim();
-                if (!trimmed.startsWith('data: ')) continue;
+                if (!trimmed.startsWith('data: ')) {
+                  if (trimmed) filteredText += line + '\n';
+                  continue;
+                }
                 const dataStr = trimmed.slice(6);
-                if (dataStr === '[DONE]') continue;
-                try {
-                  const parsed = JSON.parse(dataStr);
-                  const choice = parsed.choices?.[0];
-                  if (choice) {
-                    if (choice.delta?.tool_calls && Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length > 0) {
-                      isToolCall = true;
-                      break outerLoop;
-                    }
-                    if (typeof choice.delta?.content === 'string' && choice.delta.content.trim().length > 0) {
-                      isToolCall = false;
-                      break outerLoop;
-                    }
-                    const reasoning = choice.delta?.reasoning || choice.delta?.reasoning_content;
-                    if (typeof reasoning === 'string' && reasoning.trim().length > 0) {
-                      if (!flushedChunks[flushedChunks.length - 1]) {
-                        try {
-                          controller.enqueue(value);
-                        } catch { /* ignore */ }
-                        flushedChunks[flushedChunks.length - 1] = true;
-                      }
-                    }
-                    const fr = choice.finish_reason;
-                    if (fr !== null && fr !== undefined) {
-                      isToolCall = (fr === 'tool_calls');
-                      finishReason = String(fr);
-                      break outerLoop;
-                    }
-                  }
-                } catch { /* skip */ }
-              }
-            }
-          }
-
-          if (isToolCall) {
-            let unflushedText = '';
-            for (let i = 0; i < firstChunks.length; i++) {
-              if (!flushedChunks[i]) {
-                unflushedText += decoder.decode(firstChunks[i], { stream: true });
-              }
-            }
-            const outputText = unflushedText.replace(/data:\s*\[DONE\][\r\n]*/g, '');
-            if (outputText) {
-              try {
-                controller.enqueue(encoder.encode(outputText));
-              } catch { /* ignore */ }
-            }
-
-            keepaliveTimer = setInterval(() => {
-              try {
-                controller.enqueue(encoder.encode(": keepalive\n\n"));
-              } catch { /* ignore */ }
-            }, 5000);
-
-            const toolCallsMap = new Map<number, {
-              id?: string;
-              name?: string;
-              arguments: string;
-            }>();
-
-            const parseText = (txt: string) => {
-              const lines = txt.split('\n');
-              for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed.startsWith('data: ')) continue;
-                const dataStr = trimmed.slice(6);
-                if (dataStr === '[DONE]') continue;
+                if (dataStr === '[DONE]') {
+                  finalSawDone = true;
+                  filteredText += line + '\n';
+                  continue;
+                }
                 try {
                   const parsed = JSON.parse(dataStr);
                   if (parsed.usage) {
@@ -549,435 +497,216 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                     totalCompletionTokens += parsed.usage.completion_tokens || 0;
                     totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
                   }
-                  const delta = parsed.choices?.[0]?.delta;
-                  if (delta?.tool_calls) {
-                    for (const tc of delta.tool_calls) {
-                      const index = tc.index;
-                      if (!toolCallsMap.has(index)) {
-                        toolCallsMap.set(index, { id: tc.id, name: tc.function?.name, arguments: '' });
+                  const choice = parsed.choices?.[0];
+                  if (choice) {
+                    const fr = choice.finish_reason;
+                    if (fr !== null && fr !== undefined) {
+                      finishReason = String(fr);
+                    }
+                    const delta = choice.delta;
+                    if (delta) {
+                      if (delta.tool_calls && Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+                        for (const tc of delta.tool_calls) {
+                          const index = tc.index;
+                          if (!toolCallsMap.has(index)) {
+                            toolCallsMap.set(index, { id: tc.id, name: tc.function?.name, arguments: '' });
+                          }
+                          const existing = toolCallsMap.get(index)!;
+                          if (tc.id) existing.id = tc.id;
+                          if (tc.function?.name) existing.name = tc.function?.name;
+                          if (tc.function?.arguments) existing.arguments += tc.function?.arguments;
+                        }
+                        continue; // Skip enqueuing this tool_call line to the client
                       }
-                      const existing = toolCallsMap.get(index)!;
-                      if (tc.id) existing.id = tc.id;
-                      if (tc.function?.name) existing.name = tc.function?.name;
-                      if (tc.function?.arguments) existing.arguments += tc.function?.arguments;
+                      if (delta.content || delta.reasoning || delta.reasoning_content) {
+                        hasContent = true;
+                      }
+                      if (parsed.error) {
+                        finalStreamError = parsed.error.message ?? 'stream error';
+                      }
                     }
                   }
                 } catch { /* skip */ }
+
+                filteredText += line + '\n';
               }
-            };
 
-            parseText(accumulatedText);
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              if (value) {
-                let text = decoder.decode(value, { stream: true });
-                parseText(text);
-                text = text.replace(/data:\s*\[DONE\][\r\n]*/g, '');
-                if (text) {
-                  try {
-                    controller.enqueue(encoder.encode(text));
-                  } catch { /* ignore */ }
-                }
-              }
-            }
-
-            let toolCalls = Array.from(toolCallsMap.values());
-
-            toolCalls = toolCalls.filter((tc) => {
-              if (!tc.name) {
-                console.warn('[chat-proxy] Skipping tool call: missing function name', tc);
-                return false;
-              }
-              if (!tc.id || tc.id.trim() === '') {
-                tc.id = crypto.randomUUID();
-              }
-              return true;
-            });
-
-            if (toolCalls.length > 0) {
-              for (const tc of toolCalls) {
-                let parsedArgs: any = {};
-                let argsParsedSuccessfully = true;
-                try { 
-                  parsedArgs = JSON.parse(tc.arguments); 
-                } catch { 
-                  argsParsedSuccessfully = false; 
-                }
-
-                let label = '';
-                if (argsParsedSuccessfully && parsedArgs && typeof parsedArgs === 'object') {
-                  if (tc.name === 'analyze_image') {
-                    label = parsedArgs.analysis_title || 'Analyzing image';
-                  } else if (tc.name === 'process_file') {
-                    label = parsedArgs.extraction_title || 'Reading file';
-                  } else if (tc.name === 'web_search') {
-                    label = parsedArgs.search_title || 'Searching the web';
-                  } else {
-                    const def = TOOLS[tc.name ?? ''];
-                    label = def?.userFacingLabel ?? `Running ${tc.name}`;
-                  }
-                } else {
-                  label = `Running ${tc.name}`;
-                  parsedArgs = {};
-                }
-
-                const eventPayload = {
-                  id: tc.id,
-                  tool: tc.name,
-                  status: 'running',
-                  label,
-                  args: parsedArgs
-                };
+              if (hasContent && !hasContentStartSent) {
+                hasContentStartSent = true;
                 try {
-                  controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                  controller.enqueue(encoder.encode(
+                    `event: content_start\ndata: ${JSON.stringify({ 
+                      after_tool_calls: rounds > 0, model: effectiveModel 
+                    })}\n\n`
+                  ));
                 } catch { /* ignore */ }
               }
 
-              const parallelCalls = toolCalls.filter(tc => TOOLS[tc.name ?? '']?.parallelizable);
-              const sequentialCalls = toolCalls.filter(tc => !TOOLS[tc.name ?? '']?.parallelizable);
-
-              const toolResults: any[] = [];
-
-              const runTool = async (tc: any) => {
-                const start = Date.now();
-                let output = '';
-                let success = true;
-                let parsedArgs: any = {};
-                let argsParsedSuccessfully = true;
-                try { 
-                  parsedArgs = JSON.parse(tc.arguments); 
-                } catch { 
-                  argsParsedSuccessfully = false; 
-                }
-
-                let durationMs = 0;
-
-                if (!argsParsedSuccessfully) {
-                  success = false;
-                  output = 'Tool execution failed: could not parse tool arguments.';
-                  durationMs = Date.now() - start;
-
-                  toolsExecuted.push({
-                    id: tc.id!,
-                    name: tc.name!,
-                    arguments: tc.arguments,
-                    status: 'failed',
-                    durationMs
-                  });
-
-                  const eventPayload = {
-                    id: tc.id,
-                    tool: tc.name,
-                    status: 'failed',
-                    label: `Running ${tc.name}`,
-                    args: {},
-                    durationMs,
-                    output: output.slice(0, 400)
-                  };
-                  try {
-                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
-                  } catch { /* ignore */ }
-
-                  return {
-                    tool_call_id: tc.id,
-                    role: 'tool',
-                    name: tc.name,
-                    content: output
-                  };
-                }
-
-                if (!parsedArgs || typeof parsedArgs !== 'object') {
-                  success = false;
-                  output = 'Tool execution failed: arguments were null or invalid.';
-                  durationMs = Date.now() - start;
-
-                  toolsExecuted.push({
-                    id: tc.id!,
-                    name: tc.name!,
-                    arguments: tc.arguments,
-                    status: 'failed',
-                    durationMs
-                  });
-
-                  const eventPayload = {
-                    id: tc.id,
-                    tool: tc.name,
-                    status: 'failed',
-                    label: `Running ${tc.name}`,
-                    args: {},
-                    durationMs,
-                    output: output.slice(0, 400)
-                  };
-                  try {
-                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
-                  } catch { /* ignore */ }
-
-                  return {
-                    tool_call_id: tc.id,
-                    role: 'tool',
-                    name: tc.name,
-                    content: output
-                  };
-                }
-
-                const ALLOWED_TOOLS = ['analyze_image', 'process_file', 'web_search', 'generate_artifact'];
-                if (!ALLOWED_TOOLS.includes(tc.name)) {
-                  success = false;
-                  output = 'Tool execution failed: unknown tool name.';
-                  durationMs = Date.now() - start;
-
-                  toolsExecuted.push({
-                    id: tc.id!,
-                    name: tc.name!,
-                    arguments: tc.arguments,
-                    status: 'failed',
-                    durationMs
-                  });
-
-                  const eventPayload = {
-                    id: tc.id,
-                    tool: tc.name,
-                    status: 'failed',
-                    label: `Running ${tc.name}`,
-                    args: parsedArgs,
-                    durationMs,
-                    output: output.slice(0, 400)
-                  };
-                  try {
-                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
-                  } catch { /* ignore */ }
-
-                  return {
-                    tool_call_id: tc.id,
-                    role: 'tool',
-                    name: tc.name,
-                    content: output
-                  };
-                }
-
-                const toolName = tc.name;
-                let isLimitReached = false;
-                let limitMsg = '';
-
-                if (toolName === 'web_search') {
-                  const query = (parsedArgs?.query || '').trim().toLowerCase();
-                  const currentCount = toolCallCounts['web_search'] || 0;
-                  const maxForWebSearch = MAX_CALLS_PER_TOOL['web_search'] ?? 3;
-
-                  if (currentCount >= maxForWebSearch) {
-                    isLimitReached = true;
-                    limitMsg = 'Search limit reached for this message. Use results already retrieved.';
-                  } else if (query && searchedQueries.has(query)) {
-                    isLimitReached = true;
-                    limitMsg = 'Query already searched. Use results already retrieved.';
-                  }
-                  
-                  if (!isLimitReached) {
-                    toolCallCounts['web_search'] = currentCount + 1;
-                    if (query) {
-                      searchedQueries.add(query);
-                    }
-                  }
-                } else if (toolName === 'analyze_image') {
-                  const imageIds = parsedArgs?.image_ids || [];
-                  if (Array.isArray(imageIds) && imageIds.length > 0) {
-                    const allAlreadyAnalyzed = imageIds.every((id: string) => analyzedImageIds.has(id));
-                    if (allAlreadyAnalyzed) {
-                      isLimitReached = true;
-                      limitMsg = 'Image already analyzed. Use results already retrieved.';
-                    } else {
-                      imageIds.forEach((id: string) => analyzedImageIds.add(id));
-                    }
-                  }
-                } else if (toolName === 'process_file') {
-                  const fileId = parsedArgs?.file_id;
-                  if (fileId && typeof fileId === 'string') {
-                    if (processedFileIds.has(fileId)) {
-                      isLimitReached = true;
-                      limitMsg = 'File already processed. Use results already retrieved.';
-                    } else {
-                      processedFileIds.add(fileId);
-                    }
-                  }
-                } else {
-                  const currentCount = toolCallCounts[toolName] || 0;
-                  if (currentCount >= 1) {
-                    isLimitReached = true;
-                    limitMsg = 'Execution limit reached for this tool.';
-                  } else {
-                    toolCallCounts[toolName] = currentCount + 1;
-                  }
-                }
-
-                if (isLimitReached) {
-                  success = false;
-                  output = limitMsg;
-                  durationMs = Date.now() - start;
-
-                  toolsExecuted.push({
-                    id: tc.id!,
-                    name: tc.name!,
-                    arguments: tc.arguments,
-                    status: 'failed',
-                    durationMs
-                  });
-
-                  const eventPayload = {
-                    id: tc.id,
-                    tool: tc.name,
-                    status: 'failed',
-                    label: `Running ${tc.name}`,
-                    args: parsedArgs,
-                    durationMs,
-                    output: output.slice(0, 400)
-                  };
-                  try {
-                    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
-                  } catch { /* ignore */ }
-
-                  return {
-                    tool_call_id: tc.id,
-                    role: 'tool',
-                    name: tc.name,
-                    content: output
-                  };
-                }
-
-                let timerId: any;
-                let res: any = null;
+              if (filteredText.trim().length > 0) {
                 try {
-                  if (tc.name === 'generate_artifact') {
-                    // ── Artifact generation via coding model ──
-                    const codingModels = [
-                      Deno.env.get('CODING_CHAT_MODEL_PRIMARY'),
-                      Deno.env.get('CODING_CHAT_MODEL_SECONDARY'),
-                      Deno.env.get('CODING_CHAT_MODEL_TERTIARY'),
-                      Deno.env.get('CODING_CHAT_MODEL'),
-                    ].filter((m): m is string => !!m && m.trim().length > 0);
-                    if (codingModels.length === 0) codingModels.push('qwen/qwen-2.5-coder-32b-instruct');
+                  controller.enqueue(encoder.encode(filteredText));
+                } catch { /* ignore */ }
+              }
+            }
+          }
 
-                    const artifactType = parsedArgs.artifact_type || 'html';
-                    const artifactTitle = parsedArgs.title || 'Artifact';
-                    const masterPrompt = parsedArgs.master_prompt || '';
+          let toolCalls = Array.from(toolCallsMap.values());
+          toolCalls = toolCalls.filter((tc) => {
+            if (!tc.name) {
+              console.warn('[chat-proxy] Skipping tool call: missing function name', tc);
+              return false;
+            }
+            if (!tc.id || tc.id.trim() === '') {
+              tc.id = crypto.randomUUID();
+            }
+            return true;
+          });
 
-                    let codingResponse: Response | null = null;
-                    for (const codingModel of codingModels) {
-                      try {
-                        const codingPayload = {
-                          model: codingModel,
-                          messages: [
-                            { role: 'system', content: CODING_MODEL_SYSTEM_PROMPT },
-                            { role: 'user', content: masterPrompt }
-                          ],
-                          max_tokens: 16000,
-                          stream: false,
-                        };
-                        const codingRes = await fetch(OPENROUTER_URL_ARTIFACT, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
-                            'HTTP-Referer': supabaseUrl,
-                            'X-Title': 'Lucen Artifact Engine',
-                          },
-                          body: JSON.stringify(codingPayload),
-                        });
-                        if (codingRes.ok) {
-                          codingResponse = codingRes;
-                          break;
-                        }
-                      } catch { /* try next model */ }
-                    }
+          if (toolCalls.length > 0) {
+            for (const tc of toolCalls) {
+              let parsedArgs: any = {};
+              let argsParsedSuccessfully = true;
+              try { 
+                parsedArgs = JSON.parse(tc.arguments); 
+              } catch { 
+                argsParsedSuccessfully = false; 
+              }
 
-                    if (!codingResponse) {
-                      throw new Error('All coding models failed');
-                    }
-
-                    const codingData = await codingResponse.json();
-                    let artifactContent = codingData.choices?.[0]?.message?.content || '';
-
-                    // Unwrap markdown fences if present
-                    const fenceMatch = artifactContent.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
-                    if (fenceMatch && artifactContent.includes('<lucen_artifact')) {
-                      artifactContent = fenceMatch[1];
-                    } else if (!artifactContent.includes('<lucen_artifact')) {
-                      // Synthesize tag if model didn't include one
-                      const rawCode = fenceMatch ? fenceMatch[1] : artifactContent;
-                      artifactContent = `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">
-${rawCode.trim()}
-</lucen_artifact>`;
-                    }
-
-                    output = artifactContent;
-                    res = { content: artifactContent };
-
-                    // Track coding model token usage if available
-                    if (codingData.usage) {
-                      totalPromptTokens += codingData.usage.prompt_tokens || 0;
-                      totalCompletionTokens += codingData.usage.completion_tokens || 0;
-                    }
-                  } else {
-                    // ── Standard tool execution (web_search, analyze_image, process_file) ──
-                    let siblingName = tc.name;
-                    if (tc.name === 'analyze_image') siblingName = 'describe-image';
-                    if (tc.name === 'process_file') siblingName = 'get-file-content';
-                    if (tc.name === 'web_search') siblingName = 'web-search';
-
-                    const toolTimeout = 12000;
-                    const executionPromise = callSiblingFunction(siblingName, parsedArgs);
-                    const timeoutPromise = new Promise<never>((_, reject) => {
-                      timerId = setTimeout(() => reject(new Error('timeout')), toolTimeout);
-                    });
-
-                    res = await Promise.race([executionPromise, timeoutPromise]);
-                    output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
-                  }
-                } catch (err: any) {
-                  success = false;
-                  if (err.message === 'timeout') {
-                    output = 'Tool execution timed out. Please try again.';
-                  } else {
-                    output = 'The requested information could not be retrieved. Please continue without it.';
-                  }
-                } finally {
-                  if (timerId) clearTimeout(timerId);
-                }
-
-                durationMs = Date.now() - start;
-                toolsExecuted.push({
-                  id: tc.id!,
-                  name: tc.name!,
-                  arguments: tc.arguments,
-                  status: success ? 'completed' : 'failed',
-                  durationMs
-                });
-
-                if (tc.name === 'web_search') {
-                  const maxResults = Number(parsedArgs.max_results ?? WEBSEARCH_DEFAULT_MAX_RESULTS);
-                  totalSearchCost += computeWebSearchCredits(maxResults);
-                }
-
-                let label = '';
+              let label = '';
+              if (argsParsedSuccessfully && parsedArgs && typeof parsedArgs === 'object') {
                 if (tc.name === 'analyze_image') {
                   label = parsedArgs.analysis_title || 'Analyzing image';
                 } else if (tc.name === 'process_file') {
                   label = parsedArgs.extraction_title || 'Reading file';
                 } else if (tc.name === 'web_search') {
                   label = parsedArgs.search_title || 'Searching the web';
-                } else if (tc.name === 'generate_artifact') {
-                  label = parsedArgs.generation_title || 'Creating artifact';
                 } else {
                   const def = TOOLS[tc.name ?? ''];
                   label = def?.userFacingLabel ?? `Running ${tc.name}`;
                 }
+              } else {
+                label = `Running ${tc.name}`;
+                parsedArgs = {};
+              }
+
+              const eventPayload = {
+                id: tc.id,
+                tool: tc.name,
+                status: 'running',
+                label,
+                args: parsedArgs
+              };
+              try {
+                controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+              } catch { /* ignore */ }
+            }
+
+            const parallelCalls = toolCalls.filter(tc => TOOLS[tc.name ?? '']?.parallelizable);
+            const sequentialCalls = toolCalls.filter(tc => !TOOLS[tc.name ?? '']?.parallelizable);
+
+            const toolResults: any[] = [];
+
+            const runTool = async (tc: any) => {
+              const start = Date.now();
+              let output = '';
+              let success = true;
+              let parsedArgs: any = {};
+              let argsParsedSuccessfully = true;
+              try { 
+                parsedArgs = JSON.parse(tc.arguments); 
+              } catch { 
+                argsParsedSuccessfully = false; 
+              }
+
+              let durationMs = 0;
+
+              if (!argsParsedSuccessfully) {
+                success = false;
+                output = 'Tool execution failed: could not parse tool arguments.';
+                durationMs = Date.now() - start;
+
+                toolsExecuted.push({
+                  id: tc.id!,
+                  name: tc.name!,
+                  arguments: tc.arguments,
+                  status: 'failed',
+                  durationMs
+                });
 
                 const eventPayload = {
                   id: tc.id,
                   tool: tc.name,
-                  status: success ? 'completed' : 'failed',
-                  label,
+                  status: 'failed',
+                  label: `Running ${tc.name}`,
+                  args: {},
+                  durationMs,
+                  output: output.slice(0, 400)
+                };
+                try {
+                  controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                } catch { /* ignore */ }
+
+                return {
+                  tool_call_id: tc.id,
+                  role: 'tool',
+                  name: tc.name,
+                  content: output
+                };
+              }
+
+              if (!parsedArgs || typeof parsedArgs !== 'object') {
+                success = false;
+                output = 'Tool execution failed: arguments were null or invalid.';
+                durationMs = Date.now() - start;
+
+                toolsExecuted.push({
+                  id: tc.id!,
+                  name: tc.name!,
+                  arguments: tc.arguments,
+                  status: 'failed',
+                  durationMs
+                });
+
+                const eventPayload = {
+                  id: tc.id,
+                  tool: tc.name,
+                  status: 'failed',
+                  label: `Running ${tc.name}`,
+                  args: {},
+                  durationMs,
+                  output: output.slice(0, 400)
+                };
+                try {
+                  controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                } catch { /* ignore */ }
+
+                return {
+                  tool_call_id: tc.id,
+                  role: 'tool',
+                  name: tc.name,
+                  content: output
+                };
+              }
+
+              const ALLOWED_TOOLS = ['analyze_image', 'process_file', 'web_search', 'generate_artifact'];
+              if (!ALLOWED_TOOLS.includes(tc.name)) {
+                success = false;
+                output = 'Tool execution failed: unknown tool name.';
+                durationMs = Date.now() - start;
+
+                toolsExecuted.push({
+                  id: tc.id!,
+                  name: tc.name!,
+                  arguments: tc.arguments,
+                  status: 'failed',
+                  durationMs
+                });
+
+                const eventPayload = {
+                  id: tc.id,
+                  tool: tc.name,
+                  status: 'failed',
+                  label: `Running ${tc.name}`,
                   args: parsedArgs,
                   durationMs,
                   output: output.slice(0, 400)
@@ -986,135 +715,299 @@ ${rawCode.trim()}
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
                 } catch { /* ignore */ }
 
-                if (success && tc.name === 'web_search' && res && res.organic && Array.isArray(res.organic) && res.organic.length > 0) {
-                  const urls = res.organic.map((r: any) => ({
-                    title: r.title,
-                    url: r.link,
-                    snippet: r.snippet
-                  }));
-                  const resultsPayload = {
-                    urls,
-                    query: parsedArgs.query
-                  };
-                  try {
-                    controller.enqueue(encoder.encode(`event: web_search_results\ndata: ${JSON.stringify(resultsPayload)}\n\n`));
-                  } catch { /* ignore */ }
-                }
+                return {
+                  tool_call_id: tc.id,
+                  role: 'tool',
+                  name: tc.name,
+                  content: output
+                };
+              }
 
-                let finalOutput = output;
-                // Don't truncate artifact content — it IS the deliverable
-                const truncLimit = tc.name === 'generate_artifact' ? 80000 : 12000;
-                if (output.length > truncLimit) {
-                  console.warn(`[chat-proxy] Tool result for ${tc.name} truncated from ${output.length} characters.`);
-                  finalOutput = output.slice(0, truncLimit) + '\n\n[Result truncated for length]';
+              const toolName = tc.name;
+              let isLimitReached = false;
+              let limitMsg = '';
+
+              if (toolName === 'web_search') {
+                const query = (parsedArgs?.query || '').trim().toLowerCase();
+                const currentCount = toolCallCounts['web_search'] || 0;
+                const maxForWebSearch = MAX_CALLS_PER_TOOL['web_search'] ?? 3;
+
+                if (currentCount >= maxForWebSearch) {
+                  isLimitReached = true;
+                  limitMsg = 'Search limit reached for this message. Use results already retrieved.';
+                } else if (query && searchedQueries.has(query)) {
+                  isLimitReached = true;
+                  limitMsg = 'Query already searched. Use results already retrieved.';
                 }
+                
+                if (!isLimitReached) {
+                  toolCallCounts['web_search'] = currentCount + 1;
+                  if (query) {
+                    searchedQueries.add(query);
+                  }
+                }
+              } else if (toolName === 'analyze_image') {
+                const imageIds = parsedArgs?.image_ids || [];
+                if (Array.isArray(imageIds) && imageIds.length > 0) {
+                  const allAlreadyAnalyzed = imageIds.every((id: string) => analyzedImageIds.has(id));
+                  if (allAlreadyAnalyzed) {
+                    isLimitReached = true;
+                    limitMsg = 'Image already analyzed. Use results already retrieved.';
+                  } else {
+                    imageIds.forEach((id: string) => analyzedImageIds.add(id));
+                  }
+                }
+              } else if (toolName === 'process_file') {
+                const fileId = parsedArgs?.file_id;
+                if (fileId && typeof fileId === 'string') {
+                  if (processedFileIds.has(fileId)) {
+                    isLimitReached = true;
+                    limitMsg = 'File already processed. Use results already retrieved.';
+                  } else {
+                    processedFileIds.add(fileId);
+                  }
+                }
+              } else {
+                const currentCount = toolCallCounts[toolName] || 0;
+                if (currentCount >= 1) {
+                  isLimitReached = true;
+                  limitMsg = 'Execution limit reached for this tool.';
+                } else {
+                  toolCallCounts[toolName] = currentCount + 1;
+                }
+              }
+
+              if (isLimitReached) {
+                success = false;
+                output = limitMsg;
+                durationMs = Date.now() - start;
+
+                toolsExecuted.push({
+                  id: tc.id!,
+                  name: tc.name!,
+                  arguments: tc.arguments,
+                  status: 'failed',
+                  durationMs
+                });
+
+                const eventPayload = {
+                  id: tc.id,
+                  tool: tc.name,
+                  status: 'failed',
+                  label: `Running ${tc.name}`,
+                  args: parsedArgs,
+                  durationMs,
+                  output: output.slice(0, 400)
+                };
+                try {
+                  controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+                } catch { /* ignore */ }
 
                 return {
                   tool_call_id: tc.id,
                   role: 'tool',
                   name: tc.name,
-                  content: finalOutput
+                  content: output
                 };
-              };
-
-              const parallelResults = await Promise.all(parallelCalls.map(runTool));
-              toolResults.push(...parallelResults);
-
-              for (const tc of sequentialCalls) {
-                const res = await runTool(tc);
-                toolResults.push(res);
               }
 
-              currentMessages.push({
-                role: 'assistant',
-                content: '',
-                tool_calls: toolCalls.map(tc => ({
-                  id: tc.id,
-                  type: 'function',
-                  function: {
-                    name: tc.name,
-                    arguments: tc.arguments
+              let timerId: any;
+              let res: any = null;
+              try {
+                if (tc.name === 'generate_artifact') {
+                  // ── Artifact generation via coding model ──
+                  const codingModels = [
+                    Deno.env.get('CODING_CHAT_MODEL_PRIMARY'),
+                    Deno.env.get('CODING_CHAT_MODEL_SECONDARY'),
+                    Deno.env.get('CODING_CHAT_MODEL_TERTIARY'),
+                    Deno.env.get('CODING_CHAT_MODEL'),
+                  ].filter((m): m is string => !!m && m.trim().length > 0);
+                  if (codingModels.length === 0) codingModels.push('qwen/qwen-2.5-coder-32b-instruct');
+
+                  const artifactType = parsedArgs.artifact_type || 'html';
+                  const artifactTitle = parsedArgs.title || 'Artifact';
+                  const masterPrompt = parsedArgs.master_prompt || '';
+
+                  let codingResponse: Response | null = null;
+                  for (const codingModel of codingModels) {
+                    try {
+                      const codingPayload = {
+                        model: codingModel,
+                        messages: [
+                          { role: 'system', content: CODING_MODEL_SYSTEM_PROMPT },
+                          { role: 'user', content: masterPrompt }
+                        ],
+                        max_tokens: 16000,
+                        stream: false,
+                      };
+                      const codingRes = await fetch(OPENROUTER_URL_ARTIFACT, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+                          'HTTP-Referer': supabaseUrl,
+                          'X-Title': 'Lucen Artifact Engine',
+                        },
+                        body: JSON.stringify(codingPayload),
+                      });
+                      if (codingRes.ok) {
+                        codingResponse = codingRes;
+                        break;
+                      }
+                    } catch { /* try next model */ }
                   }
-                }))
+
+                  if (!codingResponse) {
+                    throw new Error('All coding models failed');
+                  }
+
+                  const codingData = await codingResponse.json();
+                  let artifactContent = codingData.choices?.[0]?.message?.content || '';
+
+                  // Unwrap markdown fences if present
+                  const fenceMatch = artifactContent.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
+                  if (fenceMatch && artifactContent.includes('<lucen_artifact')) {
+                    artifactContent = fenceMatch[1];
+                  } else if (!artifactContent.includes('<lucen_artifact')) {
+                    // Synthesize tag if model didn't include one
+                    const rawCode = fenceMatch ? fenceMatch[1] : artifactContent;
+                    artifactContent = `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">
+${rawCode.trim()}
+</lucen_artifact>`;
+                  }
+
+                  output = artifactContent;
+                  res = { content: artifactContent };
+
+                  // Track coding model token usage if available
+                  if (codingData.usage) {
+                    totalPromptTokens += codingData.usage.prompt_tokens || 0;
+                    totalCompletionTokens += codingData.usage.completion_tokens || 0;
+                  }
+                } else {
+                  // ── Standard tool execution (web_search, analyze_image, process_file) ──
+                  let siblingName = tc.name;
+                  if (tc.name === 'analyze_image') siblingName = 'describe-image';
+                  if (tc.name === 'process_file') siblingName = 'get-file-content';
+                  if (tc.name === 'web_search') siblingName = 'web-search';
+
+                  const toolTimeout = 12000;
+                  const executionPromise = callSiblingFunction(siblingName, parsedArgs);
+                  const timeoutPromise = new Promise<never>((_, reject) => {
+                    timerId = setTimeout(() => reject(new Error('timeout')), toolTimeout);
+                  });
+
+                  res = await Promise.race([executionPromise, timeoutPromise]);
+                  output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
+                }
+              } catch (err: any) {
+                success = false;
+                if (err.message === 'timeout') {
+                  output = 'Tool execution timed out. Please try again.';
+                } else {
+                  output = 'The requested information could not be retrieved. Please continue without it.';
+                }
+              } finally {
+                if (timerId) clearTimeout(timerId);
+              }
+
+              durationMs = Date.now() - start;
+              toolsExecuted.push({
+                id: tc.id!,
+                name: tc.name!,
+                arguments: tc.arguments,
+                status: success ? 'completed' : 'failed',
+                durationMs
               });
-              currentMessages.push(...toolResults);
+
+              if (tc.name === 'web_search') {
+                const maxResults = Number(parsedArgs.max_results ?? WEBSEARCH_DEFAULT_MAX_RESULTS);
+                totalSearchCost += computeWebSearchCredits(maxResults);
+              }
+
+              let label = '';
+              if (tc.name === 'analyze_image') {
+                label = parsedArgs.analysis_title || 'Analyzing image';
+              } else if (tc.name === 'process_file') {
+                label = parsedArgs.extraction_title || 'Reading file';
+              } else if (tc.name === 'web_search') {
+                label = parsedArgs.search_title || 'Searching the web';
+              } else if (tc.name === 'generate_artifact') {
+                label = parsedArgs.generation_title || 'Creating artifact';
+              } else {
+                const def = TOOLS[tc.name ?? ''];
+                label = def?.userFacingLabel ?? `Running ${tc.name}`;
+              }
+
+              const eventPayload = {
+                id: tc.id,
+                tool: tc.name,
+                status: success ? 'completed' : 'failed',
+                label,
+                args: parsedArgs,
+                durationMs,
+                output: output.slice(0, 400)
+              };
+              try {
+                controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
+              } catch { /* ignore */ }
+
+              if (success && tc.name === 'web_search' && res && res.organic && Array.isArray(res.organic) && res.organic.length > 0) {
+                const urls = res.organic.map((r: any) => ({
+                  title: r.title,
+                  url: r.link,
+                  snippet: r.snippet
+                }));
+                const resultsPayload = {
+                  urls,
+                  query: parsedArgs.query
+                };
+                try {
+                  controller.enqueue(encoder.encode(`event: web_search_results\ndata: ${JSON.stringify(resultsPayload)}\n\n`));
+                } catch { /* ignore */ }
+              }
+
+              let finalOutput = output;
+              // Don't truncate artifact content — it IS the deliverable
+              const truncLimit = tc.name === 'generate_artifact' ? 80000 : 12000;
+              if (output.length > truncLimit) {
+                console.warn(`[chat-proxy] Tool result for ${tc.name} truncated from ${output.length} characters.`);
+                finalOutput = output.slice(0, truncLimit) + '\n\n[Result truncated for length]';
+              }
+
+              return {
+                tool_call_id: tc.id,
+                role: 'tool',
+                name: tc.name,
+                content: finalOutput
+              };
+            };
+
+            const parallelResults = await Promise.all(parallelCalls.map(runTool));
+            toolResults.push(...parallelResults);
+
+            for (const tc of sequentialCalls) {
+              const res = await runTool(tc);
+              toolResults.push(res);
             }
-            if (keepaliveTimer) {
-              clearInterval(keepaliveTimer);
-              keepaliveTimer = null;
-            }
+
+            currentMessages.push({
+              role: 'assistant',
+              content: '',
+              tool_calls: toolCalls.map(tc => ({
+                id: tc.id,
+                type: 'function',
+                function: {
+                  name: tc.name,
+                  arguments: tc.arguments
+                }
+              }))
+            });
+            currentMessages.push(...toolResults);
+
             rounds++;
             continue;
           } else {
-            try {
-              controller.enqueue(encoder.encode(
-                `event: content_start\ndata: ${JSON.stringify({ 
-                  after_tool_calls: rounds > 0, model: effectiveModel 
-                })}\n\n`
-              ));
-            } catch { /* ignore */ }
-
-            for (let i = 0; i < firstChunks.length; i++) {
-              if (!flushedChunks[i]) {
-                try {
-                  controller.enqueue(firstChunks[i]);
-                } catch { /* ignore */ }
-                flushedChunks[i] = true;
-              }
-            }
-
-            while (true) {
-              const currentSecs = Math.floor(Date.now() / 1000);
-              if (expiry && currentSecs >= expiry && !jwtVerifiedMidStream) {
-                jwtVerifiedMidStream = true;
-                const { data: midUser, error: midErr } = await supabaseAdmin.auth.admin.getUserById(userId);
-                if (midErr || !midUser?.user) {
-                  try {
-                    controller.enqueue(encoder.encode(
-                      `event: error\ndata: ${JSON.stringify({ error: "Session expired. Please sign in again.", code: 401 })}\n\n`
-                    ));
-                    controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                  } catch { /* ignore */ }
-                  throw new Error('JWT expired mid-stream and refresh validation failed');
-                }
-              }
-
-              const { done, value } = await reader.read();
-              if (done) break;
-              if (value) {
-                try {
-                  controller.enqueue(value);
-                } catch { /* ignore */ }
-
-                const text = decoder.decode(value, { stream: true });
-                const lines = text.split('\n');
-                for (const line of lines) {
-                  if (!line.trim().startsWith('data: ')) continue;
-                  const dataStr = line.trim().slice(6);
-                  if (dataStr === '[DONE]') {
-                    finalSawDone = true;
-                    continue;
-                  }
-                  try {
-                    const parsed = JSON.parse(dataStr);
-                    if (parsed.usage) {
-                      totalPromptTokens += parsed.usage.prompt_tokens || 0;
-                      totalCompletionTokens += parsed.usage.completion_tokens || 0;
-                      totalReasoningTokens += getReasoningTokens(parsed.usage) || 0;
-                    }
-                    if (parsed.error) {
-                      finalStreamError = parsed.error.message ?? 'stream error';
-                    }
-                    const choice = parsed.choices?.[0];
-                    const fr = choice?.finish_reason;
-                    if (fr !== null && fr !== undefined) {
-                      finishReason = String(fr);
-                    }
-                  } catch { /* skip */ }
-                }
-              }
-            }
-
             if (!finalSawDone) {
               try {
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
