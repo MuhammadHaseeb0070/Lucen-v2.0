@@ -583,13 +583,31 @@ export const useChatStore = create<ChatStore>()(
                             );
                         }
                     }
+                    
 
-                    // Enqueue execution plan if present
-                    if (msg?.role === 'assistant' && msg.executionPlan) {
-                        import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
-                            const queueStore = useExecutionQueueStore.getState();
-                            if (!queueStore.getItem(msgId)) {
-                                queueStore.enqueuePlan(msgId, convId, msg.executionPlan!);
+
+                    if (msg && msg.role === 'assistant') {
+                        import('../lib/artifactParser').then(({ parseArtifacts }) => {
+                            const parsed = parseArtifacts(updates.content ?? msg.content, msgId, true);
+                            if (parsed.executionPlan) {
+                                set((state) => ({
+                                    conversations: state.conversations.map((c) =>
+                                        c.id === convId
+                                            ? {
+                                                  ...c,
+                                                  messages: c.messages.map((m) =>
+                                                      m.id === msgId ? { ...m, executionPlan: parsed.executionPlan } : m
+                                                  ),
+                                              }
+                                            : c
+                                    ),
+                                }));
+                                import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
+                                    const queueStore = useExecutionQueueStore.getState();
+                                    if (!queueStore.getItem(msgId)) {
+                                        queueStore.enqueuePlan(msgId, convId, parsed.executionPlan!);
+                                    }
+                                });
                             }
                         });
                     }
