@@ -222,6 +222,14 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
         } catch { /* ignore */ }
       };
       
+      keepaliveTimer = setInterval(() => {
+        try {
+          // Send a tiny comment to keep the connection and the client watchdog alive
+          controller.enqueue(encoder.encode(`:\n\n`));
+          flushStream();
+        } catch { /* ignore */ }
+      }, 15000);
+
       let currentMessages = [...messages];
       let rounds = 0;
       
