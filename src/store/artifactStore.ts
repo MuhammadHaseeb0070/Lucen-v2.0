@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { useChatStore } from './chatStore';
+import { parseArtifacts } from '../lib/artifactParser';
 import type {
   Artifact,
   ArtifactPatchStatus,
@@ -60,6 +62,8 @@ interface ArtifactStore {
   getDbId: (clientId: string) => string | undefined;
   // Propagate dbId / isPublic / slug back into the active artifact
   patchActiveArtifact: (patch: Partial<Artifact>) => void;
+  // Get artifact by id (checks activeArtifact, falls back to chatStore)
+  getArtifactById: (id: string | undefined) => Artifact | null;
   // Hub
   setArtifactHubOpen: (open: boolean) => void;
   // Feedback toast
@@ -166,9 +170,26 @@ export const useArtifactStore = create<ArtifactStore>()(
   getDbId: (clientId) => get().dbIds[clientId],
 
   patchActiveArtifact: (patch) => {
-    const active = get().activeArtifact;
-    if (!active) return;
-    set({ activeArtifact: { ...active, ...patch } });
+    const { activeArtifact } = get();
+    if (activeArtifact) {
+      set({ activeArtifact: { ...activeArtifact, ...patch } });
+    }
+  },
+
+  getArtifactById: (id) => {
+    if (!id) return null;
+    if (get().activeArtifact?.id === id) return get().activeArtifact;
+    
+    // We can safely use useChatStore since we imported it at the top
+    const chatStore = useChatStore.getState();
+    for (const conv of Object.values(chatStore.conversations)) {
+      for (const msg of conv.messages) {
+        const parsed = parseArtifacts(msg.content, msg.id, false);
+        const found = parsed.artifacts.find((a) => a.id === id);
+        if (found) return found;
+      }
+    }
+    return null;
   },
 
   setArtifactHubOpen: (open) => set({ artifactHubOpen: open }),

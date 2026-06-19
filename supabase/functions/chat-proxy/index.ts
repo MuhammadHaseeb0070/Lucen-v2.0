@@ -224,6 +224,7 @@ Deno.serve(async (req: Request) => {
 
     const isSideChat = model === 'side-chat-model';
     const isMainChat = model === 'main-chat-model';
+    const isCodingChat = model === 'coding-chat-model';
 
     let fallbackModels: string[] = [];
     if (isMainChat) {
@@ -245,6 +246,16 @@ Deno.serve(async (req: Request) => {
       ].filter((m): m is string => !!m && m.trim().length > 0);
       if (fallbackModels.length === 0) {
         fallbackModels.push('openai/gpt-4o-mini');
+      }
+    } else if (isCodingChat) {
+      fallbackModels = [
+        Deno.env.get('CODING_CHAT_MODEL_PRIMARY'),
+        Deno.env.get('CODING_CHAT_MODEL_SECONDARY'),
+        Deno.env.get('CODING_CHAT_MODEL_TERTIARY'),
+        Deno.env.get('CODING_CHAT_MODEL')
+      ].filter((m): m is string => !!m && m.trim().length > 0);
+      if (fallbackModels.length === 0) {
+        fallbackModels.push('qwen/qwen-2.5-coder-32b-instruct');
       }
     } else {
       fallbackModels = [model];

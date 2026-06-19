@@ -11,6 +11,7 @@ import { useArtifactStore } from './artifactStore';
 import { initializeModelConfig } from '../config/models';
 import { fetchUserSettingsRow } from '../services/userSettings';
 import { resetParseWorker } from '../workers/artifactParseWorkerClient';
+import { ExecutionOrchestrator } from '../services/executionOrchestrator';
 
 let syncInFlight: Promise<void> | null = null;
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -107,4 +108,5 @@ useArtifactStore.subscribe(
 // Export a dummy initializer to force module evaluation on startup
 export function initOrchestrator() {
     // Module evaluation sets up the subscribers above
+    ExecutionOrchestrator.start();
 }

@@ -3,6 +3,7 @@ import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, 
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
+import ExecutionPlanViewer from './ExecutionPlanViewer';
 import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
@@ -264,7 +265,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     prev.artifacts.length === next.artifacts.length &&
                     (prev.artifacts.length === 0 ||
                         (prev.artifacts[0]?.id === next.artifacts[0]?.id &&
-                            prev.artifacts[0]?.content === next.artifacts[0]?.content))
+                            prev.artifacts[0]?.content === next.artifacts[0]?.content &&
+                            prev.artifacts[0]?.isStreaming === next.artifacts[0]?.isStreaming &&
+                            prev.artifacts[0]?.generationStatus === next.artifacts[0]?.generationStatus))
                 ) {
                     return prev;
                 }
@@ -284,7 +287,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     prev.artifacts.length === next.artifacts.length &&
                     (prev.artifacts.length === 0 ||
                         (prev.artifacts[0]?.id === next.artifacts[0]?.id &&
-                            prev.artifacts[0]?.content === next.artifacts[0]?.content))
+                            prev.artifacts[0]?.content === next.artifacts[0]?.content &&
+                            prev.artifacts[0]?.isStreaming === next.artifacts[0]?.isStreaming &&
+                            prev.artifacts[0]?.generationStatus === next.artifacts[0]?.generationStatus))
                 ) {
                     return prev;
                 }
@@ -620,6 +625,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         </div>
                     )}
 
+                    {message.executionPlan && (
+                        <ExecutionPlanViewer messageId={message.id} plan={message.executionPlan} />
+                    )}
+
                     {!disableArtifacts && artifacts.map((artifact) => (
                         <ArtifactCard key={artifact.id} artifact={artifact} />
                     ))}
@@ -793,6 +802,14 @@ const MessageBubble = React.memo(MessageBubbleComponent, (prevProps, nextProps) 
         for (let i = 0; i < pm.toolSteps.length; i++) {
             if (pm.toolSteps[i].status !== nm.toolSteps[i].status) return false;
             if (pm.toolSteps[i].label !== nm.toolSteps[i].label) return false;
+        }
+    }
+
+    if ((pm.executionPlan?.steps?.length ?? 0) !== (nm.executionPlan?.steps?.length ?? 0)) return false;
+    if (pm.executionPlan?.steps && nm.executionPlan?.steps) {
+        for (let i = 0; i < pm.executionPlan.steps.length; i++) {
+            if (pm.executionPlan.steps[i].status !== nm.executionPlan.steps[i].status) return false;
+            if (pm.executionPlan.steps[i].title !== nm.executionPlan.steps[i].title) return false;
         }
     }
 

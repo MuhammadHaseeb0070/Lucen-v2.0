@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactType } from '../types';
+import type { Artifact, ArtifactType, ExecutionPlan, ExecutionStep } from '../types';
 
 const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 'excel', 'word', 'pdf']);
 
@@ -77,7 +77,15 @@ function parseArtifactAttrs(attrs: string): {
 export interface ParseResult {
   cleanContent: string;
   artifacts: Artifact[];
+  executionPlan?: ExecutionPlan;
 }
+
+// Matches complete execution plan tags
+const COMPLETE_PLAN_RE = /<lucen_execution_plan\s+title=["']([^"']+)["']>([\s\S]*?)<\/lucen_execution_plan>/g;
+// Matches partial execution plan opening tag
+const PARTIAL_PLAN_OPEN_RE = /<lucen_execution_plan\s+title=["']([^"']+)["']>([\s\S]*)$/;
+// Matches steps inside the execution plan
+const PLAN_STEP_RE = /<step\s+title=["']([^"']+)["']\s+description=["']([^"']+)["']\s*\/>/g;
 
 /**
  * Parse artifact tags from AI response content.
@@ -112,7 +120,9 @@ function neutralizeFencedArtifactTags(text: string): string {
     return match.replace(/<lucen_artifact/g, '<lucen\u200Bartifact')
                 .replace(/<\/lucen_artifact>/g, '</lucen\u200Bartifact>')
                 .replace(/<lucen_patch/g, '<lucen\u200Bpatch')
-                .replace(/<\/lucen_patch>/g, '</lucen\u200Bpatch>');
+                .replace(/<\/lucen_patch>/g, '</lucen\u200Bpatch>')
+                .replace(/<lucen_execution_plan/g, '<lucen\u200Bexecution\u200Bplan')
+                .replace(/<\/lucen_execution_plan>/g, '</lucen\u200Bexecution\u200Bplan>');
   });
 }
 
@@ -125,12 +135,14 @@ export function parseArtifacts(
     !content ||
     (!content.includes('<lucen_artifact') &&
      !content.includes('<lucen_patch') &&
+     !content.includes('<lucen_execution_plan') &&
      !content.includes('</'))
   ) {
     return { cleanContent: content, artifacts: [] };
   }
 
   const artifacts: Artifact[] = [];
+  let executionPlan: ExecutionPlan | undefined = undefined;
   // Strip markdown fences that AI might accidentally wrap around the entire artifact block first.
   // This must run before neutralizing fenced tags so the unwrap regex matches unmodified tags.
   // We only unwrap if the code fence starts at the beginning of the content (after optional details/thinking block)
@@ -159,6 +171,49 @@ export function parseArtifacts(
   // conversational text.
   cleanContent = cleanContent.replace(/<lucen_patch\s*[^>]*>[\s\S]*$/, '');
   cleanContent = cleanContent.replace(/<lucen_patch[^>]*$/, '');
+
+  // Extract execution plan
+  cleanContent = cleanContent.replace(COMPLETE_PLAN_RE, (_match, title: string, stepsContent: string) => {
+    const steps: ExecutionStep[] = [];
+    const stepNodeRegex = /<step([^>]*?)\/>/gi;
+    let stepMatch;
+    while ((stepMatch = stepNodeRegex.exec(stepsContent)) !== null) {
+        const attrs = stepMatch[1];
+        const titleMatch = /title="([^"]+)"/i.exec(attrs);
+        const descMatch = /description="([^"]+)"/i.exec(attrs);
+        if (titleMatch && descMatch) {
+            steps.push({
+                title: titleMatch[1],
+                description: descMatch[1],
+                status: 'pending'
+            });
+        }
+    }
+    executionPlan = { title, steps };
+    return '';
+  });
+
+  // Check for partial execution plan
+  const partialPlanMatch = cleanContent.match(PARTIAL_PLAN_OPEN_RE);
+  if (partialPlanMatch && !executionPlan) {
+    const [fullMatch, title, stepsContent] = partialPlanMatch;
+    const steps: ExecutionStep[] = [];
+    let stepMatch;
+    while ((stepMatch = PLAN_STEP_RE.exec(stepsContent || '')) !== null) {
+      steps.push({
+        title: stepMatch[1],
+        description: stepMatch[2],
+        status: 'pending'
+      });
+    }
+    executionPlan = { title, steps };
+    cleanContent = cleanContent.slice(0, cleanContent.indexOf(fullMatch));
+  } else if (!executionPlan) {
+    const incompletePlanMatch = cleanContent.match(/<lucen_execution_plan[^>]*$/);
+    if (incompletePlanMatch) {
+      cleanContent = cleanContent.slice(0, cleanContent.indexOf(incompletePlanMatch[0]));
+    }
+  }
 
   // Extract all complete artifacts
   cleanContent = cleanContent.replace(
@@ -228,13 +283,15 @@ export function parseArtifacts(
   return {
     cleanContent: cleanContent.trim(),
     artifacts,
+    executionPlan,
   };
 }
 
 function stripOrphanedClosingTags(text: string): string {
-  // First strip all remaining lucen_artifact and lucen_patch closing tags
+  // First strip all remaining lucen_artifact, lucen_patch, and lucen_execution_plan closing tags
   text = text.replace(/<\/lucen_artifact>/gi, '');
   text = text.replace(/<\/lucen_patch>/gi, '');
+  text = text.replace(/<\/lucen_execution_plan>/gi, '');
 
   // Match a line that is only whitespace + HTML closing tags (possibly multiple).
   // Examples: "</head>", "</li></li></ul>", "  </body>  "

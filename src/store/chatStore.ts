@@ -583,6 +583,17 @@ export const useChatStore = create<ChatStore>()(
                             );
                         }
                     }
+
+                    // Enqueue execution plan if present
+                    if (msg?.role === 'assistant' && msg.executionPlan) {
+                        import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
+                            const queueStore = useExecutionQueueStore.getState();
+                            if (!queueStore.getItem(msgId)) {
+                                queueStore.enqueuePlan(msgId, convId, msg.executionPlan!);
+                            }
+                        });
+                    }
+
                     return;
                 }
 

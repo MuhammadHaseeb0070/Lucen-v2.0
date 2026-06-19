@@ -9449,3 +9449,82 @@ mark.search-highlight.is-active {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Execution Plan Viewer */
+.execution-plan-viewer {
+    margin-top: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    padding: 12px 16px;
+    font-size: 0.9rem;
+}
+
+.execution-plan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.execution-plan-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.execution-plan-status {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.execution-plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.execution-plan-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.execution-plan-step-icon {
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.execution-plan-step-title {
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.execution-plan-step--pending .execution-plan-step-title {
+    color: var(--text-tertiary);
+}
+
+.execution-plan-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bg-surface-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--divider);
+    border-radius: var(--r-md);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+}
+
+.execution-plan-retry-btn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}

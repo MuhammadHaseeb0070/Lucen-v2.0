@@ -31,6 +31,15 @@ let sideConfig: ModelConfig = {
     platformMaxStreamSeconds: 140,
 };
 
+let codingConfig: ModelConfig = {
+    modelDisplayName: import.meta.env.VITE_CODING_MODEL_NAME || 'Qwen 2.5 Coder 32B',
+    supportsReasoning: import.meta.env.VITE_CODING_SUPPORTS_REASONING === 'true',
+    contextWindowTokens: Number(import.meta.env.VITE_CODING_CONTEXT_WINDOW) || 32768,
+    maxOutputTokens: Number(import.meta.env.VITE_CODING_MAX_OUTPUT) || 8192,
+    tokensPerSecond: Number(import.meta.env.VITE_CODING_TOKENS_PER_SECOND) || 150,
+    platformMaxStreamSeconds: 140,
+};
+
 // ─── Platform budgets ─────────────────────────────────────────────────────
 export const PLATFORM_MAX_STREAM_SECONDS = 140;
 /** Grace passes — set to 0 to disable continuation entirely (one-shot). */
@@ -114,6 +123,26 @@ export function getActiveModel(isSideChat = false): ModelInfo {
         outputCostPer1k: 0,
         inputCostPer1m: 0,
         outputCostPer1m: 0,
+    };
+}
+
+export function getCodingModel(): ModelInfo & { apiModelId: string } {
+    return {
+        id: 'coding-chat-model',
+        apiModelId: import.meta.env.VITE_CODING_MODEL || 'qwen/qwen-2.5-coder-32b-instruct',
+        name: codingConfig.modelDisplayName,
+        provider: 'Lucen',
+        supportsReasoning: codingConfig.supportsReasoning,
+        supportsVision: false,
+        reasoningLeak: false,
+        maxTokens: codingConfig.maxOutputTokens,
+        maxOutputTokens: codingConfig.maxOutputTokens,
+        contextWindow: codingConfig.contextWindowTokens,
+        tokensPerSecond: codingConfig.tokensPerSecond,
+        inputCostPer1k: 0,
+        outputCostPer1k: 0,
+        inputCostPer1m: Number(import.meta.env.VITE_CODING_INPUT_COST_PER_1M) || 0.07,
+        outputCostPer1m: Number(import.meta.env.VITE_CODING_OUTPUT_COST_PER_1M) || 0.14,
     };
 }
 

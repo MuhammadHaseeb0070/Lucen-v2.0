@@ -16,6 +16,17 @@ export interface FileAttachment {
   hash?: string;       // SHA-256 content hash (for deduplication)
 }
 
+export interface ExecutionStep {
+  title: string;
+  description: string;
+  status?: 'pending' | 'running' | 'success' | 'failed';
+}
+
+export interface ExecutionPlan {
+  title: string;
+  steps: ExecutionStep[];
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -32,6 +43,7 @@ export interface Message {
   webSearchUrls?: string[];
   isPinned?: boolean;
   attachments?: FileAttachment[];
+  executionPlan?: ExecutionPlan;
   /**
    * Compact frontend-generated report for artifact patch turns.
    * Keeps the chat clean while still exposing what happened (attempts,
