@@ -300,15 +300,6 @@ export async function processStream(
             choice.finish_reason === 'end_turn'
           ) {
             sawNaturalFinish = true;
-            
-            if (choice.finish_reason === 'tool_calls' && !sawToolActivityEvent) {
-              wrappedCallbacks.onToolActivity?.({
-                id: `call_fallback_${Date.now()}`,
-                tool: 'tool',
-                status: 'running',
-                label: 'Working...'
-              });
-            }
           }
 
           const delta = choice.delta;

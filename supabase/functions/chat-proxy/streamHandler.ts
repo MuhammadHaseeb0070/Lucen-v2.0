@@ -896,7 +896,7 @@ ${rawCode.trim()}
 </lucen_artifact>`;
                   }
 
-                  output = artifactContent;
+                  output = `Artifact "${artifactTitle}" was successfully generated and sent to the user interface. Do not repeat or output the artifact content yourself. Provide a brief summary that the task is complete.`;
                   res = { content: artifactContent };
 
                   // Inline artifact streaming: write the generated artifact directly to the client's text stream
