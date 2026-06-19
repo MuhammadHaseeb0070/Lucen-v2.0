@@ -589,6 +589,13 @@ export const useChatStore = create<ChatStore>()(
                     if (msg && msg.role === 'assistant') {
                         import('../lib/artifactParser').then(({ parseArtifacts }) => {
                             const parsed = parseArtifacts(updates.content ?? msg.content, msgId, true);
+                            
+                            console.log('[ChatStore] parseArtifacts result:', {
+                              hasExecutionPlan: !!parsed.executionPlan,
+                              planTitle: parsed.executionPlan?.title,
+                              stepCount: parsed.executionPlan?.steps?.length
+                            });
+
                             if (parsed.executionPlan) {
                                 set((state) => ({
                                     conversations: state.conversations.map((c) =>
@@ -605,6 +612,7 @@ export const useChatStore = create<ChatStore>()(
                                 import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
                                     const queueStore = useExecutionQueueStore.getState();
                                     if (!queueStore.getItem(msgId)) {
+                                        console.log('[ChatStore] enqueuePlan firing for messageId:', msgId);
                                         queueStore.enqueuePlan(msgId, convId, parsed.executionPlan!);
                                     }
                                 });

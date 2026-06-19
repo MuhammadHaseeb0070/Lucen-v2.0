@@ -46,6 +46,10 @@ You are the Lucen Execution Engine. Your job is to surgically modify an existing
 }
 
 async function processQueue() {
+    import('../store/executionQueueStore').then(({ useExecutionQueueStore }) => {
+        console.log('[Orchestrator] processQueue called. Queue state:',
+            JSON.stringify(useExecutionQueueStore.getState().queue));
+    });
     if (isProcessing) return;
     isProcessing = true;
 
@@ -207,6 +211,7 @@ async function processPlan(item: ReturnType<typeof useExecutionQueueStore.getSta
 
 export const ExecutionOrchestrator = {
     start: () => {
+        console.log('[Orchestrator] start() called');
         const store = useExecutionQueueStore.getState();
         Object.values(store.queue).forEach(item => {
             if (item.status === 'running') {
