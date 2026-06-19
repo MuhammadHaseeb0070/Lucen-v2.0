@@ -884,16 +884,20 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   const codingData = await codingResponse.json();
                   let artifactContent = codingData.choices?.[0]?.message?.content || '';
 
-                  // Unwrap markdown fences if present
                   const fenceMatch = artifactContent.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
                   if (fenceMatch && artifactContent.includes('<lucen_artifact')) {
                     artifactContent = fenceMatch[1];
                   } else if (!artifactContent.includes('<lucen_artifact')) {
                     // Synthesize tag if model didn't include one
                     const rawCode = fenceMatch ? fenceMatch[1] : artifactContent;
-                    artifactContent = `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">
-${rawCode.trim()}
-</lucen_artifact>`;
+                    artifactContent = `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">\n${rawCode.trim()}\n</lucen_artifact>`;
+                  }
+
+                  // Guarantee closing tags if the model's response was truncated (e.g. hit max_tokens or stopped early)
+                  const openCount = (artifactContent.match(/<lucen_artifact/g) || []).length;
+                  const closeCount = (artifactContent.match(/<\/lucen_artifact>/g) || []).length;
+                  for (let i = 0; i < openCount - closeCount; i++) {
+                    artifactContent += '\n</lucen_artifact>';
                   }
 
                   output = `Artifact "${artifactTitle}" was successfully generated and sent to the user interface. Do not repeat or output the artifact content yourself. Provide a brief summary that the task is complete.`;
