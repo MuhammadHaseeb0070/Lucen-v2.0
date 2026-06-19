@@ -86,7 +86,18 @@ async function processPlan(item: ReturnType<typeof useExecutionQueueStore.getSta
             const data = await response.json();
             const content = data.choices[0].message.content;
 
-            const parsed = parseArtifacts(content, item.messageId, false);
+            let codeToParse = content;
+            // 1. If wrapped in a markdown fence and contains the tag, unwrap it to avoid neutralization
+            const fenceMatch = codeToParse.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
+            if (fenceMatch && codeToParse.includes('<lucen_artifact')) {
+                codeToParse = fenceMatch[1];
+            } else if (!codeToParse.includes('<lucen_artifact')) {
+                // 2. If no tag at all, synthesize one from the raw content
+                let rawCode = fenceMatch ? fenceMatch[1] : codeToParse;
+                codeToParse = `<lucen_artifact type="html" title="${item.plan.title.replace(/"/g, '&quot;')}">\n${rawCode.trim()}\n</lucen_artifact>`;
+            }
+
+            const parsed = parseArtifacts(codeToParse, item.messageId, true);
             if (parsed.artifacts.length > 0) {
                 const newArtifact = parsed.artifacts[0];
                 newArtifact.id = uuidv4();
@@ -99,12 +110,13 @@ async function processPlan(item: ReturnType<typeof useExecutionQueueStore.getSta
                 const currentContent = msg?.content || '';
                 
                 chatStore.updateMessage(item.conversationId, item.messageId, {
-                    content: currentContent + "\n\n" + content,
+                    content: currentContent + "\n\n" + codeToParse,
                     isStreaming: false,
                 });
                 
                 success = true;
             } else {
+                logger.warn('[ExecutionOrchestrator] Failed to parse artifact. Raw content was:\n' + content);
                 throw new Error('Failed to parse artifact from response');
             }
         } catch (err) {
