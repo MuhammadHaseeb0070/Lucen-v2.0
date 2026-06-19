@@ -590,31 +590,14 @@ export const useChatStore = create<ChatStore>()(
                     if (msg && msg.role === 'assistant') {
                         const parsed = parseArtifacts(updates.content ?? msg.content, msgId, true);
                         
+                        // Legacy: execution plans are now handled server-side via the generate_artifact
+                        // tool call. The <lucen_execution_plan> XML flow has been replaced.
+                        // Old messages with execution plans in history will still render but
+                        // won't trigger new frontend-side execution.
                         if (parsed.executionPlan) {
-                            // If we just finished streaming the main response but found a plan,
-                            // KEEP it streaming so the UI spins while the background model works.
-                            set((state) => ({
-                                conversations: state.conversations.map((c) =>
-                                    c.id === convId
-                                        ? {
-                                                ...c,
-                                                messages: c.messages.map((m) =>
-                                                    m.id === msgId ? { ...m, executionPlan: parsed.executionPlan, isStreaming: true } : m
-                                                ),
-                                            }
-                                        : c
-                                ),
-                            }));
-                            
-                            // Re-save DB with isStreaming: true since we just wrote false
-                            db.updateMessageInDb(msgId, { isStreaming: true }).catch(() => {});
-
-                            import('./executionQueueStore').then(({ useExecutionQueueStore }) => {
-                                const queueStore = useExecutionQueueStore.getState();
-                                if (!queueStore.getItem(msgId)) {
-                                    queueStore.enqueuePlan(msgId, convId, parsed.executionPlan!);
-                                }
-                            });
+                            // No-op: kept for backward compat display only.
+                            // The artifact will arrive as a <lucen_artifact> tag in the
+                            // streamed response after the backend coding model finishes.
                         }
                     }
 

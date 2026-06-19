@@ -7,6 +7,47 @@ import { buildResponseFormatContract, WEBSEARCH_DEFAULT_MAX_RESULTS } from './ut
 import { computeWebSearchCredits, LC_PER_USD, WEBSEARCH_USD_PER_1K_RESULTS, CREDITS_PER_1K_TOKENS } from './billing.ts';
 import { getModelConfig, normalizeModelParams, getDynamicHeaders } from '../_shared/models.ts';
 
+const OPENROUTER_URL_ARTIFACT = 'https://openrouter.ai/api/v1/chat/completions';
+
+const CODING_MODEL_SYSTEM_PROMPT = `You are the Lucen Artifact Engine — a world-class frontend developer and designer.
+Your ONLY job is to generate a COMPLETE, fully functional, visually stunning artifact.
+
+OUTPUT FORMAT:
+Output ONLY a <lucen_artifact> tag with the complete code inside. No explanations, no markdown, no commentary.
+Format: <lucen_artifact type="[type]" title="[Title]">[complete code]</lucen_artifact>
+
+DESIGN PHILOSOPHY:
+Every artifact you create is a creative decision, not a template instantiation.
+Someone should look at your output and think "a designer made this" — not "an AI picked a layout."
+
+COLOR: Forget safe palettes. No pure #000/#FFF backgrounds, no blue-to-purple gradients, no neon-on-dark, no glassmorphism.
+Consider desaturated strange backgrounds (#2C1810, #0D1F0F), one loud color on an otherwise silent palette,
+wrong-feeling combinations that are actually right (dusty rose + military green), monochrome with temperature shifts.
+Pick 3-5 colors. Name them. Use them consistently.
+
+TYPOGRAPHY: Two faces maximum from Google Fonts. The pairing must create tension — not harmony.
+Good options: Syne, Space Grotesk, Bebas Neue, DM Serif Display, Darker Grotesque, Instrument Serif, Urbanist, Fraunces.
+Set a real type scale using ratio 1.25 or 1.333. Every size must come from this scale.
+
+LAYOUT: No section-by-section autonomous blocks. Every section must refer to something above or below it.
+One intentional grid break per design. Mobile-first. Breakpoints: 640px, 900px, 1200px.
+
+MOTION: One animation type per artifact. Either reveal (opacity+translateY, 280ms), interaction (specific properties, 140ms),
+or ambient (one element, loops). Always wrap in @media(prefers-reduced-motion: no-preference).
+
+SANDBOX RULES:
+- HTML artifacts run in a SANDBOXED iframe. No Node.js, no filesystem, no require, no npm.
+- CDN scripts are OK. Inline ALL CSS and JS.
+- All page transitions MUST use DOM manipulation (show/hide). NEVER use window.location.
+- Always include viewport meta tag.
+- For Excel: use openpyxl/pandas. For Word: use python-docx. For PDF: use fpdf2.
+- Excel/Word/PDF run in Pyodide (no internet, no GUI, 60s timeout).
+
+QUALITY GATE:
+Before outputting, verify: (a) every import works in sandbox, (b) HTML renders without errors,
+(c) code is complete and self-contained, (d) all tags properly closed, (e) the design is NOT generic.
+A working small artifact beats a broken ambitious one.`;
+
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 function getReasoningTokens(usage: Record<string, unknown> | undefined): number {
@@ -178,7 +219,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
       let rounds = 0;
       
       const toolCallCounts: Record<string, number> = {};
-      const MAX_CALLS_PER_TOOL: Record<string, number> = { web_search: 4 };
+      const MAX_CALLS_PER_TOOL: Record<string, number> = { web_search: 4, generate_artifact: 1 };
       const analyzedImageIds = new Set<string>();
       const processedFileIds = new Set<string>();
       const searchedQueries = new Set<string>();
@@ -206,6 +247,28 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
       
       const hasAttachments = uploadedImageIds.size > 0 || uploadedFileIds.size > 0;
       const maxRounds = hasAttachments && webSearchRequested ? 5 : webSearchRequested ? 4 : 3;
+
+      // ── Tool budget awareness: tell the brain model what's available ──
+      const toolBudgetParts: string[] = [];
+      if (toolsToPass.some((t: any) => t.function?.name === 'web_search')) {
+        toolBudgetParts.push('web_search (max 3 calls)');
+      }
+      if (toolsToPass.some((t: any) => t.function?.name === 'analyze_image')) {
+        toolBudgetParts.push(`analyze_image (${uploadedImageIds.size} image(s) available)`);
+      }
+      if (toolsToPass.some((t: any) => t.function?.name === 'process_file')) {
+        toolBudgetParts.push(`process_file (${uploadedFileIds.size} file(s) available)`);
+      }
+      if (toolsToPass.some((t: any) => t.function?.name === 'generate_artifact')) {
+        toolBudgetParts.push('generate_artifact (max 1 call, use for complex builds >50 lines)');
+      }
+      if (toolBudgetParts.length > 0) {
+        const budgetMsg = {
+          role: 'system',
+          content: `[Tool Budget] Available tools this turn: ${toolBudgetParts.join(', ')}. Plan your tool usage BEFORE calling — call independent tools in parallel, chain dependent tools sequentially. Do NOT call tools you don't need.`
+        };
+        currentMessages.push(budgetMsg);
+      }
       
       let totalPromptTokens = 0;
       let totalCompletionTokens = 0;
@@ -281,7 +344,22 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
             });
           }
 
-          const allLimitsReached = toolsToPass.length > 0 && toolsToPass.every((tool: any) => {
+          // ── Strip exhausted tools from subsequent rounds to prevent spiraling ──
+          if (rounds > 0) {
+            const activeTools = toolsToPass.filter((tool: any) => {
+              const name = tool.function?.name;
+              if (name === 'web_search' && (toolCallCounts['web_search'] || 0) >= 3) return false;
+              if (name === 'analyze_image' && uploadedImageIds.size > 0 && Array.from(uploadedImageIds).every(id => analyzedImageIds.has(id))) return false;
+              if (name === 'process_file' && uploadedFileIds.size > 0 && Array.from(uploadedFileIds).every(id => processedFileIds.has(id))) return false;
+              if (name === 'generate_artifact' && (toolCallCounts['generate_artifact'] || 0) >= 1) return false;
+              return true;
+            });
+            // Replace toolsToPass contents for this round
+            toolsToPass.length = 0;
+            toolsToPass.push(...activeTools);
+          }
+
+          const allLimitsReached = toolsToPass.length === 0 || toolsToPass.every((tool: any) => {
             const name = tool.function?.name;
             if (name === 'web_search') {
               return (toolCallCounts['web_search'] || 0) >= 3;
@@ -292,6 +370,9 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
             if (name === 'process_file') {
               return uploadedFileIds.size === 0 || Array.from(uploadedFileIds).every(id => processedFileIds.has(id));
             }
+            if (name === 'generate_artifact') {
+              return (toolCallCounts['generate_artifact'] || 0) >= 1;
+            }
             return false;
           });
           const isLastRound = rounds >= maxRounds - 1;
@@ -299,7 +380,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
           if (allLimitsReached || isLastRound) {
             currentMessages.push({
               role: 'system',
-              content: 'FINAL RESPONSE REQUIRED: You are at the step limit. You MUST write your final response now using only the search results and information already retrieved above. Do not output any search queries, tool calls, or XML tags (e.g. do not write <web_search>, <invoke>, or <tool_call>). Write a direct, complete, and useful answer to the user in the required markdown format.'
+              content: 'FINAL RESPONSE REQUIRED: All tool calls are complete. You MUST now write your final response directly to the user. Synthesize ALL tool results into a complete, helpful answer. If an artifact was generated, introduce it naturally. Do NOT attempt any more tool calls or output XML tool tags. Your response MUST contain substantive content — do not just output a one-line acknowledgment.'
             });
           }
 
@@ -641,7 +722,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   };
                 }
 
-                const ALLOWED_TOOLS = ['analyze_image', 'process_file', 'web_search'];
+                const ALLOWED_TOOLS = ['analyze_image', 'process_file', 'web_search', 'generate_artifact'];
                 if (!ALLOWED_TOOLS.includes(tc.name)) {
                   success = false;
                   output = 'Tool execution failed: unknown tool name.';
@@ -767,18 +848,92 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 let timerId: any;
                 let res: any = null;
                 try {
-                  let siblingName = tc.name;
-                  if (tc.name === 'analyze_image') siblingName = 'describe-image';
-                  if (tc.name === 'process_file') siblingName = 'get-file-content';
-                  if (tc.name === 'web_search') siblingName = 'web-search';
+                  if (tc.name === 'generate_artifact') {
+                    // ── Artifact generation via coding model ──
+                    const codingModels = [
+                      Deno.env.get('CODING_CHAT_MODEL_PRIMARY'),
+                      Deno.env.get('CODING_CHAT_MODEL_SECONDARY'),
+                      Deno.env.get('CODING_CHAT_MODEL_TERTIARY'),
+                      Deno.env.get('CODING_CHAT_MODEL'),
+                    ].filter((m): m is string => !!m && m.trim().length > 0);
+                    if (codingModels.length === 0) codingModels.push('qwen/qwen-2.5-coder-32b-instruct');
 
-                  const executionPromise = callSiblingFunction(siblingName, parsedArgs);
-                  const timeoutPromise = new Promise<never>((_, reject) => {
-                    timerId = setTimeout(() => reject(new Error('timeout')), 12000);
-                  });
+                    const artifactType = parsedArgs.artifact_type || 'html';
+                    const artifactTitle = parsedArgs.title || 'Artifact';
+                    const masterPrompt = parsedArgs.master_prompt || '';
 
-                  res = await Promise.race([executionPromise, timeoutPromise]);
-                  output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
+                    let codingResponse: Response | null = null;
+                    for (const codingModel of codingModels) {
+                      try {
+                        const codingPayload = {
+                          model: codingModel,
+                          messages: [
+                            { role: 'system', content: CODING_MODEL_SYSTEM_PROMPT },
+                            { role: 'user', content: masterPrompt }
+                          ],
+                          max_tokens: 16000,
+                          stream: false,
+                        };
+                        const codingRes = await fetch(OPENROUTER_URL_ARTIFACT, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+                            'HTTP-Referer': supabaseUrl,
+                            'X-Title': 'Lucen Artifact Engine',
+                          },
+                          body: JSON.stringify(codingPayload),
+                        });
+                        if (codingRes.ok) {
+                          codingResponse = codingRes;
+                          break;
+                        }
+                      } catch { /* try next model */ }
+                    }
+
+                    if (!codingResponse) {
+                      throw new Error('All coding models failed');
+                    }
+
+                    const codingData = await codingResponse.json();
+                    let artifactContent = codingData.choices?.[0]?.message?.content || '';
+
+                    // Unwrap markdown fences if present
+                    const fenceMatch = artifactContent.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
+                    if (fenceMatch && artifactContent.includes('<lucen_artifact')) {
+                      artifactContent = fenceMatch[1];
+                    } else if (!artifactContent.includes('<lucen_artifact')) {
+                      // Synthesize tag if model didn't include one
+                      const rawCode = fenceMatch ? fenceMatch[1] : artifactContent;
+                      artifactContent = `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">
+${rawCode.trim()}
+</lucen_artifact>`;
+                    }
+
+                    output = artifactContent;
+                    res = { content: artifactContent };
+
+                    // Track coding model token usage if available
+                    if (codingData.usage) {
+                      totalPromptTokens += codingData.usage.prompt_tokens || 0;
+                      totalCompletionTokens += codingData.usage.completion_tokens || 0;
+                    }
+                  } else {
+                    // ── Standard tool execution (web_search, analyze_image, process_file) ──
+                    let siblingName = tc.name;
+                    if (tc.name === 'analyze_image') siblingName = 'describe-image';
+                    if (tc.name === 'process_file') siblingName = 'get-file-content';
+                    if (tc.name === 'web_search') siblingName = 'web-search';
+
+                    const toolTimeout = 12000;
+                    const executionPromise = callSiblingFunction(siblingName, parsedArgs);
+                    const timeoutPromise = new Promise<never>((_, reject) => {
+                      timerId = setTimeout(() => reject(new Error('timeout')), toolTimeout);
+                    });
+
+                    res = await Promise.race([executionPromise, timeoutPromise]);
+                    output = res.description ?? res.content ?? res.text ?? JSON.stringify(res);
+                  }
                 } catch (err: any) {
                   success = false;
                   if (err.message === 'timeout') {
@@ -811,6 +966,8 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   label = parsedArgs.extraction_title || 'Reading file';
                 } else if (tc.name === 'web_search') {
                   label = parsedArgs.search_title || 'Searching the web';
+                } else if (tc.name === 'generate_artifact') {
+                  label = parsedArgs.generation_title || 'Creating artifact';
                 } else {
                   const def = TOOLS[tc.name ?? ''];
                   label = def?.userFacingLabel ?? `Running ${tc.name}`;
@@ -845,9 +1002,11 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                 }
 
                 let finalOutput = output;
-                if (output.length > 12000) {
+                // Don't truncate artifact content — it IS the deliverable
+                const truncLimit = tc.name === 'generate_artifact' ? 80000 : 12000;
+                if (output.length > truncLimit) {
                   console.warn(`[chat-proxy] Tool result for ${tc.name} truncated from ${output.length} characters.`);
-                  finalOutput = output.slice(0, 12000) + '\n\n[Result truncated for length]';
+                  finalOutput = output.slice(0, truncLimit) + '\n\n[Result truncated for length]';
                 }
 
                 return {

@@ -95,6 +95,38 @@ export const TOOLS: Record<string, ToolDefinition> = {
         },
         parallelizable: true,
         userFacingLabel: 'Extracting file content'
+    },
+    generate_artifact: {
+        type: 'function',
+        function: {
+            name: 'generate_artifact',
+            description: 'Generate a complex, complete artifact (HTML app, dashboard, game, widget, interactive UI, etc.) from a detailed prompt. Use ONLY when the user requests building something that requires more than 50 lines of code. The master_prompt must be exhaustively detailed — it is the ONLY input the coding engine receives. Include: full layout description, every UI section, every feature, all colors, typography, spacing, interactions, animations, responsive behavior, data structures, JS logic, edge cases, empty states, error handling. A generic prompt produces generic output — be specific.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    master_prompt: {
+                        type: 'string',
+                        description: 'A massive, exhaustively detailed prompt describing EVERYTHING to build. Must include: full layout, every UI section, every feature, all colors, typography, spacing, interactions, animations, responsive behavior, data structures, JS logic, edge cases, empty states, error handling. Written so thoroughly that a coding model with zero other context can build the complete artifact perfectly in a single response.'
+                    },
+                    title: {
+                        type: 'string',
+                        description: 'Short title for the artifact (e.g. "Expense Tracker", "Weather Dashboard")'
+                    },
+                    artifact_type: {
+                        type: 'string',
+                        enum: ['html', 'svg', 'mermaid', 'file', 'excel', 'word', 'pdf'],
+                        description: 'The type of artifact to generate. Most interactive apps/dashboards/games should be html.'
+                    },
+                    generation_title: {
+                        type: 'string',
+                        description: 'A 3-5 word label shown to the user as progress (e.g. "Building expense tracker", "Creating weather dashboard").'
+                    }
+                },
+                required: ['master_prompt', 'title', 'artifact_type']
+            }
+        },
+        parallelizable: false,
+        userFacingLabel: 'Creating artifact'
     }
 };
 

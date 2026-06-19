@@ -336,6 +336,9 @@ Deno.serve(async (req: Request) => {
 
     log.info('attachments check', { hasImage, hasFile, toolsToPassCount: toolsToPass.length });
 
+    // Always offer artifact generation via coding model
+    toolsToPass.push(TOOLS.generate_artifact);
+
     if (webSearchFallback) {
       const onlineModel = Deno.env.get('OPENROUTER_ONLINE_MODEL');
       if (onlineModel) {
