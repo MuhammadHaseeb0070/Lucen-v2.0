@@ -175,7 +175,6 @@ export async function processStream(
   signal?.addEventListener('abort', onAbort, { once: true });
 
   let currentEvent: string | null = null;
-  let sawToolActivityEvent = false;
   let treatReasoningAsContent = false;
 
   try {
@@ -222,7 +221,6 @@ export async function processStream(
           try {
             const activityData = JSON.parse(data);
             logger.info('[processStream] tool_activity event:', activityData);
-            sawToolActivityEvent = true;
             wrappedCallbacks.onToolActivity?.(activityData);
           } catch (err) {
             logger.error('[processStream] Failed to parse tool_activity JSON data:', err, data);
