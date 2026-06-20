@@ -44,7 +44,7 @@ export function messageCostApprox(m: Message): number {
   if (m.toolSteps) {
     for (const step of m.toolSteps) {
       if (step.output) {
-        total += approxTokens(step.output.slice(0, 300));
+        total += approxTokens(step.output);
       }
     }
   }

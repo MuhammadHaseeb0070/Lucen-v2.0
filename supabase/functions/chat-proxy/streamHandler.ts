@@ -422,9 +422,9 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
           if (rounds > 0) {
             currentMessages = currentMessages.map((msg) => {
               if (msg && typeof msg === 'object' && msg.role === 'tool' && typeof msg.content === 'string') {
-                const limit = msg.name === 'web_search' ? 6000
-                        : msg.name === 'process_file' ? 4000
-                        : 2000;
+                const limit = msg.name === 'web_search' ? 24000
+                        : msg.name === 'process_file' ? 80000
+                        : 12000;
                 if (msg.content.length > limit) {
                   console.warn(`[chat-proxy] Tool result for ${msg.name} truncated to ${limit} chars`);
                   return { ...msg, content: msg.content.slice(0, limit) + '\n[Truncated for efficiency]' };
@@ -744,7 +744,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   label: `Running ${tc.name}`,
                   args: {},
                   durationMs,
-                  output: output.slice(0, 400)
+                  output: output.slice(0, tc.name === 'process_file' ? 80000 : tc.name === 'web_search' ? 24000 : 12000)
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
@@ -779,7 +779,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   label: `Running ${tc.name}`,
                   args: {},
                   durationMs,
-                  output: output.slice(0, 400)
+                  output: output.slice(0, tc.name === 'process_file' ? 80000 : tc.name === 'web_search' ? 24000 : 12000)
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
@@ -815,7 +815,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   label: `Running ${tc.name}`,
                   args: parsedArgs,
                   durationMs,
-                  output: output.slice(0, 400)
+                  output: output.slice(0, tc.name === 'process_file' ? 80000 : tc.name === 'web_search' ? 24000 : 12000)
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
@@ -904,7 +904,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                   label: `Running ${tc.name}`,
                   args: parsedArgs,
                   durationMs,
-                  output: output.slice(0, 400)
+                  output: output.slice(0, tc.name === 'process_file' ? 80000 : tc.name === 'web_search' ? 24000 : 12000)
                 };
                 try {
                   controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
@@ -1101,7 +1101,7 @@ Every design decision must serve the emotional texture described in the creative
                 label,
                 args: parsedArgs,
                 durationMs,
-                output: output.slice(0, 400)
+                output: output.slice(0, tc.name === 'process_file' ? 80000 : tc.name === 'web_search' ? 24000 : 12000)
               };
               try {
                 controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify(eventPayload)}\n\n`));
