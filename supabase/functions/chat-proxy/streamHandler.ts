@@ -960,7 +960,6 @@ Every design decision must serve the emotional texture described in the creative
                           { role: 'system', content: CODING_MODEL_SYSTEM_PROMPT },
                           { role: 'user', content: userMessageToCodeModel }
                         ],
-                        max_tokens: 16000,
                         stream: false,
                       };
                       const codingRes = await fetch(OPENROUTER_URL_ARTIFACT, {
@@ -985,7 +984,21 @@ Every design decision must serve the emotional texture described in the creative
                   }
 
                   const codingData = await codingResponse.json();
-                  let artifactContent = codingData.choices?.[0]?.message?.content || '';
+                  const codingChoice = codingData.choices?.[0];
+                  let artifactContent = codingChoice?.message?.content || '';
+
+                  if (codingChoice?.finish_reason === 'length') {
+                    artifactContent = `
+                      <div style="padding: 24px; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.4); border-radius: 8px; color: #fca5a5; font-family: sans-serif; margin: 16px 0;">
+                        <h3 style="margin-top: 0; color: #ef4444; display: flex; align-items: center; gap: 8px;">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                          Generation Truncated
+                        </h3>
+                        <p style="margin-bottom: 0;">The requested artifact was too complex and exceeded the AI's maximum output token limit. The code generation was cut off mid-sentence.</p>
+                        <p style="margin-bottom: 0; margin-top: 8px;"><strong>To fix this:</strong> Please ask the AI to generate a smaller, more focused component, or break your request into smaller pieces.</p>
+                      </div>
+                    `;
+                  }
 
                   const fenceMatch = artifactContent.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
                   if (fenceMatch && artifactContent.includes('<lucen_artifact')) {
