@@ -100,7 +100,7 @@ export const TOOLS: Record<string, ToolDefinition> = {
         type: 'function',
         function: {
             name: 'generate_artifact',
-            description: 'Generate a complex, complete artifact (HTML app, dashboard, game, widget, interactive UI, etc.) from a detailed prompt. Use ONLY when the user requests building something that requires more than 50 lines of code. The master_prompt must be exhaustively detailed — it is the ONLY input the coding engine receives. Include: full layout description, every UI section, every feature, all colors, typography, spacing, interactions, animations, responsive behavior, data structures, JS logic, edge cases, empty states, error handling. A generic prompt produces generic output — be specific.',
+            description: 'Generate a complex, complete artifact (HTML app, dashboard, game, widget, interactive UI, etc.) from a detailed prompt. Use ONLY when the user requests building something that requires more than 50 lines of code. CRITICAL: You can only generate ONE artifact per response. If the user asks for multiple separate artifacts, you MUST either combine them into a single comprehensive UI (e.g., side-by-side) or politely explain the 1-artifact limit and ask which one they want built first. The master_prompt must be exhaustively detailed — it is the ONLY input the coding engine receives. Include: full layout description, every UI section, every feature, all colors, typography, spacing, interactions, animations, responsive behavior, data structures, JS logic, edge cases, empty states, error handling. A generic prompt produces generic output — be specific.',
             parameters: {
                 type: 'object',
                 properties: {

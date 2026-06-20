@@ -366,13 +366,16 @@ Deno.serve(async (req: Request) => {
 
         const userContent: Array<Record<string, unknown>> = [
             { type: 'text', text: textPreamble },
-            ...images.map((img) => ({
+        ];
+        images.forEach((img, i) => {
+            userContent.push({ type: 'text', text: `\nImage ${i + 1}:` });
+            userContent.push({
                 type: 'image_url',
                 // Always force low detail: fixed 85 tokens per image vs up to
                 // 1,700+ tokens with high/auto detail. Sufficient for description.
                 image_url: { url: img.dataUrl as string, detail: 'low' },
-            })),
-        ];
+            });
+        });
 
         const openrouterResponse = await fetch(OPENROUTER_URL, {
             method: 'POST',
