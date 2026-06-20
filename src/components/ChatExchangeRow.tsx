@@ -1,9 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import MessageBubble from './MessageBubble';
 import Logo from './Logo';
 import FileIcon, { getFileKindLabel } from './FileIcon';
 import { highlightText } from '../lib/searchHighlight';
 import type { Message } from '../types';
+
+const UserMessageBubble: React.FC<{ content: string; q: string }> = ({ content, q }) => {
+    const [expanded, setExpanded] = useState(false);
+    const THRESHOLD = 800; // ~10 lines of text depending on width
+
+    if (content.length <= THRESHOLD) {
+        return <>{q ? highlightText(content, q) : content}</>;
+    }
+
+    return (
+        <div className="user-message-collapsible">
+            <div className={`user-message-content ${expanded ? 'expanded' : 'collapsed'}`}>
+                {expanded 
+                    ? (q ? highlightText(content, q) : content)
+                    : (q ? highlightText(content.slice(0, THRESHOLD) + '...', q) : content.slice(0, THRESHOLD) + '...')}
+            </div>
+            <button className="user-message-toggle" onClick={() => setExpanded(!expanded)} style={{
+                background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.85em', marginTop: '4px', padding: 0
+            }}>
+                {expanded ? 'See less' : 'See more'}
+            </button>
+        </div>
+    );
+};
 
 export type ExchangeRow =
     | { kind: 'pair'; user: Message; assistant: Message | null }
@@ -104,7 +128,7 @@ const ChatExchangeRow: React.FC<ChatExchangeRowProps> = ({
                 </div>
                 <div className="msg-user-row" data-msg-id={msg.id}>
                     <div className="msg-user-bubble">
-                        {q ? highlightText(msg.content, q) : msg.content}
+                        <UserMessageBubble content={msg.content} q={q} />
                         {msg.attachments && msg.attachments.length > 0 ? (
                             <div className="msg-attachments">
                                 {msg.attachments.map((att) =>
