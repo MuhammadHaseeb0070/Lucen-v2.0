@@ -543,8 +543,11 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
             arguments: string;
           }>();
           let hasContentStartSent = false;
+          let hasSeenToolCall = false;
+          let abortStream = false;
 
           while (true) {
+            if (abortStream) break;
             const currentSecs = Math.floor(Date.now() / 1000);
             if (expiry && currentSecs >= expiry && !jwtVerifiedMidStream) {
               jwtVerifiedMidStream = true;
@@ -596,6 +599,7 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                     const delta = choice.delta;
                     if (delta) {
                       if (delta.tool_calls && Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+                        hasSeenToolCall = true;
                         for (const tc of delta.tool_calls) {
                           const index = tc.index;
                           if (!toolCallsMap.has(index)) {
@@ -608,9 +612,18 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
                         }
                         continue; // Skip enqueuing this tool_call line to the client
                       }
-                      if (delta.content || delta.reasoning || delta.reasoning_content) {
+                      
+                      const contentText = delta.content || delta.reasoning || delta.reasoning_content;
+                      if (contentText !== undefined && contentText !== null) {
+                        if (hasSeenToolCall && typeof contentText === 'string' && contentText.trim().length > 0) {
+                          console.warn('[chat-proxy] Model hallucinated content after tool call. Force-aborting stream.');
+                          abortStream = true;
+                          try { await reader.cancel(); } catch { /* ignore */ }
+                          break;
+                        }
                         hasContent = true;
                       }
+                      
                       if (parsed.error) {
                         finalStreamError = parsed.error.message ?? 'stream error';
                       }
