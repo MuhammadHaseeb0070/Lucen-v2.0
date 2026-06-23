@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
-import { schedulePersistUserSettings, parseAppearanceFromSettings } from '../services/userSettings';
+import { schedulePersistUserSettings, parseAppearanceFromSettings, type SavedThemeData } from '../services/userSettings';
 
 export interface ThemeColors {
     bgBase: string;
@@ -629,6 +629,7 @@ function flushAppearanceSyncToServer(): void {
         customBasePresetId: s.customBasePresetId,
         customColors: s.customColors,
         chatSizeStep: s.chatSizeStep,
+        savedThemes: s.savedThemes,
     };
     schedulePersistUserSettings({
         active_theme,
@@ -659,6 +660,7 @@ let lastActiveThemeId: any = null;
 let lastCustomBasePresetId: any = null;
 let lastCustomColors: any = null;
 let lastChatSizeStep: any = null;
+let lastSavedThemes: any = null;
 let cachedFingerprint = '';
 
 export function buildThemeApplyFingerprint(): string {
@@ -673,6 +675,7 @@ export function buildThemeApplyFingerprint(): string {
         s.activeThemeId === lastActiveThemeId &&
         s.customBasePresetId === lastCustomBasePresetId &&
         s.chatSizeStep === lastChatSizeStep &&
+        s.savedThemes === lastSavedThemes &&
         !customColorsChanged
     ) {
         return cachedFingerprint;
@@ -683,6 +686,7 @@ export function buildThemeApplyFingerprint(): string {
     lastCustomBasePresetId = s.customBasePresetId;
     lastCustomColors = s.customColors;
     lastChatSizeStep = s.chatSizeStep;
+    lastSavedThemes = s.savedThemes;
 
     const t = s.getResolvedTheme();
     const c = t.colors;
@@ -725,6 +729,7 @@ interface ThemeStore {
     customBasePresetId: string;
     customColors: Partial<ThemeColors>;
     chatSizeStep: number;
+    savedThemes: SavedThemeData[];
 
     settingsOpen: boolean;
     settingsTab: string;
@@ -735,6 +740,8 @@ interface ThemeStore {
     patchCustomColors: (patch: Partial<ThemeColors>) => void;
     resetCustomColors: () => void;
     beginCustomTheme: () => void;
+    saveCustomTheme: (name: string, emoji?: string) => void;
+    deleteSavedTheme: (id: string) => void;
     getResolvedTheme: () => ThemePreset;
     getActiveTheme: () => ThemePreset;
     hydrateFromServerRow: (row: { active_theme: string; settings: Record<string, unknown> }) => void;
@@ -752,9 +759,25 @@ function resolveThemeFromState(state: {
     activeThemeId: string;
     customBasePresetId: string;
     customColors: Partial<ThemeColors>;
+    savedThemes: SavedThemeData[];
 }): ThemePreset {
     if (state.themeSource === 'preset') {
-        return THEME_PRESETS.find((t) => t.id === state.activeThemeId) || THEME_PRESETS[0];
+        const builtIn = THEME_PRESETS.find((t) => t.id === state.activeThemeId);
+        if (builtIn) return builtIn;
+
+        const saved = state.savedThemes.find((t) => t.id === state.activeThemeId);
+        if (saved) {
+            const base = THEME_PRESETS.find((t) => t.id === saved.basePresetId) || THEME_PRESETS[0];
+            return {
+                id: saved.id,
+                name: saved.name,
+                emoji: saved.emoji,
+                category: 'curated',
+                isDark: base.isDark,
+                colors: mergeThemeColors(base.colors, saved.colors as Partial<ThemeColors>),
+            };
+        }
+        return THEME_PRESETS[0];
     }
     const base =
         THEME_PRESETS.find((t) => t.id === state.customBasePresetId) || THEME_PRESETS[0];
@@ -777,6 +800,7 @@ export const useThemeStore = create<ThemeStore>()(
             customBasePresetId: 'washi',
             customColors: {} as Partial<ThemeColors>,
             chatSizeStep: DEFAULT_CHAT_SIZE_STEP,
+            savedThemes: [] as SavedThemeData[],
 
             settingsOpen: false,
             settingsTab: 'appearance',
@@ -831,11 +855,60 @@ export const useThemeStore = create<ThemeStore>()(
                     s.themeSource === 'preset'
                         ? s.activeThemeId
                         : s.customBasePresetId;
-                const base = THEME_PRESETS.find((t) => t.id === baseId) || THEME_PRESETS[0];
+                
+                let actualBaseId = baseId;
+                if (s.themeSource === 'preset' && s.activeThemeId.startsWith('user_theme_')) {
+                    const st = s.savedThemes.find(t => t.id === s.activeThemeId);
+                    if (st) actualBaseId = st.basePresetId;
+                }
+                        
+                const base = THEME_PRESETS.find((t) => t.id === actualBaseId) || THEME_PRESETS[0];
                 set({
                     themeSource: 'custom',
                     customBasePresetId: base.id,
+                    customColors: s.themeSource === 'preset' && s.activeThemeId.startsWith('user_theme_') 
+                        ? s.savedThemes.find(t => t.id === s.activeThemeId)?.colors as Partial<ThemeColors> || {}
+                        : {},
+                });
+                scheduleAppearanceSyncToServer();
+            },
+
+            saveCustomTheme: (name, emoji = '🎨') => {
+                const s = get();
+                if (s.savedThemes.length >= 3) return;
+                const newId = `user_theme_${Date.now()}`;
+                
+                const newTheme: SavedThemeData = {
+                    id: newId,
+                    name: name.slice(0, 30),
+                    emoji: emoji.slice(0, 5),
+                    basePresetId: s.customBasePresetId,
+                    colors: { ...s.customColors } as Record<string, string>,
+                };
+                
+                set({
+                    savedThemes: [...s.savedThemes, newTheme],
+                    themeSource: 'preset',
+                    activeThemeId: newId,
                     customColors: {},
+                });
+                scheduleAppearanceSyncToServer();
+            },
+
+            deleteSavedTheme: (id) => {
+                const s = get();
+                const newSaved = s.savedThemes.filter(t => t.id !== id);
+                let newActiveId = s.activeThemeId;
+                let newSource = s.themeSource;
+                
+                if (s.themeSource === 'preset' && s.activeThemeId === id) {
+                    newActiveId = 'washi';
+                }
+                
+                set({
+                    savedThemes: newSaved,
+                    activeThemeId: newActiveId,
+                    themeSource: newSource,
                 });
                 scheduleAppearanceSyncToServer();
             },
@@ -846,7 +919,7 @@ export const useThemeStore = create<ThemeStore>()(
 
             hydrateFromServerRow: (row) => {
                 const appearance = parseAppearanceFromSettings(row.settings);
-                const known = (id: string) => THEME_PRESETS.some((t) => t.id === id);
+                const known = (id: string) => THEME_PRESETS.some((t) => t.id === id) || (appearance?.savedThemes || []).some((t) => t.id === id);
 
                 const clampStep = (n: number | undefined) =>
                     Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, n ?? DEFAULT_CHAT_SIZE_STEP));
@@ -868,6 +941,7 @@ export const useThemeStore = create<ThemeStore>()(
                                     : customBasePresetId,
                             customColors: (appearance.customColors as Partial<ThemeColors>) || {},
                             chatSizeStep,
+                            savedThemes: appearance.savedThemes || [],
                         });
                     } else {
                         const fromRow =
@@ -884,6 +958,7 @@ export const useThemeStore = create<ThemeStore>()(
                             customBasePresetId: 'washi',
                             customColors: {},
                             chatSizeStep,
+                            savedThemes: appearance.savedThemes || [],
                         });
                     }
                     return;
@@ -927,6 +1002,7 @@ export const useThemeStore = create<ThemeStore>()(
                     if (p.customColors === undefined) p.customColors = {};
                     if (p.chatSizeStep === undefined) p.chatSizeStep = DEFAULT_CHAT_SIZE_STEP;
                     if (p.activeThemeId === undefined || p.activeThemeId === '') p.activeThemeId = 'washi';
+                    if (p.savedThemes === undefined) p.savedThemes = [];
                 }
                 if (fromVersion < 3) {
                     delete p.chatFontId;
@@ -939,6 +1015,7 @@ export const useThemeStore = create<ThemeStore>()(
                 customBasePresetId: s.customBasePresetId,
                 customColors: s.customColors,
                 chatSizeStep: s.chatSizeStep,
+                savedThemes: s.savedThemes,
             }),
         },
         )

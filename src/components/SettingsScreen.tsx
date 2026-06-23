@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Palette, Info, Keyboard, Check, Activity, Shield, LogOut, Loader2 } from 'lucide-react';
+import { X, Palette, Info, Keyboard, Check, Activity, Shield, LogOut, Loader2, Trash2 } from 'lucide-react';
 import { useThemeStore, THEME_PRESETS } from '../store/themeStore';
 import type { ThemePreset } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
@@ -22,18 +22,21 @@ const TABS = [
 ] as const;
 
 // ─── Theme Card ───
-const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () => void }> = ({
+const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () => void; onDelete?: () => void }> = ({
     preset,
     isActive,
     onClick,
+    onDelete,
 }) => {
     const c = preset.colors;
     return (
-        <button
-            className={`theme-card ${isActive ? 'theme-card--active' : ''}`}
-            onClick={onClick}
-        >
-            <div className="theme-card__preview" style={{ background: c.bgBase }}>
+        <div style={{ position: 'relative' }}>
+            <button
+                className={`theme-card ${isActive ? 'theme-card--active' : ''}`}
+                onClick={onClick}
+                style={{ width: '100%' }}
+            >
+                <div className="theme-card__preview" style={{ background: c.bgBase }}>
                 <div className="theme-card__bar" style={{ background: c.bgSurface, borderBottom: `1px solid ${c.divider}` }}>
                     <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.accent }} />
                     <span style={{ width: 18, height: 3, borderRadius: 2, background: c.textTertiary }} />
@@ -49,13 +52,24 @@ const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () 
                 <span className="theme-card__name">{preset.name}</span>
                 {isActive && <Check size={14} className="theme-card__check" />}
             </div>
-        </button>
+            </button>
+            {onDelete && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    className="theme-card__delete-btn"
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.4)', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', zIndex: 2 }}
+                    title="Delete saved theme"
+                >
+                    <Trash2 size={12} />
+                </button>
+            )}
+        </div>
     );
 };
 
 // ─── Appearance Tab ───
 const AppearanceTab: React.FC = () => {
-    const { activeThemeId, themeSource, setTheme } = useThemeStore();
+    const { activeThemeId, themeSource, setTheme, savedThemes, deleteSavedTheme } = useThemeStore();
 
     const handleSelect = (id: string) => {
         setTheme(id);
@@ -64,6 +78,35 @@ const AppearanceTab: React.FC = () => {
     return (
         <div className="settings-tab-body settings-tab-body--appearance">
             <p className="settings-desc">Pick a theme that feels right for you.</p>
+
+            {savedThemes.length > 0 && (
+                <div className="theme-section">
+                    <h4 className="theme-section__title">Your Themes</h4>
+                    <div className="theme-grid">
+                        {savedThemes.map((st) => {
+                            const base = THEME_PRESETS.find((t) => t.id === st.basePresetId) || THEME_PRESETS[0];
+                            const preset: ThemePreset = {
+                                id: st.id,
+                                name: st.name,
+                                emoji: st.emoji,
+                                category: 'curated',
+                                isDark: base.isDark,
+                                colors: { ...base.colors, ...st.colors } as any
+                            };
+                            return (
+                                <ThemeCard
+                                    key={preset.id}
+                                    preset={preset}
+                                    isActive={themeSource === 'preset' && activeThemeId === preset.id}
+                                    onClick={() => handleSelect(preset.id)}
+                                    onDelete={() => deleteSavedTheme(preset.id)}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {CATEGORIES.map((cat) => {
                 const themes = THEME_PRESETS.filter((t) => t.category === cat.id);
                 if (!themes.length) return null;

@@ -6,12 +6,21 @@
 import { supabase, isSupabaseEnabled, hasActiveSession } from '../lib/supabase';
 import { logger } from '../lib/logger';
 
+export interface SavedThemeData {
+    id: string;
+    name: string;
+    emoji: string;
+    basePresetId: string;
+    colors: Record<string, string>;
+}
+
 export interface AppearanceSettingsPayload {
     themeSource: 'preset' | 'custom';
     activeThemeId: string;
     customBasePresetId: string;
     customColors: Record<string, string>;
     chatSizeStep: number;
+    savedThemes?: SavedThemeData[];
 }
 
 const DEBOUNCE_MS = 900;
@@ -93,10 +102,44 @@ export function parseAppearanceFromSettings(settings: Record<string, unknown>): 
         }
     }
 
+    let savedThemes: SavedThemeData[] | undefined;
+    if (Array.isArray(a.savedThemes)) {
+        savedThemes = [];
+        for (const item of a.savedThemes) {
+            if (savedThemes.length >= 3) break; // Hard limit
+            if (typeof item !== 'object' || !item) continue;
+            
+            const st = item as Record<string, unknown>;
+            if (typeof st.id !== 'string' || !st.id.startsWith('user_theme_')) continue;
+            
+            const id = st.id;
+            const name = typeof st.name === 'string' ? st.name.slice(0, 30) : 'Saved Theme';
+            const emoji = typeof st.emoji === 'string' ? st.emoji.slice(0, 5) : '🎨';
+            const basePresetId = typeof st.basePresetId === 'string' ? st.basePresetId : 'washi';
+            
+            const rawColors = st.colors as Record<string, unknown>;
+            if (typeof rawColors !== 'object' || !rawColors || Array.isArray(rawColors)) continue;
+            
+            const colors: Record<string, string> = {};
+            for (const [k, v] of Object.entries(rawColors)) {
+                if (typeof v === 'string') {
+                    // Strict sanitization to prevent CSS injection via DB payload
+                    const s = v.trim();
+                    if (!s.toLowerCase().includes('url(') && !s.includes(';') && !s.includes('}') && !s.includes('{') && !s.includes('var(') && !s.includes('expression(')) {
+                        colors[k] = s;
+                    }
+                }
+            }
+            
+            savedThemes.push({ id, name, emoji, basePresetId, colors });
+        }
+    }
+
     const out: Partial<AppearanceSettingsPayload> = { themeSource };
     if (activeThemeId !== undefined) out.activeThemeId = activeThemeId;
     if (customBasePresetId !== undefined) out.customBasePresetId = customBasePresetId;
     if (customColors !== undefined) out.customColors = customColors;
     if (chatSizeStep !== undefined) out.chatSizeStep = chatSizeStep;
+    if (savedThemes !== undefined) out.savedThemes = savedThemes;
     return out;
 }

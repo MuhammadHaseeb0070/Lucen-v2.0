@@ -47,6 +47,8 @@ const ChatAppearanceSection: React.FC = () => {
         setTheme,
         setChatSizeStep,
         getResolvedTheme,
+        savedThemes,
+        saveCustomTheme,
     } = useThemeStore();
 
     const settingsOpen = useThemeStore((s) => s.settingsOpen);
@@ -205,6 +207,21 @@ const ChatAppearanceSection: React.FC = () => {
                             }}
                         >
                             Use preset only
+                        </button>
+                        <button
+                            type="button"
+                            className="chat-appearance__btn-secondary"
+                            disabled={savedThemes.length >= 3}
+                            title={savedThemes.length >= 3 ? "Max 3 saved themes reached" : "Save as new theme"}
+                            onClick={() => {
+                                const name = window.prompt("Enter a name for your saved theme (max 30 chars):");
+                                if (name && name.trim()) {
+                                    flushDraftToStore();
+                                    saveCustomTheme(name.trim());
+                                }
+                            }}
+                        >
+                            Save as new theme
                         </button>
                     </div>
                 )}
