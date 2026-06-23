@@ -24,6 +24,16 @@ function hexForColorInput(css: string): string {
     return '#888888';
 }
 
+function sanitizeColorValue(val: any): string | null {
+    if (typeof val !== 'string') return null;
+    const s = val.trim();
+    // Strict blocklist for CSS vulnerabilities
+    if (s.toLowerCase().includes('url(') || s.includes(';') || s.includes('}') || s.includes('{') || s.includes('var(') || s.includes('expression(')) {
+        return null;
+    }
+    return s;
+}
+
 const ChatAppearanceSection: React.FC = () => {
     const {
         themeSource,
@@ -44,6 +54,11 @@ const ChatAppearanceSection: React.FC = () => {
     /** Local overlay so color drag does not write Zustand (and localStorage persist) on every pointer move. */
     const [draftOverlay, setDraftOverlay] = useState<Partial<ThemeColors>>({});
     const prevSettingsOpenRef = useRef(settingsOpen);
+
+    const [jsonInput, setJsonInput] = useState('');
+    const [jsonError, setJsonError] = useState<string | null>(null);
+    const [jsonSuccess, setJsonSuccess] = useState(false);
+    const jsonTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     const basePreset = useMemo(
         () => THEME_PRESETS.find((t) => t.id === customBasePresetId) || THEME_PRESETS[0],
@@ -69,6 +84,57 @@ const ChatAppearanceSection: React.FC = () => {
         }
         prevSettingsOpenRef.current = settingsOpen;
     }, [settingsOpen, flushDraftToStore]);
+
+    useEffect(() => {
+        if (document.activeElement !== jsonTextareaRef.current) {
+            setJsonInput(JSON.stringify(mergedColors, null, 2));
+            setJsonError(null);
+        }
+    }, [mergedColors]);
+
+    const handleApplyJson = useCallback(() => {
+        setJsonError(null);
+        setJsonSuccess(false);
+        try {
+            const parsed = JSON.parse(jsonInput);
+            if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                setJsonError("Invalid format: Must be a JSON object.");
+                return;
+            }
+
+            const patch: Partial<ThemeColors> = {};
+            const allKeys = [...THEME_SOLID_COLOR_KEYS, ...THEME_ALPHA_COLOR_KEYS];
+
+            let foundValidKeys = 0;
+            for (const key of allKeys) {
+                if (key in parsed) {
+                    const cleanVal = sanitizeColorValue(parsed[key]);
+                    if (cleanVal) {
+                        patch[key] = cleanVal;
+                        foundValidKeys++;
+                    }
+                }
+            }
+
+            if (foundValidKeys === 0) {
+                setJsonError("No valid color keys found in JSON.");
+                return;
+            }
+
+            // Apply to store
+            patchCustomColors(patch);
+            // Also clear draft overlay in case it overrides
+            setDraftOverlay({});
+            
+            setJsonSuccess(true);
+            setTimeout(() => setJsonSuccess(false), 2000);
+            
+            // Sync back formatted version
+            setJsonInput(JSON.stringify({ ...mergedColors, ...patch }, null, 2));
+        } catch (e) {
+            setJsonError("Invalid JSON syntax.");
+        }
+    }, [jsonInput, patchCustomColors, mergedColors]);
 
     /** Live preview while dragging (no Zustand persist until pointerup / blur). */
     useLayoutEffect(() => {
@@ -236,6 +302,35 @@ const ChatAppearanceSection: React.FC = () => {
                                 />
                             </div>
                         ))}
+                    </div>
+
+                    <div className="chat-appearance__json-section" style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h4 className="chat-appearance__color-label" style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>Advanced: Import/Export JSON</h4>
+                            <button 
+                                type="button" 
+                                className="chat-appearance__btn-secondary"
+                                onClick={handleApplyJson}
+                            >
+                                Apply JSON
+                            </button>
+                        </div>
+                        <p className="chat-appearance__subtitle" style={{ margin: 0 }}>
+                            Copy this JSON to ask an AI for a new theme, or paste an AI-generated theme here to apply it.
+                        </p>
+                        {jsonError && <div style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '4px' }}>{jsonError}</div>}
+                        {jsonSuccess && <div style={{ color: 'var(--success)', fontSize: '13px', marginTop: '4px' }}>Successfully applied colors!</div>}
+                        <textarea
+                            ref={jsonTextareaRef}
+                            value={jsonInput}
+                            onChange={(e) => {
+                                setJsonInput(e.target.value);
+                                setJsonError(null);
+                            }}
+                            className="chat-appearance__hex-input"
+                            style={{ width: '100%', height: '280px', resize: 'vertical', fontFamily: 'monospace', padding: '12px', whiteSpace: 'pre', borderRadius: '8px', lineHeight: '1.4' }}
+                            spellCheck={false}
+                        />
                     </div>
                 </>
             )}
