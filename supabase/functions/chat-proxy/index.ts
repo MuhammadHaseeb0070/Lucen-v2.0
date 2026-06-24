@@ -386,7 +386,6 @@ Deno.serve(async (req: Request) => {
 
     const effectivePlugins: unknown = webSearchFallback ? sanitizedWebPlugins : undefined;
     if (subscriptionStatus === 'free') {
-      forceImageDetailLow(messages);
       if (webSearchRequested && freeSearchesUsed >= FREE_TIER_MAX_SEARCHES) {
         return await fail(
           'insufficient_credits',

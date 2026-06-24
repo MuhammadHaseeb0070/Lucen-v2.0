@@ -372,9 +372,8 @@ Deno.serve(async (req: Request) => {
             userContent.push({ type: 'text', text: `\nImage ${i + 1}:` });
             userContent.push({
                 type: 'image_url',
-                // Always force low detail: fixed 85 tokens per image vs up to
-                // 1,700+ tokens with high/auto detail. Sufficient for description.
-                image_url: { url: img.dataUrl as string, detail: 'low' },
+                // Use auto detail to allow high-res tiles when text reading is necessary.
+                image_url: { url: img.dataUrl as string, detail: 'auto' },
             });
         });
 

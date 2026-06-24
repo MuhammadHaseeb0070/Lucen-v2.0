@@ -23,6 +23,11 @@ export class StreamSanitizer {
   
   // Tags whose inner content AND the tags themselves should be routed to content
   private artifactTags = ['lucen_artifact', 'lucen_patch'];
+
+  // Tags whose opening/closing wrappers are stripped but inner content
+  // passes through to the default channel (content). Used for <lucen_response>
+  // which the AI wraps around its visible response.
+  private transparentWrapperTags = ['lucen_response'];
   
   private config: StreamSanitizerConfig;
 
@@ -151,6 +156,14 @@ export class StreamSanitizer {
         }
 
         if (this.config.routeArtifactsToContent && checkTags(this.artifactTags, 'artifact')) {
+          if (partialMatch) return;
+          this.insideRoutingTag = matchedRoutingTag;
+          this.routingTagTarget = 'content';
+          continue;
+        }
+
+        // Transparent wrapper tags: strip the opening/closing tags, pass inner content to content channel
+        if (checkTags(this.transparentWrapperTags, 'think')) {
           if (partialMatch) return;
           this.insideRoutingTag = matchedRoutingTag;
           this.routingTagTarget = 'content';

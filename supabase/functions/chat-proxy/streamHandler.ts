@@ -293,7 +293,7 @@ Every design decision must serve the emotional texture described in the creative
               { role: 'system', content: CODING_MODEL_SYSTEM_PROMPT },
               { role: 'user', content: userMessageToCodeModel }
             ];
-            const requestBody = buildRequestBody(coderProfile, codingMessages, [], 4096, false);
+            const requestBody = buildRequestBody(coderProfile, codingMessages, [], 16384, false);
             requestBody.stream = false;
 
             const codingRes = await fetch(OPENROUTER_URL_ARTIFACT, {
@@ -348,7 +348,7 @@ Every design decision must serve the emotional texture described in the creative
           artifactContent += '\n</lucen_artifact>';
         }
 
-        output = `Artifact "${artifactTitle}" was successfully generated and sent to the user interface. Do not repeat or output the artifact content yourself. Provide a brief summary that the task is complete.`;
+        output = `Artifact "${artifactTitle}" was successfully generated and sent to the user interface. Do not repeat or output the artifact content yourself. Provide a brief summary that the task is complete. CRITICAL: Never output raw HTML, CSS, or JavaScript code in your response — the artifact is already rendered in the UI.`;
 
         try {
           const contentPayload = {
@@ -420,7 +420,7 @@ Every design decision must serve the emotional texture described in the creative
 
     // On success: emit SSE event
     try {
-      controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ tool: tc.name, status: "done" })}\n\n`));
+      controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ id: tc.id, tool: tc.name, status: "completed", label, durationMs: Date.now() - start })}\n\n`));
       flushStream();
     } catch { /* ignore */ }
 
@@ -449,7 +449,7 @@ Every design decision must serve the emotional texture described in the creative
 
     if (err.message === 'timeout') {
       try {
-        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ tool: tc.name, status: "failed", reason: "timeout" })}\n\n`));
+        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ id: tc.id, tool: tc.name, status: "failed", label, reason: "timeout", durationMs: Date.now() - start })}\n\n`));
         flushStream();
       } catch { /* ignore */ }
       return {
@@ -462,7 +462,7 @@ Every design decision must serve the emotional texture described in the creative
       } as any;
     } else {
       try {
-        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ tool: tc.name, status: "failed", reason: "error" })}\n\n`));
+        controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ id: tc.id, tool: tc.name, status: "failed", label, reason: "error", durationMs: Date.now() - start })}\n\n`));
         flushStream();
       } catch { /* ignore */ }
       return {
@@ -720,10 +720,18 @@ export async function handleStreamRequest(options: StreamHandlerOptions): Promis
           if (rounds > 0) {
             const activeTools = toolsToPass.filter((tool: any) => {
               const name = tool.function?.name;
-              if (name === 'web_search' && (toolCallCounts['web_search'] || 0) >= 3) return false;
-              if (name === 'analyze_image' && uploadedImageIds.size > 0 && Array.from(uploadedImageIds).every(id => analyzedImageIds.has(id))) return false;
-              if (name === 'process_file' && uploadedFileIds.size > 0 && Array.from(uploadedFileIds).every(id => processedFileIds.has(id))) return false;
-              if (name === 'generate_artifact' && (toolCallCounts['generate_artifact'] || 0) >= 1) return false;
+              if (name === 'web_search') {
+                return (toolCallCounts['web_search'] || 0) < 3;
+              }
+              if (name === 'analyze_image') {
+                return uploadedImageIds.size > 0 && Array.from(uploadedImageIds).some(id => !analyzedImageIds.has(id));
+              }
+              if (name === 'process_file') {
+                return uploadedFileIds.size > 0 && Array.from(uploadedFileIds).some(id => !processedFileIds.has(id));
+              }
+              if (name === 'generate_artifact') {
+                return (toolCallCounts['generate_artifact'] || 0) < 1;
+              }
               return true;
             });
             // Replace toolsToPass contents for this round
@@ -759,7 +767,9 @@ Rules:
 - If an artifact was generated, introduce it naturally without mentioning "coding model" or "generation pipeline".
 - Do NOT call any more tools.
 - Do NOT output XML tool tags.
-- Your response must be complete and substantive — never a one-liner.`
+- Your response must be complete and substantive — never a one-liner.
+- NEVER output raw HTML, CSS, JavaScript, or code blocks in your response. If an artifact failed to generate, describe what went wrong briefly and suggest the user try again — do NOT attempt to recreate the artifact yourself as inline code.
+- Begin your response IMMEDIATELY with the answer. Do not include any planning, reasoning, or "let me think" preamble before the actual response content.`
             });
           }
 
@@ -827,6 +837,14 @@ Rules:
           let hasContentStartSent = false;
           let hasSeenToolCall = false;
           let abortStream = false;
+
+          // Pre-response buffer: In the synthesis round (after tools), the model
+          // may emit reasoning/planning text as content before the <lucen_response>
+          // tag. We buffer this and only start forwarding once we see the response tag.
+          const isSynthesisRound = allLimitsReached || isLastRound;
+          let preResponseBuffer = '';
+          let hasSeenResponseTag = false;
+
 
           while (true) {
             if (abortStream) break;
@@ -916,8 +934,46 @@ Rules:
                       }
 
                       // Rebuild delta to contain only the clean content
+                      let cleanedContent = parsed_delta.content ?? '';
+
+                      // ── Pre-response buffer: suppress leaked reasoning in synthesis round ──
+                      // In the final synthesis round, models sometimes dump planning/reasoning
+                      // text before the <lucen_response> tag. Buffer everything and only
+                      // start forwarding once we see the tag.
+                      if (isSynthesisRound && !hasSeenResponseTag && cleanedContent) {
+                        preResponseBuffer += cleanedContent;
+                        const responseTagIdx = preResponseBuffer.indexOf('<lucen_response');
+                        if (responseTagIdx !== -1) {
+                          hasSeenResponseTag = true;
+                          // Find the end of the opening tag (the '>')
+                          const tagEndIdx = preResponseBuffer.indexOf('>', responseTagIdx);
+                          if (tagEndIdx !== -1) {
+                            // Everything after the opening tag is real content
+                            cleanedContent = preResponseBuffer.slice(tagEndIdx + 1);
+                          } else {
+                            // Tag not fully received yet — keep buffering
+                            cleanedContent = '';
+                          }
+                          // Log how much leaked reasoning we suppressed
+                          if (responseTagIdx > 0) {
+                            console.warn(`[chat-proxy] Suppressed ${responseTagIdx} chars of leaked reasoning before <lucen_response>`);
+                          }
+                        } else {
+                          // Haven't seen response tag yet — suppress this content
+                          // But cap the buffer at 8K to avoid unbounded memory
+                          if (preResponseBuffer.length > 8000) {
+                            console.warn('[chat-proxy] Pre-response buffer exceeded 8K without seeing <lucen_response> — flushing as content');
+                            hasSeenResponseTag = true;
+                            cleanedContent = preResponseBuffer;
+                          } else {
+                            cleanedContent = '';
+                          }
+                        }
+                        preResponseBuffer = '';
+                      }
+
                       choice.delta = {
-                        content: parsed_delta.content
+                        content: cleanedContent
                       };
                       line = `data: ${JSON.stringify(parsed)}`;
                     }
