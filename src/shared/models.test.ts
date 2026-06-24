@@ -20,7 +20,7 @@ beforeAll(() => {
   }
 });
 
-import { getModelConfig, normalizeModelParams, getDynamicHeaders } from '../../supabase/functions/_shared/models';
+import { getModelConfig, getDynamicHeaders } from '../../supabase/functions/_shared/models';
 
 describe('Shared Models Module', () => {
   describe('getModelConfig', () => {
@@ -43,33 +43,6 @@ describe('Shared Models Module', () => {
     });
   });
 
-  describe('normalizeModelParams', () => {
-    it('should strip temperature and top_p for OpenAI reasoning models', () => {
-      const payload = {
-        temperature: 0.7,
-        top_p: 0.9,
-        max_tokens: 1000,
-        is_reasoning: true,
-      };
-      const normalized = normalizeModelParams('openai/o1-mini', payload);
-      expect(normalized.temperature).toBeUndefined();
-      expect(normalized.top_p).toBeUndefined();
-      expect(normalized.max_completion_tokens).toBe(1000);
-      expect(normalized.reasoning).toEqual({ enabled: true, effort: 'high' });
-    });
-
-    it('should preserve parameters for standard models', () => {
-      const payload = {
-        temperature: 0.7,
-        top_p: 0.9,
-        max_tokens: 1000,
-      };
-      const normalized = normalizeModelParams('google/gemini-2.5-pro', payload);
-      expect(normalized.temperature).toBe(0.7);
-      expect(normalized.top_p).toBe(0.9);
-      expect(normalized.max_tokens).toBe(1000);
-    });
-  });
 
   describe('getDynamicHeaders', () => {
     it('should generate headers using environment overrides if matched', () => {

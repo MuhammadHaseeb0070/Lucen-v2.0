@@ -3,6 +3,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { recordUsage, type UsageStatus } from '../_shared/usage.ts';
 import { isKillSwitched } from '../_shared/featureFlags.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { buildModelProfile, buildRequestBody } from '../_shared/modelAdapter.ts';
 
 // ============================================================================
 // describe-image
@@ -377,6 +378,15 @@ Deno.serve(async (req: Request) => {
             });
         });
 
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent },
+        ];
+        const visionProfile = buildModelProfile('VISION');
+        const requestBody = buildRequestBody(visionProfile, messages, [], 1024, false);
+        requestBody.stream = false;
+        requestBody.include_usage = true;
+
         const openrouterResponse = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: {
@@ -385,16 +395,7 @@ Deno.serve(async (req: Request) => {
                 'HTTP-Referer': supabaseUrl,
                 'X-Title': 'Lucen (vision helper)',
             },
-            body: JSON.stringify({
-                model: visionModel,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userContent },
-                ],
-                stream: false,
-                max_tokens: Math.min(400 + (images.length * 350), 1800),
-                include_usage: true,
-            }),
+            body: JSON.stringify(requestBody),
         });
 
         if (!openrouterResponse.ok) {
@@ -408,14 +409,18 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const json = await openrouterResponse.json();
-        const description = String(json?.choices?.[0]?.message?.content || '').trim();
+        const data = await openrouterResponse.json();
+        const content = data?.choices?.[0]?.message?.content
+          ?? data?.content?.[0]?.text
+          ?? data?.candidates?.[0]?.content?.parts?.[0]?.text
+          ?? '';
+        const description = String(content).trim();
         if (!description) {
             return await fail('upstream_error', 502, 'Vision helper returned empty description');
         }
 
         // ─── Credit accounting ───────────────────────────────────────────────
-        const usage = json?.usage || {};
+        const usage = data?.usage || {};
         const promptTokens = usage?.prompt_tokens || 0;
         const completionTokens = usage?.completion_tokens || 0;
         const reasoningTokens = getReasoningTokens(usage);

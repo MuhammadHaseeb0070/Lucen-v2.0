@@ -6,7 +6,8 @@ import { TOOLS } from '../_shared/toolRegistry.ts';
 import { createLogger } from '../_shared/logging.ts';
 import { circuitAllow, circuitSuccess, circuitFailure } from '../_shared/circuitBreaker.ts';
 import { isKillSwitched } from '../_shared/featureFlags.ts';
-import { getModelConfig, normalizeModelParams, getDynamicHeaders } from '../_shared/models.ts';
+import { getModelConfig, getDynamicHeaders } from '../_shared/models.ts';
+import { buildModelProfile, buildRequestBody } from '../_shared/modelAdapter.ts';
 
 import { handleAuthAndRateLimit } from './auth.ts';
 import { deductCredits, computeWebSearchCredits, CREDITS_PER_IMAGE, CREDITS_PER_1K_TOKENS, LC_PER_USD, WEBSEARCH_USD_PER_1K_RESULTS } from './billing.ts';
@@ -263,6 +264,9 @@ Deno.serve(async (req: Request) => {
     fallbackModels = Array.from(new Set(fallbackModels));
 
     let effectiveModel = fallbackModels[0];
+    const activeModel = effectiveModel;
+    // Log resolved model for debugging
+    console.log('[chat-proxy] resolved model:', activeModel)
     accounting.modelId = effectiveModel;
 
     let configHeaders = getDynamicHeaders(effectiveModel, model);
@@ -415,19 +419,20 @@ Deno.serve(async (req: Request) => {
       for (const currentModel of fallbackModels) {
         try {
           log.info(`Attempting non-streaming call with model: ${currentModel}`);
-          const basePayload = {
-            model: currentModel,
+          const profile = buildModelProfile('MAIN');
+          profile.id = currentModel;
+          const requestBody = buildRequestBody(
+            profile,
             messages,
-            stream: false,
-            max_tokens: resolvedMaxTokens,
-            max_completion_tokens: resolvedMaxTokens,
-            include_usage: true,
-            ...(response_format ? { response_format } : {}),
-            ...(provider ? { provider } : {}),
-            ...(webSearchFallback && effectivePlugins ? { plugins: effectivePlugins } : {}),
-            ...(is_reasoning ? { is_reasoning: true } : {}),
-          };
-          const normalizedPayload = normalizeModelParams(currentModel, basePayload);
+            [],
+            resolvedMaxTokens,
+            is_reasoning ?? false
+          );
+          requestBody.stream = false;
+          requestBody.include_usage = true;
+          if (response_format) requestBody.response_format = response_format;
+          if (provider) requestBody.provider = provider;
+          if (webSearchFallback && effectivePlugins) requestBody.plugins = effectivePlugins;
 
           const res = await fetch(OPENROUTER_URL, {
             method: 'POST',
@@ -437,7 +442,7 @@ Deno.serve(async (req: Request) => {
               'HTTP-Referer': supabaseUrl,
               'X-Title': 'Lucen',
             },
-            body: JSON.stringify(normalizedPayload),
+            body: JSON.stringify(requestBody),
           });
 
           if (res.ok) {

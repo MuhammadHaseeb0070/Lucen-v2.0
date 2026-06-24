@@ -138,49 +138,7 @@ export function getModelConfig(modelId: string): ModelConfig {
   };
 }
 
-/**
- * Normalizes OpenRouter API request parameters based on specific model quirks.
- */
-export function normalizeModelParams(modelId: string, payload: Record<string, any>): Record<string, any> {
-  const normalized = { ...payload };
-  const idLower = (modelId || '').toLowerCase();
 
-  // 1. OpenAI reasoning models: require temperature = 1 or omitted, strip unsupported params
-  const isOpenAiReasoning = idLower.includes('/o1') || idLower.includes('/o3') || idLower.includes('openai/o1') || idLower.includes('openai/o3');
-  
-  if (isOpenAiReasoning) {
-    // Strip temperature, top_p, penalties
-    delete normalized.temperature;
-    delete normalized.top_p;
-    delete normalized.presence_penalty;
-    delete normalized.frequency_penalty;
-
-    // OpenAI o1 series requires max_completion_tokens instead of max_tokens
-    if (normalized.max_tokens !== undefined) {
-      normalized.max_completion_tokens = normalized.max_tokens;
-      delete normalized.max_tokens;
-    }
-  }
-
-  // 2. Adjust reasoning effort/payload for supporting models
-  if (normalized.is_reasoning || normalized.reasoning) {
-    const supportsReasoning = getModelConfig(modelId).supportsReasoning;
-    if (supportsReasoning) {
-      // Setup correct OpenRouter reasoning payload structure
-      normalized.reasoning = {
-        enabled: true,
-        ...(idLower.includes('o1') || idLower.includes('o3') ? { effort: 'high' } : {})
-      };
-      delete normalized.is_reasoning;
-    } else {
-      // Model does not support reasoning, strip it to prevent validation error
-      delete normalized.is_reasoning;
-      delete normalized.reasoning;
-    }
-  }
-
-  return normalized;
-}
 
 /**
  * Builds dynamic HTTP response headers matching the successful model's metadata, respecting env overrides.
