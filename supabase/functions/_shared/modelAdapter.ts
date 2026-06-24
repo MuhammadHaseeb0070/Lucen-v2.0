@@ -1,5 +1,7 @@
 export type ReasoningMode = 'none' | 'tokens' | 'stream_think_tag';
 
+export type ReasoningEffort = 'max' | 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+
 export type ProviderFamily = 'openai' | 'anthropic' | 'google';
 
 export interface ModelProfile {
@@ -9,7 +11,7 @@ export interface ModelProfile {
   supportsNativeTools: boolean;           // false = use XML tool emulation fallback
   requiresMaxCompletionTokens: boolean;   // true for openai/o1, openai/o3 only
   stripSystemRole: boolean;               // true for minimax/minimax-m1 only
-  reasoningEffort: 'low' | 'normal' | 'high';
+  reasoningEffort: ReasoningEffort;
 }
 
 export interface ParsedDelta {
@@ -26,23 +28,34 @@ export function buildModelProfile(modelEnvKey: 'MAIN' | 'CODER' | 'VISION'): Mod
   let modelId = '';
   let reasoningModeOverride: string | undefined;
   let toolSupportOverride: string | undefined;
-  let reasoningEffortOverride: string | undefined;
+
+  let reasoningEffort: ReasoningEffort = 'high';
+  const VALID_EFFORTS: ReasoningEffort[] = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal', 'none'];
 
   if (modelEnvKey === 'MAIN') {
     modelId = Deno.env.get('MAIN_CHAT_MODEL') || '';
     reasoningModeOverride = Deno.env.get('MAIN_CHAT_REASONING_MODE');
     toolSupportOverride = Deno.env.get('MAIN_CHAT_SUPPORTS_TOOLS');
-    reasoningEffortOverride = Deno.env.get('MAIN_CHAT_REASONING_EFFORT');
+    const rawEffort = Deno.env.get('MAIN_CHAT_REASONING_EFFORT') ?? 'high';
+    reasoningEffort = VALID_EFFORTS.includes(rawEffort as ReasoningEffort)
+      ? (rawEffort as ReasoningEffort)
+      : 'high';
   } else if (modelEnvKey === 'CODER') {
     modelId = Deno.env.get('CODER_MODEL') || Deno.env.get('CODING_CHAT_MODEL') || '';
     reasoningModeOverride = Deno.env.get('CODER_REASONING_MODE');
     toolSupportOverride = Deno.env.get('CODER_SUPPORTS_TOOLS');
-    reasoningEffortOverride = Deno.env.get('CODER_REASONING_EFFORT');
+    const rawEffort = Deno.env.get('CODER_REASONING_EFFORT') ?? 'high';
+    reasoningEffort = VALID_EFFORTS.includes(rawEffort as ReasoningEffort)
+      ? (rawEffort as ReasoningEffort)
+      : 'high';
   } else {
     modelId = Deno.env.get('VISION_HELPER_MODEL') || '';
     reasoningModeOverride = Deno.env.get('VISION_REASONING_MODE');
     toolSupportOverride = Deno.env.get('VISION_SUPPORTS_TOOLS');
-    reasoningEffortOverride = Deno.env.get('VISION_REASONING_EFFORT');
+    const rawEffort = Deno.env.get('VISION_REASONING_EFFORT') ?? 'high';
+    reasoningEffort = VALID_EFFORTS.includes(rawEffort as ReasoningEffort)
+      ? (rawEffort as ReasoningEffort)
+      : 'high';
   }
 
   const idLower = modelId.toLowerCase();
@@ -95,16 +108,6 @@ export function buildModelProfile(modelEnvKey: 'MAIN' | 'CODER' | 'VISION'): Mod
     supportsNativeTools = true;
   } else if (toolSupportOverride === 'false') {
     supportsNativeTools = false;
-  }
-
-  // Reasoning effort
-  let reasoningEffort: 'low' | 'normal' | 'high' = 'normal';
-  if (
-    reasoningEffortOverride === 'low' ||
-    reasoningEffortOverride === 'normal' ||
-    reasoningEffortOverride === 'high'
-  ) {
-    reasoningEffort = reasoningEffortOverride;
   }
 
   const requiresMaxCompletionTokens =
