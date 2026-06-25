@@ -411,7 +411,8 @@ Every design decision must serve the emotional texture described in the creative
     })();
 
     const timeoutPromise = new Promise<{ output: string; extraData: any }>((_, reject) => {
-      timerId = setTimeout(() => reject(new Error('timeout')), 12000);
+      const timeoutMs = tc.name === 'generate_artifact' ? 90000 : 15000;
+      timerId = setTimeout(() => reject(new Error('timeout')), timeoutMs);
     });
 
     const result = await Promise.race([executionPromise, timeoutPromise]);
@@ -950,6 +951,7 @@ Rules:
                           if (tagEndIdx !== -1) {
                             // Everything after the opening tag is real content
                             cleanedContent = preResponseBuffer.slice(tagEndIdx + 1);
+                            preResponseBuffer = ''; // Clear buffer since we found the tag
                           } else {
                             // Tag not fully received yet — keep buffering
                             cleanedContent = '';
@@ -965,11 +967,11 @@ Rules:
                             console.warn('[chat-proxy] Pre-response buffer exceeded 8K without seeing <lucen_response> — flushing as content');
                             hasSeenResponseTag = true;
                             cleanedContent = preResponseBuffer;
+                            preResponseBuffer = ''; // Clear buffer on flush
                           } else {
                             cleanedContent = '';
                           }
                         }
-                        preResponseBuffer = '';
                       }
 
                       choice.delta = {
