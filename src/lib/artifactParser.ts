@@ -210,7 +210,7 @@ export function parseArtifacts(
         parentId,
         version,
         isHead,
-        content: code.trim(),
+        content: code.trim().replace(/^```[\w]*\s*\n/, '').replace(/\n```$/, '').trim(),
         messageId,
         isImported: imported,
         meta,
@@ -234,7 +234,7 @@ export function parseArtifacts(
       parentId,
       version,
       isHead,
-      content: (partialCode || '').trim(),
+      content: (partialCode || '').trim().replace(/^```[\w]*\s*\n/, '').replace(/\n```$/, '').trim(),
       messageId,
       isImported: imported,
       // When forceClose is true (message stream has ended but the model

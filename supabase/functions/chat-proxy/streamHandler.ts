@@ -242,7 +242,7 @@ async function executeTool(
   // 3. EMIT progress event to client before executing (so UI shows activity):
   const label = parsedArgs.search_title ?? parsedArgs.analysis_title ?? parsedArgs.extraction_title ?? parsedArgs.generation_title ?? tc.name;
   try {
-    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ tool: tc.name, status: "running", label })}\n\n`));
+    controller.enqueue(encoder.encode(`event: tool_activity\ndata: ${JSON.stringify({ id: tc.id, tool: tc.name, status: "running", label })}\n\n`));
     flushStream();
   } catch { /* ignore */ }
 
@@ -937,11 +937,12 @@ Rules:
                       // Rebuild delta to contain only the clean content
                       let cleanedContent = parsed_delta.content ?? '';
 
-                      // ── Pre-response buffer: suppress leaked reasoning in synthesis round ──
-                      // In the final synthesis round, models sometimes dump planning/reasoning
-                      // text before the <lucen_response> tag. Buffer everything and only
-                      // start forwarding once we see the tag.
-                      if (isSynthesisRound && !hasSeenResponseTag && cleanedContent) {
+                      // ── Universal Pre-response buffer: suppress leaked reasoning ──
+                      // Models often dump planning/reasoning text before tool calls or before
+                      // the <lucen_response> tag. Buffer everything and only start forwarding
+                      // once we see the tag. If the round ends without seeing the tag, it is
+                      // flushed as reasoning.
+                      if (!hasSeenResponseTag && cleanedContent) {
                         preResponseBuffer += cleanedContent;
                         const responseTagIdx = preResponseBuffer.indexOf('<lucen_response');
                         if (responseTagIdx !== -1) {
@@ -1001,7 +1002,23 @@ Rules:
                   controller.enqueue(encoder.encode(filteredText));
                 } catch { /* ignore */ }
               }
-            }
+          }
+
+          // If the round ended (stream closed) and we never saw the <lucen_response> tag,
+          // it means everything the model output was reasoning or planning. Flush it as reasoning!
+          if (!hasSeenResponseTag && preResponseBuffer.trim().length > 0) {
+            try {
+              const reasoningPayload = {
+                choices: [{
+                  delta: {
+                    reasoning_content: '\n\n' + preResponseBuffer.trim() + '\n\n'
+                  }
+                }]
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(reasoningPayload)}\n\n`));
+              console.warn(`[chat-proxy] Flushed ${preResponseBuffer.length} bytes of un-tagged content as reasoning at end of round ${rounds + 1}.`);
+            } catch { /* ignore */ }
+            preResponseBuffer = '';
           }
 
           let toolCalls = Array.from(toolCallsMap.values());
