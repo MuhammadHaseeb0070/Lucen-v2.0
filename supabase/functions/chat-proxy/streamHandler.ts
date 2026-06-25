@@ -1003,6 +1003,7 @@ Rules:
                 } catch { /* ignore */ }
               }
           }
+            }
 
           // If the round ended (stream closed) and we never saw the <lucen_response> tag,
           // it means everything the model output was reasoning or planning. Flush it as reasoning!
