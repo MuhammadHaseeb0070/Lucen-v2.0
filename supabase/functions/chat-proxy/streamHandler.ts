@@ -947,6 +947,21 @@ Rules:
                         const responseTagIdx = preResponseBuffer.indexOf('<lucen_response');
                         if (responseTagIdx !== -1) {
                           hasSeenResponseTag = true;
+                          
+                          // The text before the tag is leaked reasoning/planning. Emit it to the UI!
+                          if (responseTagIdx > 0) {
+                            const leakedReasoning = preResponseBuffer.slice(0, responseTagIdx).trim();
+                            if (leakedReasoning.length > 0) {
+                              try {
+                                const reasoningPayload = {
+                                  choices: [{ delta: { reasoning_content: '\n\n' + leakedReasoning + '\n\n' } }]
+                                };
+                                controller.enqueue(encoder.encode(`data: ${JSON.stringify(reasoningPayload)}\n\n`));
+                                console.warn(`[chat-proxy] Emitted ${leakedReasoning.length} bytes of leaked reasoning before <lucen_response>`);
+                              } catch { /* ignore */ }
+                            }
+                          }
+
                           // Find the end of the opening tag (the '>')
                           const tagEndIdx = preResponseBuffer.indexOf('>', responseTagIdx);
                           if (tagEndIdx !== -1) {
@@ -956,10 +971,6 @@ Rules:
                           } else {
                             // Tag not fully received yet — keep buffering
                             cleanedContent = '';
-                          }
-                          // Log how much leaked reasoning we suppressed
-                          if (responseTagIdx > 0) {
-                            console.warn(`[chat-proxy] Suppressed ${responseTagIdx} chars of leaked reasoning before <lucen_response>`);
                           }
                         } else {
                           // Haven't seen response tag yet — suppress this content
