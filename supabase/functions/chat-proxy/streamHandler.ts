@@ -1002,7 +1002,7 @@ Rules:
                 try {
                   controller.enqueue(encoder.encode(
                     `event: content_start\ndata: ${JSON.stringify({ 
-                      after_tool_calls: rounds > 0, model: effectiveModel 
+                      after_tool_calls: false, model: effectiveModel 
                     })}\n\n`
                   ));
                 } catch { /* ignore */ }
