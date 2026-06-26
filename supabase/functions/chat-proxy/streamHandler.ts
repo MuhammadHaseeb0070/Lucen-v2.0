@@ -770,7 +770,7 @@ Rules:
 - Do NOT output XML tool tags.
 - Your response must be complete and substantive — never a one-liner.
 - NEVER output raw HTML, CSS, JavaScript, or code blocks in your response. If an artifact failed to generate, describe what went wrong briefly and suggest the user try again — do NOT attempt to recreate the artifact yourself as inline code.
-- Begin your response IMMEDIATELY with the answer. Do not include any planning, reasoning, or "let me think" preamble before the actual response content.`
+- You MUST STILL wrap your internal reasoning and planning inside <think>...</think> tags BEFORE outputting the <lucen_response> tag. DO NOT put your thought process inside the <lucen_response> tag!`
             });
           }
 
