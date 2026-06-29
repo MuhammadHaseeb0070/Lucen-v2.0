@@ -845,6 +845,7 @@ Rules:
           const isSynthesisRound = allLimitsReached || isLastRound;
           let preResponseBuffer = '';
           let hasSeenResponseTag = false;
+          let persistentIsInThinkBlock = false;
 
 
           while (true) {
@@ -944,42 +945,88 @@ Rules:
                       // flushed as reasoning.
                       if (!hasSeenResponseTag && cleanedContent) {
                         preResponseBuffer += cleanedContent;
-                        const responseTagIdx = preResponseBuffer.indexOf('<lucen_response');
-                        if (responseTagIdx !== -1) {
-                          hasSeenResponseTag = true;
+                        
+                        // Update persistent think block state from the full buffer to handle chunk splits
+                        const lastThinkOpen = preResponseBuffer.lastIndexOf('<think>');
+                        const lastThinkClose = preResponseBuffer.lastIndexOf('</think>');
+                        if (lastThinkOpen > lastThinkClose) {
+                          persistentIsInThinkBlock = true;
+                        } else if (lastThinkClose > lastThinkOpen) {
+                          persistentIsInThinkBlock = false;
+                        }
+
+                        let tagIdx = -1;
+                        let isArtifactTag = false;
+
+                        if (!persistentIsInThinkBlock) {
+                          const responseTagIdx = preResponseBuffer.indexOf('<lucen_response');
+                          const artifactTagIdx = preResponseBuffer.indexOf('<lucen_artifact');
                           
+                          if (responseTagIdx !== -1 && artifactTagIdx !== -1) {
+                            tagIdx = Math.min(responseTagIdx, artifactTagIdx);
+                            isArtifactTag = tagIdx === artifactTagIdx;
+                          } else if (responseTagIdx !== -1) {
+                            tagIdx = responseTagIdx;
+                          } else if (artifactTagIdx !== -1) {
+                            tagIdx = artifactTagIdx;
+                            isArtifactTag = true;
+                          }
+                        }
+
+                        if (tagIdx !== -1) {
                           // The text before the tag is leaked reasoning/planning. Emit it to the UI!
-                          if (responseTagIdx > 0) {
-                            const leakedReasoning = preResponseBuffer.slice(0, responseTagIdx).trim();
+                          if (tagIdx > 0) {
+                            const leakedReasoning = preResponseBuffer.slice(0, tagIdx).trim();
                             if (leakedReasoning.length > 0) {
                               try {
                                 const reasoningPayload = {
                                   choices: [{ delta: { reasoning_content: '\n\n' + leakedReasoning + '\n\n' } }]
                                 };
                                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(reasoningPayload)}\n\n`));
-                                console.warn(`[chat-proxy] Emitted ${leakedReasoning.length} bytes of leaked reasoning before <lucen_response>`);
+                                console.warn(`[chat-proxy] Emitted ${leakedReasoning.length} bytes of leaked reasoning before content tag`);
                               } catch { /* ignore */ }
                             }
+                            // Slice off the reasoning so we don't emit it again if we have to wait for '>'
+                            preResponseBuffer = preResponseBuffer.slice(tagIdx);
                           }
 
-                          // Find the end of the opening tag (the '>')
-                          const tagEndIdx = preResponseBuffer.indexOf('>', responseTagIdx);
-                          if (tagEndIdx !== -1) {
-                            // Everything after the opening tag is real content
-                            cleanedContent = preResponseBuffer.slice(tagEndIdx + 1);
-                            preResponseBuffer = ''; // Clear buffer since we found the tag
+                          if (isArtifactTag) {
+                            // For artifact tags, the tag itself is part of the content
+                            hasSeenResponseTag = true;
+                            cleanedContent = preResponseBuffer;
+                            preResponseBuffer = '';
                           } else {
-                            // Tag not fully received yet — keep buffering
-                            cleanedContent = '';
+                            // For response tags, find the end of the opening tag (the '>')
+                            const tagEndIdx = preResponseBuffer.indexOf('>');
+                            if (tagEndIdx !== -1) {
+                              hasSeenResponseTag = true;
+                              // Everything after the opening tag is real content
+                              cleanedContent = preResponseBuffer.slice(tagEndIdx + 1);
+                              preResponseBuffer = ''; // Clear buffer since we found the tag
+                            } else {
+                              // Tag not fully received yet — keep buffering until we see '>'
+                              cleanedContent = '';
+                            }
                           }
                         } else {
                           // Haven't seen response tag yet — suppress this content
-                          // But cap the buffer at 8K to avoid unbounded memory
+                          // Cap the buffer at 8K to avoid unbounded memory by flushing chunks as reasoning
                           if (preResponseBuffer.length > 8000) {
-                            console.warn('[chat-proxy] Pre-response buffer exceeded 8K without seeing <lucen_response> — flushing as content');
-                            hasSeenResponseTag = true;
-                            cleanedContent = preResponseBuffer;
-                            preResponseBuffer = ''; // Clear buffer on flush
+                            console.warn('[chat-proxy] Pre-response buffer exceeded 8K — flushing chunk as reasoning');
+                            
+                            // Keep the last 100 chars in buffer just in case a tag was split across the boundary
+                            const safeCutoff = preResponseBuffer.length - 100;
+                            const chunkToFlush = preResponseBuffer.slice(0, safeCutoff);
+                            
+                            try {
+                              const reasoningPayload = {
+                                choices: [{ delta: { reasoning_content: chunkToFlush } }]
+                              };
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify(reasoningPayload)}\n\n`));
+                            } catch { /* ignore */ }
+                            
+                            preResponseBuffer = preResponseBuffer.slice(safeCutoff);
+                            cleanedContent = '';
                           } else {
                             cleanedContent = '';
                           }

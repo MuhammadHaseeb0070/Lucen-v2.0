@@ -4,14 +4,14 @@ const SUPPORTED_TYPES: Set<string> = new Set(['html', 'svg', 'mermaid', 'file', 
 
 // Matches complete artifact tags with any attributes.
 const COMPLETE_ARTIFACT_RE =
-  /<lucen_artifact\s+([^>]*)>([\s\S]*?)<\/lucen_artifact>/g;
+  /<lucen_artifact(?:\s+([^>]*))?>([\s\S]*?)<\/lucen_artifact>/gi;
 
 // Matches a partial (still-streaming) opening tag with no closing tag.
 export const PARTIAL_OPEN_RE =
-  /<lucen_artifact\s+([^>]*)>([\s\S]*)$/;
+  /<lucen_artifact(?:\s+([^>]*))?>([\s\S]*)$/i;
 
 // Matches a tag that's still being written (attributes incomplete).
-export const INCOMPLETE_TAG_RE = /<lucen_artifact[^>]*$/;
+export const INCOMPLETE_TAG_RE = /<lucen_artifact[^>]*$/i;
 
 function getAttr(attrs: string, name: string): string | undefined {
   const re = new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, 'i');
@@ -146,7 +146,7 @@ export function parseArtifacts(
   // We only unwrap if the code fence starts at the beginning of the content (after optional details/thinking block)
   // to avoid stripping fences from user/model pasted syntax examples.
   let cleanContent = content.replace(
-    /^(?:\s*<details>[\s\S]*?<\/details>)?\s*```(?:xml|html|svg|mermaid|file)?\s*\n(<lucen_artifact[\s\S]*?<\/lucen_artifact>)\s*\n?```/i,
+    /(?:\s*<details>[\s\S]*?<\/details>)?\s*```(?:xml|html|svg|mermaid|file)?\s*\n(<lucen_artifact[\s\S]*?<\/lucen_artifact>)\s*\n?```/gi,
     (match, artifact) => {
       const detailsMatch = match.match(/^\s*<details>[\s\S]*?<\/details>/i);
       return (detailsMatch ? detailsMatch[0] + '\n' : '') + artifact;
