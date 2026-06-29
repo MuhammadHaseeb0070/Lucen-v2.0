@@ -352,11 +352,15 @@ async function handleRunTask(e: MessageEvent) {
     if (pipPackages.size > 0) {
       ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
         message: 'Installing pip dependencies...' });
-      const micropip = py.pyimport('micropip');
-      for (const pkg of pipPackages) {
-        if (pkg) await micropip.install(pkg);
+      
+      const pkgList = Array.from(pipPackages).filter(Boolean);
+      if (pkgList.length > 0) {
+        const pyList = pkgList.map(p => `"${p}"`).join(', ');
+        await py.runPythonAsync(`
+import micropip
+await micropip.install([${pyList}])
+`);
       }
-      micropip.destroy();
     }
 
     ctx.postMessage({ type: 'status', artifactId, stage: 'running', 
@@ -402,12 +406,19 @@ except Exception:
     pass
 `);
 
-    // Inject Sandbox Polyfills to prevent common AI hallucinations from crashing execution
-    await py.runPythonAsync(`
+    // Execute with timeout and self-healing loop
+    let runError: string | null = null;
+    const TIMEOUT_MS = 60000;
+    let retryCount = 0;
+    const MAX_RETRIES = 2;
+
+    while (retryCount <= MAX_RETRIES) {
+      // Inject Sandbox Polyfills to prevent common AI hallucinations from crashing execution
+      // Placed inside the retry loop so they apply AFTER any auto-installed packages are available
+      await py.runPythonAsync(`
 # Polyfill for fpdf2
 try:
     import fpdf
-    # 1. Prevent crashing on missing custom fonts
     if hasattr(fpdf.FPDF, 'add_font'):
         _orig_add_font = fpdf.FPDF.add_font
         def safe_add_font(self, family, style="", fname="", uni=False, **kwargs):
@@ -417,7 +428,6 @@ try:
                 pass # Silently fallback to default fonts
         fpdf.FPDF.add_font = safe_add_font
     
-    # 2. Prevent crashing on missing local images
     if hasattr(fpdf.FPDF, 'image'):
         _orig_image = fpdf.FPDF.image
         def safe_image(self, name, x=None, y=None, w=0, h=0, type='', link='', **kwargs):
@@ -450,13 +460,6 @@ except Exception:
     pass
 `);
 
-    // Execute with timeout and self-healing loop
-    let runError: string | null = null;
-    const TIMEOUT_MS = 60000;
-    let retryCount = 0;
-    const MAX_RETRIES = 2;
-
-    while (retryCount <= MAX_RETRIES) {
       try {
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error(
@@ -477,7 +480,6 @@ except Exception:
             message: `Auto-installing missing module: ${missingModule}...` });
           
           try {
-            const micropip = py.pyimport('micropip');
             // Map common module names to pip package names
             let pkgToInstall = missingModule;
             if (missingModule === 'docx') pkgToInstall = 'python-docx';
@@ -486,8 +488,10 @@ except Exception:
             else if (missingModule === 'sklearn') pkgToInstall = 'scikit-learn';
             else if (missingModule === 'fpdf') pkgToInstall = 'fpdf2';
             
-            await micropip.install(pkgToInstall);
-            micropip.destroy();
+            await py.runPythonAsync(`
+import micropip
+await micropip.install('${pkgToInstall}')
+`);
             
             retryCount++;
             ctx.postMessage({ type: 'status', artifactId, stage: 'running', 
@@ -513,7 +517,9 @@ except Exception:
     // Enhance error reporting if Pyodide only gives us a generic "PythonError"
     if (runError) {
       if ((runError === 'PythonError' || !runError.includes('Traceback')) && stderr) {
-        runError = stderr.trim();
+        if (!runError.startsWith('Failed to auto-install')) {
+          runError = stderr.trim();
+        }
       }
     }
 
