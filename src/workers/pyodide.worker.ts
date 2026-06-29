@@ -402,6 +402,54 @@ except Exception:
     pass
 `);
 
+    // Inject Sandbox Polyfills to prevent common AI hallucinations from crashing execution
+    await py.runPythonAsync(`
+# Polyfill for fpdf2
+try:
+    import fpdf
+    # 1. Prevent crashing on missing custom fonts
+    if hasattr(fpdf.FPDF, 'add_font'):
+        _orig_add_font = fpdf.FPDF.add_font
+        def safe_add_font(self, family, style="", fname="", uni=False, **kwargs):
+            try:
+                _orig_add_font(self, family, style, fname, uni, **kwargs)
+            except Exception:
+                pass # Silently fallback to default fonts
+        fpdf.FPDF.add_font = safe_add_font
+    
+    # 2. Prevent crashing on missing local images
+    if hasattr(fpdf.FPDF, 'image'):
+        _orig_image = fpdf.FPDF.image
+        def safe_image(self, name, x=None, y=None, w=0, h=0, type='', link='', **kwargs):
+            import os
+            if isinstance(name, str) and not name.startswith('http') and not os.path.exists(name):
+                return # Ignore silently
+            try:
+                _orig_image(self, name, x, y, w, h, type, link, **kwargs)
+            except Exception:
+                pass
+        fpdf.FPDF.image = safe_image
+except Exception:
+    pass
+
+# Polyfill for python-docx
+try:
+    import docx
+    if hasattr(docx.Document, 'add_picture'):
+        _orig_add_picture = docx.Document.add_picture
+        def safe_add_picture(self, image_path_or_stream, width=None, height=None):
+            import os
+            if isinstance(image_path_or_stream, str) and not os.path.exists(image_path_or_stream):
+                return # Ignore silently
+            try:
+                return _orig_add_picture(self, image_path_or_stream, width, height)
+            except Exception:
+                pass
+        docx.Document.add_picture = safe_add_picture
+except Exception:
+    pass
+`);
+
     // Execute with timeout and self-healing loop
     let runError: string | null = null;
     const TIMEOUT_MS = 60000;
@@ -421,8 +469,8 @@ except Exception:
       } catch (err: any) {
         runError = err.message || String(err);
         
-        // Auto-healing for missed pip packages
-        const moduleMatch = runError?.match(/ModuleNotFoundError: No module named '([^']+)'/);
+        // Auto-healing for missed pip packages and optional dependencies (e.g. pandas missing openpyxl)
+        const moduleMatch = runError?.match(/(?:ModuleNotFoundError: No module named |ImportError: Missing optional dependency )'([^']+)'/);
         if (moduleMatch && retryCount < MAX_RETRIES) {
           const missingModule = moduleMatch[1];
           ctx.postMessage({ type: 'status', artifactId, stage: 'packages', 
