@@ -271,26 +271,31 @@ async function executeTool(
         const artifactTitle = parsedArgs.title || 'Artifact';
         const masterPrompt = parsedArgs.master_prompt || '';
 
-        const userMessageToCodeModel = `FUNCTIONAL SPECIFICATION:
-${masterPrompt}
+        let userMessageToCodeModel = `FUNCTIONAL SPECIFICATION:\n${masterPrompt}`;
 
-═══════════════════════════════════════
-DESIGNER'S MANDATE
-═══════════════════════════════════════
-The spec above tells you what to build. Now apply your full design intelligence.
-Make every visual decision from scratch — colors, fonts, layout, motion.
-Do not use any hex codes or font names mentioned in the spec above as hard requirements.
-They are suggestions. Your design judgment overrides them.
-The result must feel like the top 5% of the web: story, meaning, craft.
-Every design decision must serve the emotional texture described in the creative direction.`;
+        if (artifactType === 'html') {
+          userMessageToCodeModel += `\n\n═══════════════════════════════════════\nDESIGNER'S MANDATE\n═══════════════════════════════════════\nThe spec above tells you what to build. Now apply your full design intelligence.\nMake every visual decision from scratch — colors, fonts, layout, motion.\nDo not use any hex codes or font names mentioned in the spec above as hard requirements.\nThey are suggestions. Your design judgment overrides them.\nThe result must feel like the top 5% of the web: story, meaning, craft.\nEvery design decision must serve the emotional texture described in the creative direction.`;
+        } else if (artifactType === 'pdf') {
+          userMessageToCodeModel += `\n\n═══════════════════════════════════════\nDOCUMENT GENERATION MANDATE\n═══════════════════════════════════════\nThe spec above tells you what PDF document to generate. You MUST write a Python script using the \`fpdf2\` library to generate this document.\nApply professional, premium formatting (margins, typography, grid layouts, alternating table rows).\nUse the \`fpdf2\` standards defined in your system prompt. Do NOT write any HTML/CSS.`;
+        } else if (artifactType === 'excel') {
+          userMessageToCodeModel += `\n\n═══════════════════════════════════════\nSPREADSHEET GENERATION MANDATE\n═══════════════════════════════════════\nThe spec above tells you what Excel document to generate. You MUST write a Python script using \`pandas\` or \`openpyxl\` to generate this document.\nApply professional formatting to the spreadsheet if applicable. Do NOT write any HTML/CSS.`;
+        } else if (artifactType === 'word') {
+          userMessageToCodeModel += `\n\n═══════════════════════════════════════\nDOCUMENT GENERATION MANDATE\n═══════════════════════════════════════\nThe spec above tells you what Word document to generate. You MUST write a Python script using \`python-docx\` to generate this document.\nApply professional formatting. Do NOT write any HTML/CSS.`;
+        } else {
+          userMessageToCodeModel += `\n\n═══════════════════════════════════════\nFILE GENERATION MANDATE\n═══════════════════════════════════════\nGenerate the exact raw file content requested by the spec. Do NOT write any web UI code unless explicitly requested.`;
+        }
 
         let codingResponse: Response | null = null;
         for (const codingModel of codingModels) {
           try {
             const coderProfile = buildModelProfile('CODER');
             coderProfile.id = codingModel;
+            const systemPrompt = artifactType === 'html'
+              ? CODING_MODEL_SYSTEM_PROMPT
+              : `You are the Lucen Artifact Engine — an expert code generator.\nYour job is to generate flawless code or document scripts that perfectly fulfill the functional specification.\n\n═══════════════════════════════════════\nOUTPUT FORMAT\n═══════════════════════════════════════\nOutput ONLY a <lucen_artifact> tag. No explanations, no markdown, no commentary.\nFormat: <lucen_artifact type="[type]" title="[Title]">[complete code]</lucen_artifact>\n\nFor PDF generation, use \`fpdf2\`. For Excel, use \`pandas\` or \`openpyxl\`. For Word, use \`python-docx\`.\nEnsure your code is completely self-contained and ready to execute.`;
+
             const codingMessages = [
-              { role: 'system', content: CODING_MODEL_SYSTEM_PROMPT },
+              { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessageToCodeModel }
             ];
             const requestBody = buildRequestBody(coderProfile, codingMessages, [], 16384, false);
@@ -337,9 +342,16 @@ Every design decision must serve the emotional texture described in the creative
         const fenceMatch = artifactContent.match(/```[a-z]*\s*([\s\S]*?)\s*```/i);
         if (fenceMatch && artifactContent.includes('<lucen_artifact')) {
           artifactContent = fenceMatch[1];
-        } else if (!artifactContent.includes('<lucen_artifact')) {
+        } 
+        
+        if (!artifactContent.includes('<lucen_artifact')) {
           const rawCode = fenceMatch ? fenceMatch[1] : artifactContent;
           artifactContent = `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">\n${rawCode.trim()}\n</lucen_artifact>`;
+        } else {
+          artifactContent = artifactContent.replace(
+            /<lucen_artifact[^>]*>/i, 
+            `<lucen_artifact type="${artifactType}" title="${artifactTitle.replace(/"/g, '&quot;')}">`
+          );
         }
 
         const openCount = (artifactContent.match(/<lucen_artifact/g) || []).length;
