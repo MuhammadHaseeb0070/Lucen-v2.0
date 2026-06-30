@@ -30,12 +30,11 @@ export function getCorsHeaders(req: Request): Record<string, string> {
         'Access-Control-Allow-Origin': allowOrigin,
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Vary': 'Origin',
     };
 }
 
-/** @deprecated Use getCorsHeaders(req) for production. Kept for backwards compatibility. */
-export const corsHeaders: Record<string, string> = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+/** @deprecated Use getCorsHeaders(req) for production. This wildcard export has been removed for security. */
+export function corsHeaders(): never {
+    throw new Error('corsHeaders is removed — use getCorsHeaders(req) instead for origin-restricted CORS.');
+}

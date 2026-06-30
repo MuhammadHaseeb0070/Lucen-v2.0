@@ -3,12 +3,6 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { isKillSwitched } from '../_shared/featureFlags.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 
-function decodeJwtPayload(token: string): Record<string, unknown> {
-    const base64 = token.split('.')[1];
-    const json = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(json);
-}
-
 Deno.serve(async (req: Request) => {
     const cors = getCorsHeaders(req);
     if (req.method === 'OPTIONS') {

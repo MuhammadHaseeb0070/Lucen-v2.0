@@ -266,7 +266,7 @@ Deno.serve(async (req: Request) => {
     let effectiveModel = fallbackModels[0];
     const activeModel = effectiveModel;
     // Log resolved model for debugging
-    console.log('[chat-proxy] resolved model:', activeModel)
+    log.info('resolved model', { model: activeModel });
     accounting.modelId = effectiveModel;
 
     let configHeaders = getDynamicHeaders(effectiveModel, model);
@@ -378,6 +378,19 @@ Deno.serve(async (req: Request) => {
 
     if (remainingCredits <= 0 && !__bg_description) {
       return await fail('insufficient_credits', 402, 'Insufficient credits');
+    }
+
+    // SECURITY (Hacker Audit Fix): Pre-auth reservation to prevent TOCTOU overspend races
+    // Deduct a base chunk of credits upfront so concurrent streams exhaust the balance.
+    let reservationAmount = 0;
+    if (!__bg_description) {
+      reservationAmount = Math.min(remainingCredits, 10);
+      if (reservationAmount > 0) {
+        await supabaseAdmin!.rpc('deduct_user_credits', {
+          p_user_id: user.id,
+          p_amount: reservationAmount,
+        });
+      }
     }
 
     if (webSearchRequested && remainingCredits > 0) {
@@ -582,6 +595,7 @@ Deno.serve(async (req: Request) => {
       startedAt,
       log,
       authHeader,
+      reservationAmount,
     });
 
   } catch (err) {

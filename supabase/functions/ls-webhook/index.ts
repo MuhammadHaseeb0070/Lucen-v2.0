@@ -423,6 +423,15 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "Missing X-Signature header" }, { status: 400 });
   }
 
+  // SECURITY (Hacker Audit Fix): Prevent CPU exhaustion DDoS
+  // Lemon Squeezy IPs are dynamic, so we can't whitelist. Instead, we limit the
+  // payload size before doing the heavy HMAC-SHA256 computation.
+  const contentLength = Number(getHeader(req, "content-length") || "0");
+  if (contentLength > 512 * 1024) { // 512 KB limit
+    console.error(`ls-webhook: Payload too large (${contentLength} bytes)`);
+    return jsonResponse({ error: "Payload too large" }, { status: 413 });
+  }
+
   const rawBody = await req.text();
 
   try {

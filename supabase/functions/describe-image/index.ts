@@ -346,6 +346,18 @@ Deno.serve(async (req: Request) => {
             return await fail('insufficient_credits', 402, 'Insufficient credits');
         }
 
+        // SECURITY (Hacker Audit Fix): Pre-auth reservation to prevent TOCTOU overspend races
+        let reservationAmount = 0;
+        if (typeof creditsRow.remaining_credits === 'number') {
+            reservationAmount = Math.min(creditsRow.remaining_credits, 10);
+            if (reservationAmount > 0) {
+                await supabaseAdmin.rpc('deduct_user_credits', {
+                    p_user_id: user.id,
+                    p_amount: reservationAmount,
+                });
+            }
+        }
+
         // ─── Build prompt for vision model ───────────────────────────────────
         const rawRecent: IncomingMessage[] = Array.isArray(body?.recent_messages) ? body.recent_messages : [];
         const userText: string = typeof body?.user_text === 'string' ? body.user_text : '';
@@ -440,10 +452,18 @@ Deno.serve(async (req: Request) => {
         accounting.totalCredits = totalCost;
 
         try {
-            await supabaseAdmin.rpc('deduct_user_credits', {
-                p_user_id: user.id,
-                p_amount: totalCost,
-            });
+            const delta = totalCost - reservationAmount;
+            if (delta > 0) {
+                await supabaseAdmin.rpc('deduct_user_credits', {
+                    p_user_id: user.id,
+                    p_amount: delta,
+                });
+            } else if (delta < 0) {
+                await supabaseAdmin.rpc('refund_user_credits', {
+                    p_user_id: user.id,
+                    p_amount: Math.abs(delta),
+                });
+            }
         } catch (dbErr) {
             console.error('[describe-image] credit deduction failed:', dbErr);
         }

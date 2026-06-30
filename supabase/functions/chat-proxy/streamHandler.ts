@@ -159,6 +159,7 @@ export interface StreamHandlerOptions {
   startedAt: number;
   log: any;
   authHeader: string;
+  reservationAmount?: number;
 }
 function buildMasterSystemPrompt(tools: any[], modelId: string, supportsNativeTools: boolean): string {
   let toolBlock = '';
@@ -1238,11 +1239,24 @@ Rules:
         }
 
         try {
-          if (shouldCharge && totalCost > 0) {
-            await supabaseAdmin.rpc('deduct_user_credits', {
-              p_user_id: user.id,
-              p_amount: totalCost,
-            });
+          if (shouldCharge || (reservationAmount && reservationAmount > 0)) {
+            const resAmt = reservationAmount ?? 0;
+            const actualCost = shouldCharge ? totalCost : 0;
+            const delta = actualCost - resAmt;
+
+            if (delta > 0) {
+              // Cost exceeded reservation (e.g., they didn't have enough to reserve fully)
+              await supabaseAdmin.rpc('deduct_user_credits', {
+                p_user_id: user.id,
+                p_amount: delta,
+              });
+            } else if (delta < 0) {
+              // Reserved more than used -> refund the difference
+              await supabaseAdmin.rpc('refund_user_credits', {
+                p_user_id: user.id,
+                p_amount: Math.abs(delta),
+              });
+            }
           }
 
           if (shouldCharge && subscriptionStatus === 'free' && actualWebSearchHappened) {
