@@ -299,7 +299,8 @@ async function executeTool(
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessageToCodeModel }
             ];
-            const requestBody = buildRequestBody(coderProfile, codingMessages, [], 16384, false);
+            const coderMaxTokens = parseInt(Deno.env.get('CODING_CHAT_MAX_OUTPUT') || Deno.env.get('MAIN_CHAT_MAX_OUTPUT') || '32768', 10);
+            const requestBody = buildRequestBody(coderProfile, codingMessages, [], coderMaxTokens, false);
             requestBody.stream = false;
 
             const codingRes = await fetch(OPENROUTER_URL_ARTIFACT, {
@@ -328,9 +329,10 @@ async function executeTool(
         let artifactContent = codingChoice?.message?.content || '';
 
         const completionTokens = codingData.usage?.completion_tokens || 0;
+        const coderMaxTokens = parseInt(Deno.env.get('CODING_CHAT_MAX_OUTPUT') || Deno.env.get('MAIN_CHAT_MAX_OUTPUT') || '32768', 10);
         const isTruncated = 
           codingChoice?.finish_reason === 'length' || 
-          completionTokens >= 16300 || 
+          completionTokens >= (coderMaxTokens - 100) || 
           (artifactType === 'html' && artifactContent.includes('<html') && !artifactContent.includes('</html>')) ||
           (artifactContent.includes('<lucen_artifact') && !artifactContent.includes('</lucen_artifact>')) ||
           (artifactContent.includes('```') && (artifactContent.match(/```/g) || []).length % 2 !== 0);
