@@ -327,7 +327,14 @@ async function executeTool(
         const codingChoice = codingData.choices?.[0];
         let artifactContent = codingChoice?.message?.content || '';
 
-        if (codingChoice?.finish_reason === 'length') {
+        const completionTokens = codingData.usage?.completion_tokens || 0;
+        const isTruncated = 
+          codingChoice?.finish_reason === 'length' || 
+          completionTokens >= 8000 || 
+          (artifactContent.includes('<lucen_artifact') && !artifactContent.includes('</lucen_artifact>')) ||
+          (artifactContent.includes('```') && (artifactContent.match(/```/g) || []).length % 2 !== 0);
+
+        if (isTruncated) {
           artifactContent = `
             <div style="padding: 24px; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.4); border-radius: 8px; color: #fca5a5; font-family: sans-serif; margin: 16px 0;">
               <h3 style="margin-top: 0; color: #ef4444; display: flex; align-items: center; gap: 8px;">
