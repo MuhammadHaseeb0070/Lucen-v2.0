@@ -330,7 +330,8 @@ async function executeTool(
         const completionTokens = codingData.usage?.completion_tokens || 0;
         const isTruncated = 
           codingChoice?.finish_reason === 'length' || 
-          completionTokens >= 8000 || 
+          completionTokens >= 16300 || 
+          (artifactType === 'html' && artifactContent.includes('<html') && !artifactContent.includes('</html>')) ||
           (artifactContent.includes('<lucen_artifact') && !artifactContent.includes('</lucen_artifact>')) ||
           (artifactContent.includes('```') && (artifactContent.match(/```/g) || []).length % 2 !== 0);
 
