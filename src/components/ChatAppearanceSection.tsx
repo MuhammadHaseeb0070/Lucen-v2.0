@@ -10,7 +10,7 @@ import {
     applyTheme,
     type ThemeColors,
 } from '../store/themeStore';
-import { SlidersHorizontal, RotateCcw } from 'lucide-react';
+import { SlidersHorizontal, RotateCcw, X, Save } from 'lucide-react';
 
 function hexForColorInput(css: string): string {
     const s = css.trim();
@@ -34,6 +34,101 @@ function sanitizeColorValue(val: any): string | null {
     return s;
 }
 
+const THEME_EMOJIS = ['🎨', '🌈', '🌙', '☀️', '🔥', '🌊', '🍃', '💎', '🪻', '🦋', '🌸', '🍂', '⚡', '🪷', '🎯', '🖤', '💜', '🧊', '🌅', '☕'];
+
+// ─── Save Theme Modal ───
+const SaveThemeModal: React.FC<{
+    onSave: (name: string, emoji: string) => void;
+    onCancel: () => void;
+    accentColor: string;
+}> = ({ onSave, onCancel, accentColor }) => {
+    const [name, setName] = useState('');
+    const [emoji, setEmoji] = useState('🎨');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        inputRef.current?.focus();
+    }, []);
+
+    const handleSave = () => {
+        if (name.trim()) {
+            onSave(name.trim(), emoji);
+        }
+    };
+
+    return (
+        <div className="save-theme-modal-overlay" onClick={onCancel}>
+            <div className="save-theme-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="save-theme-modal__header">
+                    <Save size={16} style={{ color: accentColor }} />
+                    <h4 className="save-theme-modal__title">Save your theme</h4>
+                    <button className="save-theme-modal__close" onClick={onCancel} type="button">
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="save-theme-modal__body">
+                    <div className="save-theme-modal__preview">
+                        <span className="save-theme-modal__preview-emoji">{emoji}</span>
+                        <span className="save-theme-modal__preview-name">{name || 'My Theme'}</span>
+                    </div>
+
+                    <div className="save-theme-modal__field">
+                        <label className="save-theme-modal__label" htmlFor="theme-name-input">Name</label>
+                        <input
+                            ref={inputRef}
+                            id="theme-name-input"
+                            type="text"
+                            className="save-theme-modal__input"
+                            value={name}
+                            onChange={(e) => setName(e.target.value.slice(0, 30))}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && name.trim()) handleSave();
+                                if (e.key === 'Escape') onCancel();
+                            }}
+                            placeholder="e.g. Midnight Ocean"
+                            maxLength={30}
+                            spellCheck={false}
+                        />
+                        <span className="save-theme-modal__char-count">{name.length}/30</span>
+                    </div>
+
+                    <div className="save-theme-modal__field">
+                        <label className="save-theme-modal__label">Icon</label>
+                        <div className="save-theme-modal__emoji-grid">
+                            {THEME_EMOJIS.map((e) => (
+                                <button
+                                    key={e}
+                                    type="button"
+                                    className={`save-theme-modal__emoji-btn ${emoji === e ? 'save-theme-modal__emoji-btn--active' : ''}`}
+                                    onClick={() => setEmoji(e)}
+                                >
+                                    {e}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="save-theme-modal__footer">
+                    <button type="button" className="save-theme-modal__btn save-theme-modal__btn--ghost" onClick={onCancel}>
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        className="save-theme-modal__btn save-theme-modal__btn--primary"
+                        disabled={!name.trim()}
+                        onClick={handleSave}
+                    >
+                        <Save size={14} />
+                        Save theme
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ChatAppearanceSection: React.FC = () => {
     const {
         themeSource,
@@ -56,6 +151,7 @@ const ChatAppearanceSection: React.FC = () => {
     /** Local overlay so color drag does not write Zustand (and localStorage persist) on every pointer move. */
     const [draftOverlay, setDraftOverlay] = useState<Partial<ThemeColors>>({});
     const prevSettingsOpenRef = useRef(settingsOpen);
+    const [showSaveModal, setShowSaveModal] = useState(false);
 
     const [jsonInput, setJsonInput] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
@@ -146,6 +242,12 @@ const ChatAppearanceSection: React.FC = () => {
         applyTheme({ ...preset, colors: previewColors });
     }, [draftOverlay]);
 
+    const handleSaveTheme = (name: string, emoji: string) => {
+        flushDraftToStore();
+        saveCustomTheme(name, emoji);
+        setShowSaveModal(false);
+    };
+
     return (
         <div className="chat-appearance">
             <div className="chat-appearance__header">
@@ -211,16 +313,10 @@ const ChatAppearanceSection: React.FC = () => {
                         <button
                             type="button"
                             className="chat-appearance__btn-secondary"
-                            disabled={savedThemes.length >= 3}
-                            title={savedThemes.length >= 3 ? "Max 3 saved themes reached" : "Save as new theme"}
-                            onClick={() => {
-                                const name = window.prompt("Enter a name for your saved theme (max 30 chars):");
-                                if (name && name.trim()) {
-                                    flushDraftToStore();
-                                    saveCustomTheme(name.trim());
-                                }
-                            }}
+                            title="Save as new theme"
+                            onClick={() => setShowSaveModal(true)}
                         >
+                            <Save size={14} />
                             Save as new theme
                         </button>
                     </div>
@@ -357,8 +453,19 @@ const ChatAppearanceSection: React.FC = () => {
                     Preview: <strong>{getResolvedTheme().name}</strong> — open Customize to edit individual colors.
                 </p>
             )}
+
+            {showSaveModal && (
+                <SaveThemeModal
+                    onSave={handleSaveTheme}
+                    onCancel={() => setShowSaveModal(false)}
+                    accentColor={mergedColors.accent}
+                />
+            )}
         </div>
     );
 };
 
 export default ChatAppearanceSection;
+
+
+

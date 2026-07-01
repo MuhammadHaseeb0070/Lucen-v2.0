@@ -79,33 +79,39 @@ const AppearanceTab: React.FC = () => {
         <div className="settings-tab-body settings-tab-body--appearance">
             <p className="settings-desc">Pick a theme that feels right for you.</p>
 
-            {savedThemes.length > 0 && (
-                <div className="theme-section">
-                    <h4 className="theme-section__title">Your Themes</h4>
-                    <div className="theme-grid">
-                        {savedThemes.map((st) => {
-                            const base = THEME_PRESETS.find((t) => t.id === st.basePresetId) || THEME_PRESETS[0];
-                            const preset: ThemePreset = {
-                                id: st.id,
-                                name: st.name,
-                                emoji: st.emoji,
-                                category: 'curated',
-                                isDark: base.isDark,
-                                colors: { ...base.colors, ...st.colors } as any
-                            };
-                            return (
-                                <ThemeCard
-                                    key={preset.id}
-                                    preset={preset}
-                                    isActive={themeSource === 'preset' && activeThemeId === preset.id}
-                                    onClick={() => handleSelect(preset.id)}
-                                    onDelete={() => deleteSavedTheme(preset.id)}
-                                />
-                            );
-                        })}
-                    </div>
+            <div className="theme-section">
+                <h4 className="theme-section__title">Your Themes</h4>
+                <div className="theme-grid">
+                    {savedThemes.map((st) => {
+                        const base = THEME_PRESETS.find((t) => t.id === st.basePresetId) || THEME_PRESETS[0];
+                        const preset: ThemePreset = {
+                            id: st.id,
+                            name: st.name,
+                            emoji: st.emoji,
+                            category: 'curated',
+                            isDark: base.isDark,
+                            colors: { ...base.colors, ...st.colors } as any
+                        };
+                        return (
+                            <ThemeCard
+                                key={preset.id}
+                                preset={preset}
+                                isActive={themeSource === 'preset' && activeThemeId === preset.id}
+                                onClick={() => handleSelect(preset.id)}
+                                onDelete={() => deleteSavedTheme(preset.id)}
+                            />
+                        );
+                    })}
+                    <button
+                        className="theme-card"
+                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100px', background: 'var(--bg-muted)', borderStyle: 'dashed' }}
+                        onClick={() => useThemeStore.getState().beginCustomTheme()}
+                    >
+                        <span style={{ fontSize: '1.2rem', marginBottom: '4px' }}>➕</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Create theme</span>
+                    </button>
                 </div>
-            )}
+            </div>
 
             {CATEGORIES.map((cat) => {
                 const themes = THEME_PRESETS.filter((t) => t.category === cat.id);
@@ -217,7 +223,7 @@ const AboutTab: React.FC = () => (
                 <p className="about-text">✦ <strong>Side Chat</strong>: A floating companion panel for quick questions without losing your main conversation</p>
                 <p className="about-text">✦ <strong>Message Deletion</strong>: Remove any exchange to keep context clean and conversations focused</p>
                 <p className="about-text">✦ <strong>Context Import</strong>: Selectively link main chat messages into your Side Chat for seamless cross-referencing</p>
-                <p className="about-text">✦ <strong>8 Hand-Crafted Themes</strong>: From warm Latte mornings to deep Observatory nights</p>
+                <p className="about-text">✦ <strong>{THEME_PRESETS.length} Hand-Crafted Themes</strong>: Each tuned for readability across light and dark modes</p>
                 <p className="about-text">✦ <strong>Command Palette</strong>: Hit Ctrl+K to navigate, switch themes, and manage chats like a developer</p>
                 <p className="about-text">✦ <strong>Artifacts</strong>: Live-rendered HTML, SVG, and diagram previews directly alongside your conversation</p>
                 <p className="about-text">✦ <strong>Smart Shortcuts</strong>: Keyboard-first workflow with Halt & Edit, quick search, and more</p>

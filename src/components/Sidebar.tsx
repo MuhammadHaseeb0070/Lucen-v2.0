@@ -199,9 +199,9 @@ const Sidebar: React.FC = () => {
                 </button>
             </div>
 
-            <div className="sidebar-search-container" style={{ padding: '0 12px 12px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div className="sidebar-search-container" style={{ padding: '0 12px 12px 12px', borderBottom: '1px solid var(--divider)' }}>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+                    <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-tertiary)' }} />
                     <input
                         type="text"
                         placeholder="Search chats..."
@@ -211,20 +211,20 @@ const Sidebar: React.FC = () => {
                             width: '100%',
                             padding: '8px 12px 8px 32px',
                             borderRadius: 'var(--r-md)',
-                            border: '1px solid var(--border-subtle)',
+                            border: '1px solid var(--divider)',
                             background: 'var(--bg-muted)',
                             color: 'var(--text-primary)',
                             fontSize: '13px',
                             outline: 'none',
                             transition: 'border-color 0.2s',
                         }}
-                        onFocus={(e) => e.target.style.borderColor = 'var(--brand-primary)'}
-                        onBlur={(e) => e.target.style.borderColor = 'var(--border-subtle)'}
+                        onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+                        onBlur={(e) => e.target.style.borderColor = 'var(--divider)'}
                     />
                     {searchQuery && (
                         <button 
                             onClick={() => setSearchQuery('')}
-                            style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             title="Clear search"
                         >
                             <X size={14} />

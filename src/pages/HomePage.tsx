@@ -261,7 +261,7 @@ const COMPARISON_DATA: ComparisonRow[] = [
     { feature: 'Delete any message pair', lucen: true, others: false },
     { feature: 'Import context across chats', lucen: true, others: false },
     { feature: 'Command Palette (Ctrl+K)', lucen: true, others: false },
-    { feature: 'Hand-crafted theme library', lucen: '8 themes', others: '1–2 modes' },
+    { feature: 'Hand-crafted theme library', lucen: `${THEME_PRESETS.length} themes`, others: '1–2 modes' },
     { feature: 'Artifacts with live preview', lucen: true, others: 'Limited' },
     { feature: 'Keyboard-first workflow', lucen: true, others: 'Partial' },
     { feature: 'Text selection quick-actions', lucen: true, others: false },
@@ -355,8 +355,8 @@ const HomePage: React.FC = () => {
                     />
                     <FeatureCard
                         icon={<Palette size={24} />}
-                        title="8 Curated Themes"
-                        description="Eight hand-crafted themes tuned for readability. Switch instantly between Lucen ✨, Washi 🪷, Amber 🍂, Linen 🪡, Petal 🌸, Studio 💬, Verdigris 🏛️, and Terminal ⚡—each designed to keep text crisp."
+                        title={`${THEME_PRESETS.length} Curated Themes`}
+                        description={`${THEME_PRESETS.length} hand-crafted themes tuned for readability. Switch instantly between ${THEME_PRESETS.map(t => `${t.name} ${t.emoji}`).join(', ')}—each designed to keep text crisp.`}
                         mockup={null}
                     />
                     <FeatureCard
@@ -372,7 +372,7 @@ const HomePage: React.FC = () => {
                 <div className="landing-themes-showcase">
                     <h2>Make it yours.</h2>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '12px', fontSize: '1.1rem' }}>
-                        Switch between 8 curated themes instantly: Lucen ✨, Washi 🪷, Amber 🍂, Linen 🪡, Petal 🌸, Studio 💬, Verdigris 🏛️, and Terminal ⚡. Preview the UI and typography live on this page.
+                        Switch between {THEME_PRESETS.length} curated themes instantly: {THEME_PRESETS.map(t => `${t.name} ${t.emoji}`).join(', ')}. Preview the UI and typography live on this page.
                     </p>
 
                     <div className="landing-themes-grid">

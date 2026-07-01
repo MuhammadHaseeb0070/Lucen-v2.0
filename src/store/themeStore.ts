@@ -875,7 +875,6 @@ export const useThemeStore = create<ThemeStore>()(
 
             saveCustomTheme: (name, emoji = '🎨') => {
                 const s = get();
-                if (s.savedThemes.length >= 3) return;
                 const newId = `user_theme_${Date.now()}`;
                 
                 const newTheme: SavedThemeData = {

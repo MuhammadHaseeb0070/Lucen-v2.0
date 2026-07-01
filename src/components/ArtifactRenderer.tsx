@@ -271,14 +271,15 @@ const HtmlRenderer: React.FC<RendererProps> = ({ content, viewport = 'full', isS
         <div className="sandbox-warning-banner">
           <AlertTriangle size={14} style={{ color: '#b45309', flexShrink: 0, marginTop: '2px' }} />
           <div className="sandbox-warning-content">
-            Interactive elements (forms, inputs, alerts, or popups) detected. They may not function fully under the secure sandbox.
+            <strong>Security Sandbox Active:</strong> Storage, APIs, and some scripts are blocked in this preview. 
+            For the full experience and to ensure all features work correctly, please click the <strong>Download</strong> button above and open the file locally.
           </div>
         </div>
       )}
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"
         className="artifact-iframe"
         style={isFramed ? { width: vpWidth!, maxWidth: '100%', flex: 1, minHeight: 0 } : { width: '100%', flex: 1, minHeight: 0, border: 'none' }}
         title="HTML Preview"
