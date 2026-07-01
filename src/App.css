@@ -1,7 +1,7 @@
 /* App-level styles — delegates to index.css design system */
 
 /* ═══════════════════════════════════════════
-   MODERN LANDING PAGE OVERHAUL (GLASSMORPHISM + MESH)
+   MODERN LANDING PAGE OVERHAUL (STITCH / MATERIAL 3)
    ═══════════════════════════════════════════ */
 
 .landing-page {
@@ -11,57 +11,12 @@
     overflow-y: auto;
     background: var(--bg-base);
     color: var(--text-primary);
-    position: relative;
-    z-index: 0;
-}
-
-.landing-mesh-bg {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background-image: 
-        radial-gradient(at 0% 0%, color-mix(in srgb, var(--accent) 30%, transparent) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, color-mix(in srgb, #3b82f6 25%, transparent) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, color-mix(in srgb, #8b5cf6 25%, transparent) 0px, transparent 50%),
-        radial-gradient(at 0% 100%, color-mix(in srgb, var(--accent) 20%, transparent) 0px, transparent 50%);
-    filter: blur(60px);
-    opacity: 0.8;
-    animation: mesh-breathe 15s ease-in-out infinite alternate;
-}
-
-@keyframes mesh-breathe {
-    0% { transform: scale(1); opacity: 0.8; }
-    50% { transform: scale(1.05); opacity: 1; }
-    100% { transform: scale(1); opacity: 0.8; }
-}
-
-.glass-panel {
-    background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid color-mix(in srgb, var(--divider) 50%, transparent);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.text-gradient {
-    background: linear-gradient(135deg, var(--accent), #3b82f6, #8b5cf6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-size: 200% 200%;
-    animation: text-gradient-flow 5s ease infinite;
-}
-
-@keyframes text-gradient-flow {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
 }
 
 .landing-container {
     width: min(1200px, 100%);
     margin: 0 auto;
     padding: 0 clamp(20px, 5vw, 40px);
-    position: relative;
 }
 
 /* ─── Header ─── */
@@ -73,9 +28,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 0;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(var(--divider-rgb, 0,0,0), 0.05); /* very soft line */
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--divider);
 }
 
 .landing-brand {
@@ -84,47 +38,31 @@
     gap: 12px;
     color: var(--text-primary);
     text-decoration: none;
-    font-weight: 700;
-    font-size: 1.15rem;
-    letter-spacing: -0.5px;
-    transition: transform var(--dur-fast) var(--ease);
-}
-
-.landing-brand:hover {
-    transform: scale(1.02);
-}
-
-.landing-brand-mark {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: var(--r-md);
-    background: var(--accent);
-    color: var(--accent-text);
-    box-shadow: 0 4px 12px rgba(11, 186, 168, 0.3);
+    font-family: var(--font);
+    font-weight: 600;
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
 }
 
 .landing-nav {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 24px;
 }
 
 .landing-nav-link {
     color: var(--text-secondary);
     text-decoration: none;
+    font-family: var(--font-code);
     font-weight: 500;
-    font-size: 0.95rem;
-    padding: 8px 12px;
-    border-radius: var(--r-md);
-    transition: all var(--dur-fast) var(--ease);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    padding: 8px 0;
+    transition: color var(--dur-fast) var(--ease);
 }
 
 .landing-nav-link:hover {
     color: var(--text-primary);
-    background: var(--bg-surface-hover);
 }
 
 .landing-btn {
@@ -132,55 +70,35 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 14px 28px;
-    border-radius: var(--r-full);
-    font-weight: 650;
+    padding: 12px 24px;
+    border-radius: var(--r-sm);
+    font-family: var(--font-code);
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: 0.05em;
     text-decoration: none;
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all var(--dur-fast) var(--ease);
     cursor: pointer;
-    font-size: 1rem;
     border: none;
-    position: relative;
-    overflow: hidden;
 }
 
 .landing-btn--primary {
-    background: linear-gradient(135deg, var(--accent), #2dd4bf);
-    color: #ffffff;
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.landing-btn--primary::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    background: var(--accent);
+    color: var(--accent-text);
 }
 
 .landing-btn--primary:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-.landing-btn--primary:hover::before {
-    opacity: 1;
+    filter: brightness(0.9);
 }
 
 .landing-btn--secondary {
-    background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid color-mix(in srgb, var(--divider) 80%, transparent);
+    border: 1px solid var(--divider);
 }
 
 .landing-btn--secondary:hover {
-    background: var(--bg-surface-hover);
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-    border-color: var(--accent);
+    background: var(--bg-surface);
 }
 
 /* ─── Hero Section ─── */
@@ -189,14 +107,8 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 80px 0 60px;
+    padding: 120px 0 80px;
     gap: 24px;
-    animation: fade-up 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes fade-up {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
 }
 
 .landing-badge {
@@ -204,36 +116,28 @@
     align-items: center;
     gap: 6px;
     padding: 6px 16px;
-    border-radius: var(--r-full);
-    background: var(--accent-soft);
-    color: var(--accent);
+    border-radius: var(--r-sm);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
     font-size: 0.85rem;
     font-weight: 600;
-    border: 1px solid rgba(11, 186, 168, 0.2);
+    border: 1px solid var(--divider);
 }
 
 .landing-hero h1 {
-    font-size: clamp(3.5rem, 8vw, 5.5rem);
+    font-size: 48px;
     line-height: 1.1;
-    letter-spacing: -0.05em;
-    font-weight: 800;
-    max-width: 1000px;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    max-width: 800px;
     color: var(--text-primary);
     margin: 0;
 }
 
-.landing-hero h1 span {
-    background: linear-gradient(135deg, var(--accent), #3b82f6, #8b5cf6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-size: 200% 200%;
-    animation: text-gradient-flow 5s ease infinite;
-}
-
 .landing-lead {
-    font-size: clamp(1.2rem, 2vw, 1.4rem);
+    font-size: 16px;
     color: var(--text-secondary);
-    max-width: 650px;
+    max-width: 600px;
     line-height: 1.6;
     margin: 0;
     font-weight: 400;
@@ -249,23 +153,14 @@
 /* ─── Hero Placeholder Image / UI Mockup ─── */
 .landing-hero-mockup {
     width: 100%;
-    max-width: 1000px;
-    margin: 60px auto 0;
-    border-radius: 24px;
+    max-width: 900px;
+    margin: 80px auto 0;
+    border-radius: var(--r-md);
+    background: var(--bg-surface);
+    border: 1px solid var(--divider);
+    overflow: hidden;
     position: relative;
-    animation: float 6s ease-in-out infinite, mockup-tilt 10s ease-in-out infinite alternate;
-    transform-style: preserve-3d;
-    perspective: 1000px;
-}
-
-@keyframes mockup-tilt {
-    0% { transform: rotateY(-2deg) rotateX(2deg) translateY(0); }
-    100% { transform: rotateY(2deg) rotateX(-2deg) translateY(-12px); }
-}
-
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-12px); }
+    aspect-ratio: 16 / 9;
 }
 
 /* ─── Hero CSS Mockup ─── */
@@ -439,78 +334,42 @@
 }
 
 .landing-feature-card {
-    background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid color-mix(in srgb, var(--divider) 50%, transparent);
-    border-radius: var(--r-xl);
-    padding: 32px;
+    background: var(--bg-surface-hover); /* mapping to surface-container-high */
+    border: 1px solid var(--divider); /* border-subtle */
+    border-radius: var(--r-md);
+    padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    overflow: hidden;
-    position: relative;
-}
-
-.landing-feature-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-    transition: opacity 0.4s ease;
-    opacity: 0.5;
-}
-
-.landing-feature-card:hover {
-    transform: translateY(-8px) scale(1.02);
-    box-shadow: 0 24px 48px rgba(0,0,0,0.08), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
-    background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
-}
-
-.landing-feature-card:hover::before {
-    opacity: 1;
-    background: linear-gradient(135deg, var(--accent), transparent);
-}
-
-.landing-feature-card:hover .landing-feature-icon {
-    transform: scale(1.1) rotate(-5deg);
-    background: linear-gradient(135deg, var(--accent), #3b82f6);
-    color: #fff;
-    box-shadow: 0 8px 16px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .landing-feature-icon {
-    width: 54px;
-    height: 54px;
-    border-radius: 14px;
-    background: var(--accent-soft);
+    width: 48px;
+    height: 48px;
+    border-radius: var(--r-sm);
+    background: var(--bg-surface-hover); /* same bg, icon colored */
     color: var(--accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 12px;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    margin-bottom: 8px;
+    border: 1px solid var(--divider);
 }
 
 .landing-feature-card h3 {
-    font-size: 1.4rem;
-    font-weight: 750;
+    font-family: var(--font);
+    font-size: 20px;
+    font-weight: 500;
     margin: 0;
-    letter-spacing: -0.02em;
+    color: var(--text-primary);
 }
 
 .landing-feature-card p {
+    font-family: var(--font);
     color: var(--text-secondary);
-    line-height: 1.6;
+    line-height: 1.5;
     margin: 0;
-    font-size: 1rem;
+    font-size: 14px;
 }
 
 /* Feature Mockups Wrapper */

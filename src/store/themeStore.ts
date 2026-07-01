@@ -96,6 +96,36 @@ export const THEME_PRESETS: ThemePreset[] = [
 
     // ═══════════════════════════════════════════════════════════════════════════
     {
+        id: 'stitch',
+        name: 'Stitch Dark',
+        emoji: '🧵',
+        category: 'curated',
+        isDark: true,
+        colors: {
+            bgBase: '#10131a',
+            bgSurface: '#1d2027',
+            bgSurfaceHover: '#272a31',
+            bgMuted: '#32353c',
+            bgInset: '#0b0e15',
+            textPrimary: '#e1e2ec',
+            textSecondary: '#c2c6d6',
+            textTertiary: '#8c909f',
+            accent: '#adc6ff',
+            accentSoft: 'rgba(173, 198, 255, 0.1)',
+            accentText: '#002e6a',
+            danger: '#ffb4ab',
+            success: '#c0c1ff',
+            warning: '#ffb786',
+            divider: 'rgba(66, 71, 84, 0.5)',
+            shadow: 'rgba(0, 0, 0, 0.4)',
+            userBubbleBg: '#272a31',
+            userBubbleText: '#e1e2ec',
+            aiBubbleBg: '#1d2027',
+            aiBubbleBorder: 'rgba(66, 71, 84, 0.5)',
+        },
+    },
+    // ═══════════════════════════════════════════════════════════════════════════
+    {
         id: 'washi',
         name: 'Washi',
         emoji: '🪷',
@@ -795,9 +825,9 @@ export const useThemeStore = create<ThemeStore>()(
     subscribeWithSelector(
         persist(
             (set, get) => ({
-            activeThemeId: 'washi',
+            activeThemeId: 'stitch',
             themeSource: 'preset' as ThemeSource,
-            customBasePresetId: 'washi',
+            customBasePresetId: 'stitch',
             customColors: {} as Partial<ThemeColors>,
             chatSizeStep: DEFAULT_CHAT_SIZE_STEP,
             savedThemes: [] as SavedThemeData[],
@@ -901,7 +931,7 @@ export const useThemeStore = create<ThemeStore>()(
                 let newSource = s.themeSource;
                 
                 if (s.themeSource === 'preset' && s.activeThemeId === id) {
-                    newActiveId = 'washi';
+                    newActiveId = 'stitch';
                 }
                 
                 set({
@@ -930,7 +960,7 @@ export const useThemeStore = create<ThemeStore>()(
                         const customBasePresetId =
                             appearance.customBasePresetId && known(appearance.customBasePresetId)
                                 ? appearance.customBasePresetId
-                                : 'washi';
+                                : 'stitch';
                         set({
                             themeSource: 'custom',
                             customBasePresetId,
@@ -950,11 +980,11 @@ export const useThemeStore = create<ThemeStore>()(
                         const activeThemeId =
                             appearance.activeThemeId && known(appearance.activeThemeId)
                                 ? appearance.activeThemeId
-                                : fromRow || 'washi';
+                                : fromRow || 'stitch';
                         set({
                             themeSource: 'preset',
                             activeThemeId,
-                            customBasePresetId: 'washi',
+                            customBasePresetId: 'stitch',
                             customColors: {},
                             chatSizeStep,
                             savedThemes: appearance.savedThemes || [],
@@ -967,7 +997,7 @@ export const useThemeStore = create<ThemeStore>()(
                     set({
                         themeSource: 'preset',
                         activeThemeId: row.active_theme,
-                        customBasePresetId: 'washi',
+                        customBasePresetId: 'stitch',
                         customColors: {},
                     });
                 }
@@ -996,11 +1026,11 @@ export const useThemeStore = create<ThemeStore>()(
                     if (p.themeSource === undefined) p.themeSource = 'preset';
                     if (p.customBasePresetId === undefined) {
                         p.customBasePresetId =
-                            typeof p.activeThemeId === 'string' && p.activeThemeId ? p.activeThemeId : 'washi';
+                            typeof p.activeThemeId === 'string' && p.activeThemeId ? p.activeThemeId : 'stitch';
                     }
                     if (p.customColors === undefined) p.customColors = {};
                     if (p.chatSizeStep === undefined) p.chatSizeStep = DEFAULT_CHAT_SIZE_STEP;
-                    if (p.activeThemeId === undefined || p.activeThemeId === '') p.activeThemeId = 'washi';
+                    if (p.activeThemeId === undefined || p.activeThemeId === '') p.activeThemeId = 'stitch';
                     if (p.savedThemes === undefined) p.savedThemes = [];
                 }
                 if (fromVersion < 3) {

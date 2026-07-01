@@ -287,14 +287,11 @@ const HomePage: React.FC = () => {
                 </div>
 
                 <h1>
-                    Your AI. <span>Your Rules.</span>
+                    The AI Workspace You Deserve
                 </h1>
 
                 <p className="landing-lead">
-                    Lucen is an AI workspace built for control and clarity: Side Chat for fast follow-ups,
-                    message control (delete exchanges and redo the last response), instant in-chat search,
-                    and hand-crafted themes that keep text readable. Generate rich artifacts like HTML, SVG,
-                    and Mermaid diagrams with pan/zoom previews, then copy or download what you need.
+                    A highly-tuned environment engineered for clarity, speed, and absolute control. Stop fighting your tools and start flowing.
                 </p>
 
                 <div className="landing-hero-actions">
