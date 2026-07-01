@@ -366,10 +366,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, [message.reasoning]);
 
     const handleCopy = useCallback(async () => {
-        await navigator.clipboard.writeText(message.content);
+        await navigator.clipboard.writeText(cleanContent);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-    }, [message.content]);
+    }, [cleanContent]);
 
     // Open the artifact workspace when an artifact is first detected AND
     // stream live content updates so the renderer shows real-time progress.
@@ -418,7 +418,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, [disableArtifacts, firstArtifactId, firstArtifactContent, firstArtifactIsStreaming, message.isStreaming, setActiveArtifact, storeUpdateArtifactContent, isDismissed]);
 
     if (actionsOnly) {
-        if (!message.content) return null;
         return (
             <div className="msg-inline-actions">
                 <button className="msg-action-btn" onClick={handleCopy} title="Copy">
@@ -659,11 +658,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 </div>
             )}
 
-            {!message.isStreaming && message.content && (
+            {!message.isStreaming && (
                 <div className="msg-response-actions">
-                    <button className="msg-action-btn" onClick={handleCopy} title="Copy response">
-                        {copied ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
+                    {message.content && (
+                        <button className="msg-action-btn" onClick={handleCopy} title="Copy response">
+                            {copied ? <Check size={13} /> : <Copy size={13} />}
+                        </button>
+                    )}
                     {onToggleLink && (
                         <button 
                             className={`msg-action-btn ${isLinked ? 'msg-action-btn--active' : ''}`} 
@@ -686,76 +687,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         <button className="msg-action-btn" onClick={() => onFork(message.id)} title="Fork chat from here">
                             <Split size={13} />
                         </button>
-                    )}
-                    {message.role === 'assistant' && (
-                        <div className="msg-usage-receipt-wrapper" style={{ position: 'relative', display: 'inline-block' }}>
-                            <button
-                                className={`msg-action-btn ${receiptOpen ? 'msg-action-btn--active' : ''}`}
-                                onClick={handleToggleReceipt}
-                                title="Show cost breakdown"
-                            >
-                                <Receipt size={13} />
-                            </button>
-                            {receiptOpen && (
-                                <div className="usage-receipt-popover">
-                                    <div className="usage-receipt-popover-header">
-                                        <Coins size={13} className="usage-receipt-header-icon" />
-                                        <span>Usage & Cost Receipt</span>
-                                    </div>
-                                    {loadingReceipt ? (
-                                        <div className="usage-receipt-loading">
-                                            <Loader2 size={13} className="usage-receipt-spinner" />
-                                            <span>Loading cost breakdown...</span>
-                                        </div>
-                                    ) : receiptData ? (
-                                        <div className="usage-receipt-content">
-                                            <div className="usage-receipt-row">
-                                                <span className="usage-receipt-label">Text Completion</span>
-                                                <span className="usage-receipt-value">
-                                                    {receiptData.total_credits > 0 ? `-${receiptData.text_credits.toFixed(4)} credits` : 'Free'}
-                                                </span>
-                                            </div>
-                                            <div className="usage-receipt-subrow">
-                                                Tokens: {receiptData.prompt_tokens.toLocaleString()} in / {receiptData.completion_tokens.toLocaleString()} out
-                                                {receiptData.reasoning_tokens > 0 && ` (${receiptData.reasoning_tokens.toLocaleString()} thinking)`}
-                                            </div>
-
-                                            {receiptData.tools && receiptData.tools.length > 0 && (
-                                                <>
-                                                    <div className="usage-receipt-divider" />
-                                                    <div className="usage-receipt-section-title">Executed Tools</div>
-                                                    {receiptData.tools.map((tool: any, idx: number) => (
-                                                        <div key={idx} className="usage-receipt-tool-row">
-                                                            <span className="usage-receipt-tool-name">
-                                                                {tool.name === 'analyze_image' ? 'analyze_image (Vision)' :
-                                                                 tool.name === 'web_search' ? 'web_search (Tavily)' :
-                                                                 tool.name === 'process_file' ? 'process_file (Reader)' : tool.name}
-                                                            </span>
-                                                            <span className="usage-receipt-tool-value">
-                                                                {tool.credits > 0 ? `-${tool.credits.toFixed(4)} credits` : 'Free'}
-                                                                {tool.durationMs !== undefined && ` (${(tool.durationMs / 1000).toFixed(1)}s)`}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </>
-                                            )}
-
-                                            <div className="usage-receipt-divider usage-receipt-divider--thick" />
-                                            <div className="usage-receipt-row usage-receipt-row--total">
-                                                <span className="usage-receipt-total-label">Total Cost</span>
-                                                <span className="usage-receipt-total-value">
-                                                    -{receiptData.total_credits.toFixed(4)} credits
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="usage-receipt-empty">
-                                            No billing logs found for this message.
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
                     )}
                     {showRetry && onRetry && (
                         <button className="msg-action-btn" onClick={() => onRetry(message.id)} title="Regenerate response">
