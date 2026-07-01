@@ -26,6 +26,7 @@ const MarketingLayout: React.FC = () => {
 
     return (
         <div className="landing-page">
+            <div className="landing-mesh-bg" />
             <div className="landing-container">
                 <header className="landing-header">
                     <Link className="landing-brand" to="/">
