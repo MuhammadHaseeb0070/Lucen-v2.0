@@ -142,7 +142,6 @@ const ChatAppearanceSection: React.FC = () => {
         setTheme,
         setChatSizeStep,
         getResolvedTheme,
-        savedThemes,
         saveCustomTheme,
     } = useThemeStore();
 
