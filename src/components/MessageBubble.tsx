@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, Globe, Split, Loader2, Image, FileText, Coins, Receipt, Settings } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Copy, Check, RotateCcw, Link2, Pin, Globe, Split, Loader2, Image, FileText, Settings } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ArtifactCard from './ArtifactCard';
 import ArtifactSuggestionPicker from './ArtifactSuggestionPicker';
@@ -8,7 +8,7 @@ import { parseArtifacts, type ParseResult } from '../lib/artifactParser';
 import { parseArtifactsOffThread } from '../workers/artifactParseWorkerClient';
 import { useArtifactStore } from '../store/artifactStore';
 import type { Message } from '../types';
-import { fetchUsageReceipt } from '../services/database';
+
 import { getUserFriendlyError } from '../lib/errorMessages';
 
 interface MessageBubbleProps {
@@ -64,9 +64,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const [stepsOpen, setStepsOpen] = useState(() => {
         return (message.toolSteps && message.toolSteps.length > 0) ?? false;
     });
-    const [receiptOpen, setReceiptOpen] = useState(false);
-    const [usageLogs, setUsageLogs] = useState<any[] | null>(null);
-    const [loadingReceipt, setLoadingReceipt] = useState(false);
+
 
     const hasRunningTools = useMemo(() => {
         return message.toolSteps?.some(s => s.status === 'running') ?? false;
@@ -108,111 +106,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         prevHasReasoningRef.current = hasReasoningNow;
     }, [message.id, message.isStreaming, message.reasoning]);
 
-    const handleToggleReceipt = async () => {
-        if (receiptOpen) {
-            setReceiptOpen(false);
-            return;
-        }
-
-        setReceiptOpen(true);
-
-        if (message.usageReceipt || usageLogs) return;
-
-        setLoadingReceipt(true);
-        try {
-            const logs = await fetchUsageReceipt(message.id);
-            setUsageLogs(logs);
-        } catch (err) {
-            console.error('Failed to fetch usage logs:', err);
-        } finally {
-            setLoadingReceipt(false);
-        }
-    };
-
-    const receiptData = useMemo(() => {
-        if (message.usageReceipt) {
-            const prompt_tokens = message.usageReceipt.prompt_tokens;
-            const completion_tokens = message.usageReceipt.completion_tokens;
-            const reasoning_tokens = message.usageReceipt.reasoning_tokens;
-            const total_credits = message.usageReceipt.total_credits;
-            const search_credits = message.usageReceipt.search_credits;
-            const text_credits = Math.max(0, total_credits - search_credits);
-
-            return {
-                prompt_tokens,
-                completion_tokens,
-                reasoning_tokens,
-                total_credits,
-                search_credits,
-                text_credits,
-                tools: message.usageReceipt.tools_used || []
-            };
-        }
-
-        if (usageLogs && usageLogs.length > 0) {
-            let prompt_tokens = 0;
-            let completion_tokens = 0;
-            let reasoning_tokens = 0;
-            let total_credits = 0;
-            let search_credits = 0;
-            const tools: any[] = [];
-
-            for (const log of usageLogs) {
-                if (log.call_kind === 'chat' || log.call_kind === 'chat_continuation') {
-                    prompt_tokens += log.prompt_tokens || 0;
-                    completion_tokens += log.completion_tokens || 0;
-                    reasoning_tokens += log.reasoning_tokens || 0;
-                }
-                total_credits += log.total_credits_deducted || 0;
-                if (log.call_kind === 'web_search' || log.web_search_credits) {
-                    search_credits += log.web_search_credits || 0;
-                }
-                if (log.call_kind === 'describe_image') {
-                    tools.push({
-                        name: 'analyze_image',
-                        durationMs: log.duration_ms,
-                        status: log.status === 'completed' ? 'completed' : 'failed',
-                        credits: log.total_credits_deducted || 0,
-                    });
-                }
-                if (log.call_kind === 'web_search') {
-                    tools.push({
-                        name: 'web_search',
-                        durationMs: log.duration_ms,
-                        status: log.status === 'completed' ? 'completed' : 'failed',
-                        credits: log.total_credits_deducted || 0,
-                    });
-                }
-            }
-
-            if (message.toolSteps) {
-                for (const step of message.toolSteps) {
-                    if (step.tool === 'process_file') {
-                        tools.push({
-                            name: 'process_file',
-                            durationMs: step.durationMs,
-                            status: step.status,
-                            credits: 0
-                        });
-                    }
-                }
-            }
-
-            const text_credits = Math.max(0, total_credits - search_credits);
-
-            return {
-                prompt_tokens,
-                completion_tokens,
-                reasoning_tokens,
-                total_credits,
-                search_credits,
-                text_credits,
-                tools
-            };
-        }
-
-        return null;
-    }, [message.usageReceipt, usageLogs, message.toolSteps]);
 
     const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
     const storeUpdateArtifactContent = useArtifactStore((s) => s.updateArtifactContent);
