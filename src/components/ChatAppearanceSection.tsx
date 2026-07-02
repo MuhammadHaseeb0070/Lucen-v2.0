@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     useThemeStore,
     THEME_PRESETS,
@@ -7,18 +7,15 @@ import {
     THEME_COLOR_LABELS,
     CHAT_SIZE_STEPS,
     CHAT_SIZE_LABELS,
-    applyTheme,
     type ThemeColors,
 } from '../store/themeStore';
-import { SlidersHorizontal, RotateCcw, X, Save } from 'lucide-react';
+import { SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
 
 function hexForColorInput(css: string): string {
     const s = css.trim();
     if (/^#[0-9A-Fa-f]{6}$/.test(s)) return s;
     if (/^#[0-9A-Fa-f]{3}$/.test(s)) {
-        const r = s[1];
-        const g = s[2];
-        const b = s[3];
+        const r = s[1]; const g = s[2]; const b = s[3];
         return `#${r}${r}${g}${g}${b}${b}`;
     }
     return '#888888';
@@ -27,173 +24,68 @@ function hexForColorInput(css: string): string {
 function sanitizeColorValue(val: any): string | null {
     if (typeof val !== 'string') return null;
     const s = val.trim();
-    // Strict blocklist for CSS vulnerabilities
     if (s.toLowerCase().includes('url(') || s.includes(';') || s.includes('}') || s.includes('{') || s.includes('var(') || s.includes('expression(')) {
         return null;
     }
     return s;
 }
 
-const THEME_EMOJIS = ['🎨', '🌈', '🌙', '☀️', '🔥', '🌊', '🍃', '💎', '🪻', '🦋', '🌸', '🍂', '⚡', '🪷', '🎯', '🖤', '💜', '🧊', '🌅', '☕'];
-
-// ─── Save Theme Modal ───
-const SaveThemeModal: React.FC<{
-    onSave: (name: string, emoji: string) => void;
-    onCancel: () => void;
-    accentColor: string;
-}> = ({ onSave, onCancel, accentColor }) => {
-    const [name, setName] = useState('');
-    const [emoji, setEmoji] = useState('🎨');
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
-
-    const handleSave = () => {
-        if (name.trim()) {
-            onSave(name.trim(), emoji);
-        }
-    };
-
-    return (
-        <div className="save-theme-modal-overlay" onClick={onCancel}>
-            <div className="save-theme-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="save-theme-modal__header">
-                    <Save size={16} style={{ color: accentColor }} />
-                    <h4 className="save-theme-modal__title">Save your theme</h4>
-                    <button className="save-theme-modal__close" onClick={onCancel} type="button">
-                        <X size={16} />
-                    </button>
-                </div>
-
-                <div className="save-theme-modal__body">
-                    <div className="save-theme-modal__preview">
-                        <span className="save-theme-modal__preview-emoji">{emoji}</span>
-                        <span className="save-theme-modal__preview-name">{name || 'My Theme'}</span>
-                    </div>
-
-                    <div className="save-theme-modal__field">
-                        <label className="save-theme-modal__label" htmlFor="theme-name-input">Name</label>
-                        <input
-                            ref={inputRef}
-                            id="theme-name-input"
-                            type="text"
-                            className="save-theme-modal__input"
-                            value={name}
-                            onChange={(e) => setName(e.target.value.slice(0, 30))}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && name.trim()) handleSave();
-                                if (e.key === 'Escape') onCancel();
-                            }}
-                            placeholder="e.g. Midnight Ocean"
-                            maxLength={30}
-                            spellCheck={false}
-                        />
-                        <span className="save-theme-modal__char-count">{name.length}/30</span>
-                    </div>
-
-                    <div className="save-theme-modal__field">
-                        <label className="save-theme-modal__label">Icon</label>
-                        <div className="save-theme-modal__emoji-grid">
-                            {THEME_EMOJIS.map((e) => (
-                                <button
-                                    key={e}
-                                    type="button"
-                                    className={`save-theme-modal__emoji-btn ${emoji === e ? 'save-theme-modal__emoji-btn--active' : ''}`}
-                                    onClick={() => setEmoji(e)}
-                                >
-                                    {e}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="save-theme-modal__footer">
-                    <button type="button" className="save-theme-modal__btn save-theme-modal__btn--ghost" onClick={onCancel}>
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        className="save-theme-modal__btn save-theme-modal__btn--primary"
-                        disabled={!name.trim()}
-                        onClick={handleSave}
-                    >
-                        <Save size={14} />
-                        Save theme
-                    </button>
-                </div>
-            </div>
+const ThemeSwatch: React.FC<{ colors: ThemeColors, name: string, isActive: boolean, onClick: () => void, onDelete?: () => void }> = ({ colors, name, isActive, onClick, onDelete }) => (
+    <div className={`theme-swatch ${isActive ? 'theme-swatch--active' : ''}`} onClick={onClick}>
+        <div className="theme-swatch__preview" style={{ backgroundColor: colors.bgBase, borderColor: colors.divider }}>
+            <div className="theme-swatch__bubble theme-swatch__bubble--ai" style={{ backgroundColor: colors.aiBubbleBg, borderColor: colors.aiBubbleBorder }}></div>
+            <div className="theme-swatch__bubble theme-swatch__bubble--user" style={{ backgroundColor: colors.userBubbleBg, color: colors.userBubbleText }}></div>
         </div>
-    );
-};
+        <div className="theme-swatch__info">
+            <span className="theme-swatch__name">{name}</span>
+            {onDelete && (
+                <button className="theme-swatch__delete" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+                    <Trash2 size={14} />
+                </button>
+            )}
+        </div>
+    </div>
+);
 
 const ChatAppearanceSection: React.FC = () => {
     const {
-        themeSource,
-        customBasePresetId,
-        customColors,
+        activeThemeId,
         chatSizeStep,
-        beginCustomTheme,
-        setCustomBasePresetId,
-        patchCustomColors,
-        resetCustomColors,
+        savedThemes,
         setTheme,
-        setChatSizeStep,
+        createCustomTheme,
+        updateCustomTheme,
+        deleteSavedTheme,
         getResolvedTheme,
-        saveCustomTheme,
+        setChatSizeStep,
     } = useThemeStore();
 
-    const settingsOpen = useThemeStore((s) => s.settingsOpen);
-
-    /** Local overlay so color drag does not write Zustand (and localStorage persist) on every pointer move. */
-    const [draftOverlay, setDraftOverlay] = useState<Partial<ThemeColors>>({});
-    const prevSettingsOpenRef = useRef(settingsOpen);
-    const [showSaveModal, setShowSaveModal] = useState(false);
+    const editorRef = useRef<HTMLDivElement>(null);
+    const resolvedTheme = getResolvedTheme();
+    const isCustom = activeThemeId.startsWith('user_theme_');
 
     const [jsonInput, setJsonInput] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
-    const [jsonSuccess, setJsonSuccess] = useState(false);
+
+    // Sync JSON input when the active theme changes (but only if we aren't focused in it)
     const jsonTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-    const basePreset = useMemo(
-        () => THEME_PRESETS.find((t) => t.id === customBasePresetId) || THEME_PRESETS[0],
-        [customBasePresetId]
-    );
-
-    const mergedColors = useMemo(() => {
-        return { ...basePreset.colors, ...customColors, ...draftOverlay } as ThemeColors;
-    }, [basePreset.colors, customColors, draftOverlay]);
-
-    const isCustom = themeSource === 'custom';
-
-    const flushDraftToStore = useCallback(() => {
-        const keys = Object.keys(draftOverlay) as (keyof ThemeColors)[];
-        if (keys.length === 0) return;
-        patchCustomColors(draftOverlay);
-        setDraftOverlay({});
-    }, [draftOverlay, patchCustomColors]);
-
-    useEffect(() => {
-        if (prevSettingsOpenRef.current && !settingsOpen) {
-            flushDraftToStore();
-        }
-        prevSettingsOpenRef.current = settingsOpen;
-    }, [settingsOpen, flushDraftToStore]);
 
     useEffect(() => {
         if (document.activeElement !== jsonTextareaRef.current) {
-            setJsonInput(JSON.stringify(mergedColors, null, 2));
+            setJsonInput(JSON.stringify(resolvedTheme.colors, null, 2));
             setJsonError(null);
         }
-    }, [mergedColors]);
+    }, [resolvedTheme.colors, activeThemeId]);
 
-    const handleApplyJson = useCallback(() => {
+    const handleJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        setJsonInput(val);
         setJsonError(null);
-        setJsonSuccess(false);
+
+        if (!isCustom) return;
+
         try {
-            const parsed = JSON.parse(jsonInput);
+            const parsed = JSON.parse(val);
             if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
                 setJsonError("Invalid format: Must be a JSON object.");
                 return;
@@ -201,50 +93,28 @@ const ChatAppearanceSection: React.FC = () => {
 
             const patch: Partial<ThemeColors> = {};
             const allKeys = [...THEME_SOLID_COLOR_KEYS, ...THEME_ALPHA_COLOR_KEYS];
-
-            let foundValidKeys = 0;
             for (const key of allKeys) {
                 if (key in parsed) {
                     const cleanVal = sanitizeColorValue(parsed[key]);
-                    if (cleanVal) {
-                        patch[key] = cleanVal;
-                        foundValidKeys++;
-                    }
+                    if (cleanVal) patch[key] = cleanVal;
                 }
             }
-
-            if (foundValidKeys === 0) {
-                setJsonError("No valid color keys found in JSON.");
-                return;
+            
+            if (Object.keys(patch).length > 0) {
+                updateCustomTheme(activeThemeId, patch);
             }
-
-            // Apply to store
-            patchCustomColors(patch);
-            // Also clear draft overlay in case it overrides
-            setDraftOverlay({});
-            
-            setJsonSuccess(true);
-            setTimeout(() => setJsonSuccess(false), 2000);
-            
-            // Sync back formatted version
-            setJsonInput(JSON.stringify({ ...mergedColors, ...patch }, null, 2));
-        } catch (e) {
+        } catch (err) {
             setJsonError("Invalid JSON syntax.");
         }
-    }, [jsonInput, patchCustomColors, mergedColors]);
+    };
 
-    /** Live preview while dragging (no Zustand persist until pointerup / blur). */
-    useLayoutEffect(() => {
-        if (Object.keys(draftOverlay).length === 0) return;
-        const preset = useThemeStore.getState().getResolvedTheme();
-        const previewColors = { ...preset.colors, ...draftOverlay };
-        applyTheme({ ...preset, colors: previewColors });
-    }, [draftOverlay]);
-
-    const handleSaveTheme = (name: string, emoji: string) => {
-        flushDraftToStore();
-        saveCustomTheme(name, emoji);
-        setShowSaveModal(false);
+    const handleCreateTheme = () => {
+        const id = createCustomTheme();
+        if (id) {
+            setTimeout(() => {
+                editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
     };
 
     return (
@@ -252,10 +122,9 @@ const ChatAppearanceSection: React.FC = () => {
             <div className="chat-appearance__header">
                 <SlidersHorizontal size={18} className="chat-appearance__header-icon" />
                 <div>
-                    <h4 className="chat-appearance__title">Chat look</h4>
+                    <h4 className="chat-appearance__title">Appearance</h4>
                     <p className="chat-appearance__subtitle">
-                        Text size applies to the main chat and Side Chat only (app font unchanged). Custom colors
-                        replace the active theme everywhere.
+                        Customize your workspace aesthetics and chat size.
                     </p>
                 </div>
             </div>
@@ -269,9 +138,7 @@ const ChatAppearanceSection: React.FC = () => {
                                 key={i}
                                 type="button"
                                 className={`chat-appearance__step-btn ${chatSizeStep === i ? 'chat-appearance__step-btn--active' : ''}`}
-                                onClick={() => {
-                                    setChatSizeStep(i);
-                                }}
+                                onClick={() => setChatSizeStep(i)}
                             >
                                 {CHAT_SIZE_LABELS[i]}
                             </button>
@@ -280,191 +147,124 @@ const ChatAppearanceSection: React.FC = () => {
                 </div>
             </div>
 
-            <div className="chat-appearance__custom-head">
-                <h4 className="chat-appearance__custom-title">Theme colors</h4>
-                {!isCustom ? (
-                    <button type="button" className="chat-appearance__btn-secondary" onClick={beginCustomTheme}>
-                        Customize colors
-                    </button>
-                ) : (
-                    <div className="chat-appearance__custom-actions">
-                        <button
-                            type="button"
-                            className="chat-appearance__btn-ghost"
-                            onClick={() => {
-                                resetCustomColors();
-                                setDraftOverlay({});
-                            }}
-                        >
-                            <RotateCcw size={14} />
-                            Reset to base
-                        </button>
-                        <button
-                            type="button"
-                            className="chat-appearance__btn-secondary"
-                            onClick={() => {
-                                flushDraftToStore();
-                                setTheme(customBasePresetId);
-                            }}
-                        >
-                            Use preset only
-                        </button>
-                        <button
-                            type="button"
-                            className="chat-appearance__btn-secondary"
-                            title="Save as new theme"
-                            onClick={() => setShowSaveModal(true)}
-                        >
-                            <Save size={14} />
-                            Save as new theme
-                        </button>
-                    </div>
-                )}
+            <div className="chat-appearance__section-title" style={{ marginTop: '24px', fontWeight: 600, color: 'var(--text-primary)' }}>Premade Themes</div>
+            <div className="chat-appearance__themes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                {THEME_PRESETS.map((p) => (
+                    <ThemeSwatch 
+                        key={p.id} 
+                        colors={p.colors} 
+                        name={p.name} 
+                        isActive={activeThemeId === p.id}
+                        onClick={() => setTheme(p.id)}
+                    />
+                ))}
             </div>
 
-            {isCustom && (
-                <>
-                    <div className="chat-appearance__field">
-                        <label className="chat-appearance__label" htmlFor="custom-base-preset">
-                            Base preset
-                        </label>
-                        <select
-                            id="custom-base-preset"
-                            className="chat-appearance__select"
-                            value={customBasePresetId}
-                            onChange={(e) => {
-                                flushDraftToStore();
-                                setCustomBasePresetId(e.target.value);
-                            }}
-                        >
-                            {THEME_PRESETS.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.emoji} {p.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+            <div className="chat-appearance__section-title" style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Your Themes
+                <button 
+                    className="chat-appearance__btn-secondary" 
+                    onClick={handleCreateTheme}
+                    disabled={savedThemes.length >= 3}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                    <Plus size={14} /> Create New ({savedThemes.length}/3)
+                </button>
+            </div>
+            
+            {savedThemes.length === 0 ? (
+                <div className="chat-appearance__empty-state" style={{ marginTop: '12px', padding: '24px', textAlign: 'center', backgroundColor: 'var(--bg-inset)', borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    You haven't created any custom themes yet.
+                </div>
+            ) : (
+                <div className="chat-appearance__themes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                    {savedThemes.map((p) => (
+                        <ThemeSwatch 
+                            key={p.id} 
+                            colors={p.colors as unknown as ThemeColors} 
+                            name={p.name} 
+                            isActive={activeThemeId === p.id}
+                            onClick={() => setTheme(p.id)}
+                            onDelete={() => deleteSavedTheme(p.id)}
+                        />
+                    ))}
+                </div>
+            )}
 
-                    <div className="chat-appearance__color-grid">
-                        {THEME_SOLID_COLOR_KEYS.map((key) => (
-                            <div key={key} className="chat-appearance__color-row">
-                                <span className="chat-appearance__color-label">{THEME_COLOR_LABELS[key]}</span>
-                                <div className="chat-appearance__color-controls">
-                                    <input
-                                        type="color"
-                                        className="chat-appearance__color-wheel"
-                                        value={hexForColorInput(mergedColors[key])}
-                                        aria-label={THEME_COLOR_LABELS[key]}
-                                        onChange={(e) => {
-                                            const v = e.target.value;
-                                            setDraftOverlay((d) => ({ ...d, [key]: v }));
-                                        }}
-                                        onPointerUp={(e) => {
-                                            const v = (e.currentTarget as HTMLInputElement).value;
-                                            patchCustomColors({ [key]: v } as Partial<ThemeColors>);
-                                            setDraftOverlay((d) => {
-                                                const next = { ...d };
-                                                delete next[key];
-                                                return next;
-                                            });
-                                        }}
-                                    />
-                                    <input
-                                        type="text"
-                                        className="chat-appearance__hex-input"
-                                        value={mergedColors[key]}
-                                        onChange={(e) => {
-                                            setDraftOverlay((d) => ({ ...d, [key]: e.target.value }));
-                                        }}
-                                        onBlur={() => {
-                                            const v = mergedColors[key];
-                                            patchCustomColors({ [key]: v } as Partial<ThemeColors>);
-                                            setDraftOverlay((d) => {
-                                                const next = { ...d };
-                                                delete next[key];
-                                                return next;
-                                            });
-                                        }}
-                                        spellCheck={false}
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                        {THEME_ALPHA_COLOR_KEYS.map((key) => (
-                            <div key={key} className="chat-appearance__color-row chat-appearance__color-row--full">
-                                <span className="chat-appearance__color-label">{THEME_COLOR_LABELS[key]}</span>
+            <div ref={editorRef} className={`chat-appearance__editor-section ${!isCustom ? 'chat-appearance__editor-section--disabled' : ''}`} style={{ marginTop: '48px', position: 'relative' }}>
+                {!isCustom && (
+                    <div className="chat-appearance__editor-overlay" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(var(--bg-base-rgb), 0.7)', backdropFilter: 'blur(4px)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px' }}>
+                        <div style={{ backgroundColor: 'var(--bg-surface)', padding: '16px 24px', borderRadius: '8px', border: '1px solid var(--divider)', textAlign: 'center', boxShadow: 'var(--shadow-color) 0 8px 24px' }}>
+                            <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>Read Only</h4>
+                            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '13px' }}>Select or create a custom theme to edit colors.</p>
+                        </div>
+                    </div>
+                )}
+                
+                <h4 className="chat-appearance__custom-title">Color Editor</h4>
+                <div className="chat-appearance__color-grid">
+                    {THEME_SOLID_COLOR_KEYS.map((key) => (
+                        <div key={key} className="chat-appearance__color-row">
+                            <span className="chat-appearance__color-label">{THEME_COLOR_LABELS[key]}</span>
+                            <div className="chat-appearance__color-controls">
+                                <input
+                                    type="color"
+                                    className="chat-appearance__color-wheel"
+                                    value={hexForColorInput(resolvedTheme.colors[key])}
+                                    onChange={(e) => {
+                                        if (isCustom) updateCustomTheme(activeThemeId, { [key]: e.target.value });
+                                    }}
+                                    disabled={!isCustom}
+                                />
                                 <input
                                     type="text"
-                                    className="chat-appearance__hex-input chat-appearance__hex-input--wide"
-                                    value={mergedColors[key]}
+                                    className="chat-appearance__hex-input"
+                                    value={resolvedTheme.colors[key]}
                                     onChange={(e) => {
-                                        setDraftOverlay((d) => ({ ...d, [key]: e.target.value }));
+                                        if (isCustom) updateCustomTheme(activeThemeId, { [key]: e.target.value });
                                     }}
-                                    onBlur={() => {
-                                        const v = mergedColors[key];
-                                        patchCustomColors({ [key]: v } as Partial<ThemeColors>);
-                                        setDraftOverlay((d) => {
-                                            const next = { ...d };
-                                            delete next[key];
-                                            return next;
-                                        });
-                                    }}
+                                    disabled={!isCustom}
                                     spellCheck={false}
-                                    placeholder="rgba(0,0,0,0.06)"
                                 />
                             </div>
-                        ))}
-                    </div>
-
-                    <div className="chat-appearance__json-section" style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h4 className="chat-appearance__color-label" style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>Advanced: Import/Export JSON</h4>
-                            <button 
-                                type="button" 
-                                className="chat-appearance__btn-secondary"
-                                onClick={handleApplyJson}
-                            >
-                                Apply JSON
-                            </button>
                         </div>
-                        <p className="chat-appearance__subtitle" style={{ margin: 0 }}>
-                            Copy this JSON to ask an AI for a new theme, or paste an AI-generated theme here to apply it.
-                        </p>
-                        {jsonError && <div style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '4px' }}>{jsonError}</div>}
-                        {jsonSuccess && <div style={{ color: 'var(--success)', fontSize: '13px', marginTop: '4px' }}>Successfully applied colors!</div>}
-                        <textarea
-                            ref={jsonTextareaRef}
-                            value={jsonInput}
-                            onChange={(e) => {
-                                setJsonInput(e.target.value);
-                                setJsonError(null);
-                            }}
-                            className="chat-appearance__hex-input"
-                            style={{ width: '100%', height: '280px', resize: 'vertical', fontFamily: 'monospace', padding: '12px', whiteSpace: 'pre', borderRadius: '8px', lineHeight: '1.4' }}
-                            spellCheck={false}
-                        />
-                    </div>
-                </>
-            )}
+                    ))}
+                    {THEME_ALPHA_COLOR_KEYS.map((key) => (
+                        <div key={key} className="chat-appearance__color-row chat-appearance__color-row--full">
+                            <span className="chat-appearance__color-label">{THEME_COLOR_LABELS[key]}</span>
+                            <input
+                                type="text"
+                                className="chat-appearance__hex-input chat-appearance__hex-input--wide"
+                                value={resolvedTheme.colors[key]}
+                                onChange={(e) => {
+                                    if (isCustom) updateCustomTheme(activeThemeId, { [key]: e.target.value });
+                                }}
+                                disabled={!isCustom}
+                                spellCheck={false}
+                            />
+                        </div>
+                    ))}
+                </div>
 
-            {!isCustom && (
-                <p className="chat-appearance__hint">
-                    Preview: <strong>{getResolvedTheme().name}</strong> — open Customize to edit individual colors.
-                </p>
-            )}
-
-            {showSaveModal && (
-                <SaveThemeModal
-                    onSave={handleSaveTheme}
-                    onCancel={() => setShowSaveModal(false)}
-                    accentColor={mergedColors.accent}
-                />
-            )}
+                <div className="chat-appearance__json-section" style={{ marginTop: '32px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <h4 className="chat-appearance__color-label" style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>Advanced: JSON Editor</h4>
+                    <p className="chat-appearance__subtitle" style={{ margin: 0 }}>
+                        Edits sync automatically. Paste a generated theme here.
+                    </p>
+                    {jsonError && <div style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '4px' }}>{jsonError}</div>}
+                    <textarea
+                        ref={jsonTextareaRef}
+                        value={jsonInput}
+                        onChange={handleJsonChange}
+                        disabled={!isCustom}
+                        className="chat-appearance__hex-input"
+                        style={{ width: '100%', height: '280px', resize: 'vertical', fontFamily: 'monospace', padding: '12px', whiteSpace: 'pre', borderRadius: '8px', lineHeight: '1.4' }}
+                        spellCheck={false}
+                    />
+                </div>
+            </div>
         </div>
     );
 };
 
 export default ChatAppearanceSection;
-
-
-

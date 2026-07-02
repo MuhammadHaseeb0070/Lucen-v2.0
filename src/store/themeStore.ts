@@ -86,7 +86,6 @@ function mergeThemeColors(base: ThemeColors, partial: Partial<ThemeColors>): The
 export interface ThemePreset {
     id: string;
     name: string;
-    emoji: string;
     category: 'curated' | 'warm' | 'cool' | 'focus';
     isDark: boolean;
     colors: ThemeColors;
@@ -98,7 +97,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'stitch',
         name: 'Stitch Dark',
-        emoji: '🧵',
         category: 'curated',
         isDark: true,
         colors: {
@@ -128,7 +126,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'washi',
         name: 'Washi',
-        emoji: '🪷',
         category: 'warm',
         isDark: false,
         colors: {
@@ -159,7 +156,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'lucen',
         name: 'Lucen',
-        emoji: '✨',
         category: 'curated',
         isDark: false,
         colors: {
@@ -196,7 +192,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'amber',
         name: 'Amber',
-        emoji: '🍂',
         category: 'warm',
         isDark: false,
         colors: {
@@ -235,7 +230,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'linen',
         name: 'Linen',
-        emoji: '🪡',
         category: 'cool',
         isDark: false,
         colors: {
@@ -274,7 +268,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'petal',
         name: 'Petal',
-        emoji: '🌸',
         category: 'warm',
         isDark: false,
         colors: {
@@ -313,7 +306,6 @@ export const THEME_PRESETS: ThemePreset[] = [
     {
         id: 'studio',
         name: 'Studio',
-        emoji: '💬',
         category: 'curated',
         isDark: true,
         colors: {
@@ -346,8 +338,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'verdigris',
     //     name: 'Verdigris',
-    //     emoji: '🏛️',
-    //     category: 'focus',
+    //     //     category: 'focus',
     //     isDark: true,
     //     colors: {
     //         bgBase: '#141918',
@@ -385,8 +376,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'terminal',
     //     name: 'Terminal',
-    //     emoji: '⚡',
-    //     category: 'focus',
+    //     //     category: 'focus',
     //     isDark: true,
     //     colors: {
     //         bgBase: '#0E0E0E',
@@ -420,8 +410,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'ocean',
     //     name: 'Ocean',
-    //     emoji: '🌊',
-    //     category: 'cool',
+    //     //     category: 'cool',
     //     isDark: false,
     //     colors: {
     //         bgBase: '#F2F7FF',
@@ -458,8 +447,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'forest',
     //     name: 'Forest',
-    //     emoji: '🌿',
-    //     category: 'focus',
+    //     //     category: 'focus',
     //     isDark: false,
     //     colors: {
     //         bgBase: '#F4F7F2',
@@ -496,8 +484,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'indigo',
     //     name: 'Indigo',
-    //     emoji: '🟦',
-    //     category: 'curated',
+    //     //     category: 'curated',
     //     isDark: false,
     //     colors: {
     //         bgBase: '#F5F7FF',
@@ -534,8 +521,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'aurora',
     //     name: 'Aurora',
-    //     emoji: '🟢',
-    //     category: 'focus',
+    //     //     category: 'focus',
     //     isDark: true,
     //     colors: {
     //         bgBase: '#061317',
@@ -572,8 +558,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'midnight',
     //     name: 'Midnight',
-    //     emoji: '🌙',
-    //     category: 'curated',
+    //     //     category: 'curated',
     //     isDark: true,
     //     colors: {
     //         bgBase: '#0B0B12',
@@ -610,8 +595,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     // {
     //     id: 'sunset',
     //     name: 'Sunset',
-    //     emoji: '🔥',
-    //     category: 'warm',
+    //     //     category: 'warm',
     //     isDark: true,
     //     colors: {
     //         bgBase: '#120A07',
@@ -645,19 +629,15 @@ export const THEME_PRESETS: ThemePreset[] = [
 ];
 
 // ─── Theme Store ───
-export type ThemeSource = 'preset' | 'custom';
 
 const SYNC_DEBOUNCE_MS = 400;
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function flushAppearanceSyncToServer(): void {
     const s = useThemeStore.getState();
-    const active_theme = s.themeSource === 'custom' ? 'custom' : s.activeThemeId;
+    const active_theme = s.activeThemeId;
     const appearance = {
-        themeSource: s.themeSource,
         activeThemeId: s.activeThemeId,
-        customBasePresetId: s.customBasePresetId,
-        customColors: s.customColors,
         chatSizeStep: s.chatSizeStep,
         savedThemes: s.savedThemes,
     };
@@ -685,10 +665,7 @@ function scheduleAppearanceSyncToServer(): void {
     }, SYNC_DEBOUNCE_MS);
 }
 
-let lastThemeSource: any = null;
 let lastActiveThemeId: any = null;
-let lastCustomBasePresetId: any = null;
-let lastCustomColors: any = null;
 let lastChatSizeStep: any = null;
 let lastSavedThemes: any = null;
 let cachedFingerprint = '';
@@ -697,34 +674,20 @@ export function buildThemeApplyFingerprint(): string {
     const s = useThemeStore.getState();
     
     // Quick check if customColors changed by reference or string value
-    const customColorsChanged = s.customColors !== lastCustomColors && 
-        JSON.stringify(s.customColors) !== JSON.stringify(lastCustomColors);
-
-    if (
-        s.themeSource === lastThemeSource &&
-        s.activeThemeId === lastActiveThemeId &&
-        s.customBasePresetId === lastCustomBasePresetId &&
+    if (        s.activeThemeId === lastActiveThemeId &&
         s.chatSizeStep === lastChatSizeStep &&
         s.savedThemes === lastSavedThemes &&
-        !customColorsChanged
+        true
     ) {
         return cachedFingerprint;
-    }
-
-    lastThemeSource = s.themeSource;
-    lastActiveThemeId = s.activeThemeId;
-    lastCustomBasePresetId = s.customBasePresetId;
-    lastCustomColors = s.customColors;
+    }    lastActiveThemeId = s.activeThemeId;
     lastChatSizeStep = s.chatSizeStep;
     lastSavedThemes = s.savedThemes;
 
     const t = s.getResolvedTheme();
     const c = t.colors;
     cachedFingerprint = JSON.stringify({
-        themeSource: s.themeSource,
         activeThemeId: s.activeThemeId,
-        customBasePresetId: s.customBasePresetId,
-        customColors: s.customColors,
         chatSizeStep: s.chatSizeStep,
         bgBase: c.bgBase,
         bgSurface: c.bgSurface,
@@ -755,9 +718,6 @@ let lastThemeApplyFingerprint = '';
 
 interface ThemeStore {
     activeThemeId: string;
-    themeSource: ThemeSource;
-    customBasePresetId: string;
-    customColors: Partial<ThemeColors>;
     chatSizeStep: number;
     savedThemes: SavedThemeData[];
 
@@ -765,12 +725,8 @@ interface ThemeStore {
     settingsTab: string;
 
     setTheme: (id: string) => void;
-    setCustomBasePresetId: (id: string) => void;
-    setCustomColor: (key: keyof ThemeColors, value: string) => void;
-    patchCustomColors: (patch: Partial<ThemeColors>) => void;
-    resetCustomColors: () => void;
-    beginCustomTheme: () => void;
-    saveCustomTheme: (name: string, emoji?: string) => void;
+    createCustomTheme: () => string | null;
+    updateCustomTheme: (id: string, patch: Partial<ThemeColors>) => void;
     deleteSavedTheme: (id: string) => void;
     getResolvedTheme: () => ThemePreset;
     getActiveTheme: () => ThemePreset;
@@ -785,268 +741,164 @@ interface ThemeStore {
 const DEFAULT_CHAT_SIZE_STEP = 2;
 
 function resolveThemeFromState(state: {
-    themeSource: ThemeSource;
     activeThemeId: string;
-    customBasePresetId: string;
-    customColors: Partial<ThemeColors>;
     savedThemes: SavedThemeData[];
 }): ThemePreset {
-    if (state.themeSource === 'preset') {
-        const builtIn = THEME_PRESETS.find((t) => t.id === state.activeThemeId);
-        if (builtIn) return builtIn;
+    const builtIn = THEME_PRESETS.find((t) => t.id === state.activeThemeId);
+    if (builtIn) return builtIn;
 
-        const saved = state.savedThemes.find((t) => t.id === state.activeThemeId);
-        if (saved) {
-            const base = THEME_PRESETS.find((t) => t.id === saved.basePresetId) || THEME_PRESETS[0];
-            return {
-                id: saved.id,
-                name: saved.name,
-                emoji: saved.emoji,
-                category: 'curated',
-                isDark: base.isDark,
-                colors: mergeThemeColors(base.colors, saved.colors as Partial<ThemeColors>),
-            };
-        }
-        return THEME_PRESETS[0];
+    const saved = state.savedThemes.find((t) => t.id === state.activeThemeId);
+    if (saved) {
+        const base = THEME_PRESETS.find((t) => t.id === saved.basePresetId) || THEME_PRESETS[0];
+        return {
+            id: saved.id,
+            name: saved.name,
+            category: 'curated',
+            isDark: base.isDark,
+            colors: mergeThemeColors(base.colors, saved.colors as Partial<ThemeColors>),
+        };
     }
-    const base =
-        THEME_PRESETS.find((t) => t.id === state.customBasePresetId) || THEME_PRESETS[0];
-    const colors = mergeThemeColors(base.colors, state.customColors);
-    return {
-        ...base,
-        id: 'custom',
-        name: 'Custom',
-        emoji: '✎',
-        colors,
-    };
+    return THEME_PRESETS[0];
 }
 
 export const useThemeStore = create<ThemeStore>()(
     subscribeWithSelector(
         persist(
             (set, get) => ({
-            activeThemeId: 'stitch',
-            themeSource: 'preset' as ThemeSource,
-            customBasePresetId: 'stitch',
-            customColors: {} as Partial<ThemeColors>,
-            chatSizeStep: DEFAULT_CHAT_SIZE_STEP,
-            savedThemes: [] as SavedThemeData[],
+                activeThemeId: 'stitch',
+                chatSizeStep: DEFAULT_CHAT_SIZE_STEP,
+                savedThemes: [] as SavedThemeData[],
 
-            settingsOpen: false,
-            settingsTab: 'appearance',
+                settingsOpen: false,
+                settingsTab: 'appearance',
 
-            setTheme: (id) => {
-                set({
-                    activeThemeId: id,
-                    themeSource: 'preset',
-                    customColors: {},
-                });
-                scheduleAppearanceSyncToServer();
-            },
+                setTheme: (id) => {
+                    set({ activeThemeId: id });
+                    scheduleAppearanceSyncToServer();
+                },
 
-            setCustomBasePresetId: (customBasePresetId) => {
-                const base = THEME_PRESETS.find((t) => t.id === customBasePresetId) || THEME_PRESETS[0];
-                set({
-                    customBasePresetId: base.id,
-                    customColors: {},
-                    themeSource: 'custom',
-                });
-                scheduleAppearanceSyncToServer();
-            },
+                createCustomTheme: () => {
+                    const s = get();
+                    if (s.savedThemes.length >= 3) return null; // Hard limit
 
-            setCustomColor: (key, value) => {
-                set((s) => ({
-                    customColors: { ...s.customColors, [key]: value },
-                    themeSource: 'custom' as ThemeSource,
-                }));
-                scheduleAppearanceSyncToServer();
-            },
+                    const newId = `user_theme_${Date.now()}`;
+                    const resolved = s.getResolvedTheme();
+                    
+                    const basePresetId = THEME_PRESETS.some(t => t.id === resolved.id) ? resolved.id : 'stitch';
 
-            patchCustomColors: (patch) => {
-                set((s) => ({
-                    customColors: { ...s.customColors, ...patch },
-                    themeSource: 'custom' as ThemeSource,
-                }));
-                scheduleAppearanceSyncToServer();
-            },
-
-            resetCustomColors: () => {
-                set((s) => ({
-                    customColors: {},
-                    customBasePresetId: s.customBasePresetId,
-                    themeSource: 'custom' as ThemeSource,
-                }));
-                scheduleAppearanceSyncToServer();
-            },
-
-            beginCustomTheme: () => {
-                const s = get();
-                const baseId =
-                    s.themeSource === 'preset'
-                        ? s.activeThemeId
-                        : s.customBasePresetId;
-                
-                let actualBaseId = baseId;
-                if (s.themeSource === 'preset' && s.activeThemeId.startsWith('user_theme_')) {
-                    const st = s.savedThemes.find(t => t.id === s.activeThemeId);
-                    if (st) actualBaseId = st.basePresetId;
-                }
-                        
-                const base = THEME_PRESETS.find((t) => t.id === actualBaseId) || THEME_PRESETS[0];
-                set({
-                    themeSource: 'custom',
-                    customBasePresetId: base.id,
-                    customColors: s.themeSource === 'preset' && s.activeThemeId.startsWith('user_theme_') 
-                        ? s.savedThemes.find(t => t.id === s.activeThemeId)?.colors as Partial<ThemeColors> || {}
-                        : {},
-                });
-                scheduleAppearanceSyncToServer();
-            },
-
-            saveCustomTheme: (name, emoji = '🎨') => {
-                const s = get();
-                const newId = `user_theme_${Date.now()}`;
-                
-                const newTheme: SavedThemeData = {
-                    id: newId,
-                    name: name.slice(0, 30),
-                    emoji: emoji.slice(0, 5),
-                    basePresetId: s.customBasePresetId,
-                    colors: { ...s.customColors } as Record<string, string>,
-                };
-                
-                set({
-                    savedThemes: [...s.savedThemes, newTheme],
-                    themeSource: 'preset',
-                    activeThemeId: newId,
-                    customColors: {},
-                });
-                scheduleAppearanceSyncToServer();
-            },
-
-            deleteSavedTheme: (id) => {
-                const s = get();
-                const newSaved = s.savedThemes.filter(t => t.id !== id);
-                let newActiveId = s.activeThemeId;
-                let newSource = s.themeSource;
-                
-                if (s.themeSource === 'preset' && s.activeThemeId === id) {
-                    newActiveId = 'stitch';
-                }
-                
-                set({
-                    savedThemes: newSaved,
-                    activeThemeId: newActiveId,
-                    themeSource: newSource,
-                });
-                scheduleAppearanceSyncToServer();
-            },
-
-            getResolvedTheme: () => resolveThemeFromState(get()),
-
-            getActiveTheme: () => resolveThemeFromState(get()),
-
-            hydrateFromServerRow: (row) => {
-                const appearance = parseAppearanceFromSettings(row.settings);
-                const known = (id: string) => THEME_PRESETS.some((t) => t.id === id) || (appearance?.savedThemes || []).some((t) => t.id === id);
-
-                const clampStep = (n: number | undefined) =>
-                    Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, n ?? DEFAULT_CHAT_SIZE_STEP));
-
-                if (appearance) {
-                    const chatSizeStep = clampStep(appearance.chatSizeStep);
-
-                    if (appearance.themeSource === 'custom') {
-                        const customBasePresetId =
-                            appearance.customBasePresetId && known(appearance.customBasePresetId)
-                                ? appearance.customBasePresetId
-                                : 'stitch';
-                        set({
-                            themeSource: 'custom',
-                            customBasePresetId,
-                            activeThemeId:
-                                appearance.activeThemeId && known(appearance.activeThemeId)
-                                    ? appearance.activeThemeId
-                                    : customBasePresetId,
-                            customColors: (appearance.customColors as Partial<ThemeColors>) || {},
-                            chatSizeStep,
-                            savedThemes: appearance.savedThemes || [],
-                        });
-                    } else {
-                        const fromRow =
-                            row.active_theme && row.active_theme !== 'custom' && known(row.active_theme)
-                                ? row.active_theme
-                                : null;
-                        const activeThemeId =
-                            appearance.activeThemeId && known(appearance.activeThemeId)
-                                ? appearance.activeThemeId
-                                : fromRow || 'stitch';
-                        set({
-                            themeSource: 'preset',
-                            activeThemeId,
-                            customBasePresetId: 'stitch',
-                            customColors: {},
-                            chatSizeStep,
-                            savedThemes: appearance.savedThemes || [],
-                        });
-                    }
-                    return;
-                }
-
-                if (row.active_theme && row.active_theme !== 'custom' && known(row.active_theme)) {
+                    const newTheme: SavedThemeData = {
+                        id: newId,
+                        name: 'My Custom Theme',
+                        basePresetId,
+                        colors: { ...resolved.colors } as Record<string, string>,
+                    };
+                    
                     set({
-                        themeSource: 'preset',
-                        activeThemeId: row.active_theme,
-                        customBasePresetId: 'stitch',
-                        customColors: {},
+                        savedThemes: [...s.savedThemes, newTheme],
+                        activeThemeId: newId,
                     });
-                }
-            },
+                    scheduleAppearanceSyncToServer();
+                    return newId;
+                },
 
-            toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
-            setSettingsOpen: (open) => set({ settingsOpen: open }),
-            setSettingsTab: (tab) => set({ settingsTab: tab }),
+                updateCustomTheme: (id, patch) => {
+                    const s = get();
+                    const newSaved = s.savedThemes.map((t) => {
+                        if (t.id === id) {
+                            return { ...t, colors: { ...t.colors, ...patch } };
+                        }
+                        return t;
+                    });
+                    set({ savedThemes: newSaved });
+                    scheduleAppearanceSyncToServer();
+                },
 
-            setChatSizeStep: (chatSizeStep) => {
-                const step = Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, Math.round(chatSizeStep)));
-                set({ chatSizeStep: step });
-                scheduleAppearanceSyncToServer();
-            },
-        }),
-        {
-            name: 'lucen-theme-storage',
-            version: 3,
-            onRehydrateStorage: () => () => {
-                lastThemeApplyFingerprint = '';
-                applyThemeFromStore();
-            },
-            migrate: (persisted, fromVersion) => {
-                const p = persisted as Record<string, unknown>;
-                if (fromVersion < 2) {
-                    if (p.themeSource === undefined) p.themeSource = 'preset';
-                    if (p.customBasePresetId === undefined) {
-                        p.customBasePresetId =
-                            typeof p.activeThemeId === 'string' && p.activeThemeId ? p.activeThemeId : 'stitch';
+                deleteSavedTheme: (id) => {
+                    const s = get();
+                    const newSaved = s.savedThemes.filter(t => t.id !== id);
+                    let newActiveId = s.activeThemeId;
+                    
+                    if (s.activeThemeId === id) {
+                        newActiveId = 'stitch';
                     }
-                    if (p.customColors === undefined) p.customColors = {};
-                    if (p.chatSizeStep === undefined) p.chatSizeStep = DEFAULT_CHAT_SIZE_STEP;
-                    if (p.activeThemeId === undefined || p.activeThemeId === '') p.activeThemeId = 'stitch';
-                    if (p.savedThemes === undefined) p.savedThemes = [];
-                }
-                if (fromVersion < 3) {
-                    delete p.chatFontId;
-                }
-                return persisted as typeof persisted;
-            },
-            partialize: (s) => ({
-                activeThemeId: s.activeThemeId,
-                themeSource: s.themeSource,
-                customBasePresetId: s.customBasePresetId,
-                customColors: s.customColors,
-                chatSizeStep: s.chatSizeStep,
-                savedThemes: s.savedThemes,
+                    
+                    set({
+                        savedThemes: newSaved,
+                        activeThemeId: newActiveId,
+                    });
+                    scheduleAppearanceSyncToServer();
+                },
+
+                getResolvedTheme: () => resolveThemeFromState(get()),
+                getActiveTheme: () => resolveThemeFromState(get()),
+
+                hydrateFromServerRow: (row) => {
+                    const appearance = parseAppearanceFromSettings(row.settings);
+                    const known = (id: string) => THEME_PRESETS.some((t) => t.id === id) || (appearance?.savedThemes || []).some((t) => t.id === id);
+
+                    const clampStep = (n: number | undefined) =>
+                        Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, n ?? DEFAULT_CHAT_SIZE_STEP));
+
+                    if (appearance) {
+                        const chatSizeStep = clampStep(appearance.chatSizeStep);
+                        const fromRow = row.active_theme && row.active_theme !== 'custom' && known(row.active_theme)
+                                    ? row.active_theme
+                                    : null;
+                                    
+                        let activeThemeId = appearance.activeThemeId && known(appearance.activeThemeId)
+                                    ? appearance.activeThemeId
+                                    : fromRow || 'stitch';
+                                    
+                        if (appearance.themeSource === 'custom' && !activeThemeId.startsWith('user_theme_')) {
+                            activeThemeId = appearance.customBasePresetId && known(appearance.customBasePresetId) ? appearance.customBasePresetId : 'stitch';
+                        }
+
+                        set({
+                            activeThemeId,
+                            chatSizeStep,
+                            savedThemes: appearance.savedThemes || [],
+                        });
+                        return;
+                    }
+
+                    if (row.active_theme && row.active_theme !== 'custom' && known(row.active_theme)) {
+                        set({
+                            activeThemeId: row.active_theme,
+                        });
+                    }
+                },
+
+                toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
+                setSettingsOpen: (open) => set({ settingsOpen: open }),
+                setSettingsTab: (tab) => set({ settingsTab: tab }),
+                setChatSizeStep: (chatSizeStep) => {
+                    const step = Math.max(0, Math.min(CHAT_SIZE_STEPS.length - 1, Math.round(chatSizeStep)));
+                    set({ chatSizeStep: step });
+                    scheduleAppearanceSyncToServer();
+                },
             }),
-        },
+            {
+                name: 'lucen-theme-storage',
+                version: 4,
+                onRehydrateStorage: () => () => {
+                    lastThemeApplyFingerprint = '';
+                    applyThemeFromStore();
+                },
+                migrate: (persisted, fromVersion) => {
+                    const p = persisted as Record<string, unknown>;
+                    if (fromVersion < 4) {
+                        if (p.chatSizeStep === undefined) p.chatSizeStep = DEFAULT_CHAT_SIZE_STEP;
+                        if (p.activeThemeId === undefined || p.activeThemeId === '') p.activeThemeId = 'stitch';
+                        if (p.savedThemes === undefined) p.savedThemes = [];
+                    }
+                    return p as any;
+                },
+                partialize: (s) => ({
+                    activeThemeId: s.activeThemeId,
+                    chatSizeStep: s.chatSizeStep,
+                    savedThemes: s.savedThemes,
+                }),
+            }
         )
     )
 );

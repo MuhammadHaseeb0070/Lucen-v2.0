@@ -86,7 +86,6 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
         setSettingsTab,
         setTheme,
         activeThemeId,
-        themeSource,
     } = useThemeStore();
 
     const { clearMessages: clearSideChatMessages } = useSideChatStore();
@@ -230,9 +229,9 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
                 label: `Switch to ${preset.name}`,
                 category: 'Themes',
                 keywords: ['theme', preset.category, preset.isDark ? 'dark' : 'light', 'color', 'switch'],
-                icon: <span className="command-palette-emoji">{preset.emoji}</span>,
+                icon: <span className="command-palette-emoji">🎨</span>,
                 rightLabel:
-                    themeSource === 'preset' && activeThemeId === preset.id ? '✓ Active' : undefined,
+                    !activeThemeId.startsWith('user_theme_') && activeThemeId === preset.id ? '✓ Active' : undefined,
                 action: () => {
                     setTheme(preset.id);
                 },
@@ -241,7 +240,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
 
         return cmds;
     }, [
-        activeConversationId, sideChatOpen, sidebarCollapsed, activeThemeId, themeSource,
+        activeConversationId, sideChatOpen, sidebarCollapsed, activeThemeId,
         createConversation, deleteConversation, getActiveConversation,
         toggleSideChat, clearSideChatMessages, toggleSidebar,
         setBillingOpen, onClose,

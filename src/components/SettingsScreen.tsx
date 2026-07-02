@@ -48,7 +48,7 @@ const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () 
                 </div>
             </div>
             <div className="theme-card__label">
-                <span className="theme-card__emoji">{preset.emoji}</span>
+                <span className="theme-card__emoji">🎨</span>
                 <span className="theme-card__name">{preset.name}</span>
                 {isActive && <Check size={14} className="theme-card__check" />}
             </div>
@@ -69,7 +69,7 @@ const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () 
 
 // ─── Appearance Tab ───
 const AppearanceTab: React.FC = () => {
-    const { activeThemeId, themeSource, setTheme, savedThemes, deleteSavedTheme } = useThemeStore();
+    const { activeThemeId, setTheme, savedThemes, deleteSavedTheme } = useThemeStore();
 
     const handleSelect = (id: string) => {
         setTheme(id);
@@ -87,7 +87,6 @@ const AppearanceTab: React.FC = () => {
                         const preset: ThemePreset = {
                             id: st.id,
                             name: st.name,
-                            emoji: st.emoji,
                             category: 'curated',
                             isDark: base.isDark,
                             colors: { ...base.colors, ...st.colors } as any
@@ -96,7 +95,7 @@ const AppearanceTab: React.FC = () => {
                             <ThemeCard
                                 key={preset.id}
                                 preset={preset}
-                                isActive={themeSource === 'preset' && activeThemeId === preset.id}
+                                isActive={!activeThemeId.startsWith('user_theme_') && activeThemeId === preset.id}
                                 onClick={() => handleSelect(preset.id)}
                                 onDelete={() => deleteSavedTheme(preset.id)}
                             />
@@ -105,7 +104,7 @@ const AppearanceTab: React.FC = () => {
                     <button
                         className="theme-card"
                         style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100px', background: 'var(--bg-muted)', borderStyle: 'dashed' }}
-                        onClick={() => useThemeStore.getState().beginCustomTheme()}
+                        onClick={() => useThemeStore.getState().createCustomTheme()}
                     >
                         <span style={{ fontSize: '1.2rem', marginBottom: '4px' }}>➕</span>
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Create theme</span>
@@ -124,7 +123,7 @@ const AppearanceTab: React.FC = () => {
                                 <ThemeCard
                                     key={p.id}
                                     preset={p}
-                                    isActive={themeSource === 'preset' && activeThemeId === p.id}
+                                    isActive={!activeThemeId.startsWith('user_theme_') && activeThemeId === p.id}
                                     onClick={() => handleSelect(p.id)}
                                 />
                             ))}

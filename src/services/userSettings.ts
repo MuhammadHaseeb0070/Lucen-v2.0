@@ -9,7 +9,6 @@ import { logger } from '../lib/logger';
 export interface SavedThemeData {
     id: string;
     name: string;
-    emoji: string;
     basePresetId: string;
     colors: Record<string, string>;
 }
@@ -114,7 +113,6 @@ export function parseAppearanceFromSettings(settings: Record<string, unknown>): 
             
             const id = st.id;
             const name = typeof st.name === 'string' ? st.name.slice(0, 30) : 'Saved Theme';
-            const emoji = typeof st.emoji === 'string' ? st.emoji.slice(0, 5) : '🎨';
             const basePresetId = typeof st.basePresetId === 'string' ? st.basePresetId : 'washi';
             
             const rawColors = st.colors as Record<string, unknown>;
@@ -131,7 +129,7 @@ export function parseAppearanceFromSettings(settings: Record<string, unknown>): 
                 }
             }
             
-            savedThemes.push({ id, name, emoji, basePresetId, colors });
+            savedThemes.push({ id, name, basePresetId, colors });
         }
     }
 

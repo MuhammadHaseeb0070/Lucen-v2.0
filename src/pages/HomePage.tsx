@@ -59,7 +59,7 @@ const LandingThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onCli
                 </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '0.9rem', fontWeight: 600 }}>
-                <span>{preset.emoji} {preset.name}</span>
+                <span>{preset.name}</span>
                 {isActive && <Check size={14} color="var(--accent)" />}
             </div>
         </button>
@@ -271,7 +271,7 @@ const COMPARISON_DATA: ComparisonRow[] = [
 
 const HomePage: React.FC = () => {
     const { user } = useAuthStore();
-    const { activeThemeId, themeSource, setTheme } = useThemeStore();
+    const { activeThemeId, setTheme } = useThemeStore();
 
     const handleThemeSelect = (id: string) => {
         setTheme(id);
@@ -353,7 +353,7 @@ const HomePage: React.FC = () => {
                     <FeatureCard
                         icon={<Palette size={24} />}
                         title={`${THEME_PRESETS.length} Curated Themes`}
-                        description={`${THEME_PRESETS.length} hand-crafted themes tuned for readability. Switch instantly between ${THEME_PRESETS.map(t => `${t.name} ${t.emoji}`).join(', ')}—each designed to keep text crisp.`}
+                        description={`${THEME_PRESETS.length} hand-crafted themes tuned for readability. Switch instantly between ${THEME_PRESETS.map(t => t.name).join(', ')}—each designed to keep text crisp.`}
                         mockup={null}
                     />
                     <FeatureCard
@@ -369,7 +369,7 @@ const HomePage: React.FC = () => {
                 <div className="landing-themes-showcase">
                     <h2>Make it yours.</h2>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '12px', fontSize: '1.1rem' }}>
-                        Switch between {THEME_PRESETS.length} curated themes instantly: {THEME_PRESETS.map(t => `${t.name} ${t.emoji}`).join(', ')}. Preview the UI and typography live on this page.
+                        Switch between {THEME_PRESETS.length} curated themes instantly: {THEME_PRESETS.map(t => t.name).join(', ')}. Preview the UI and typography live on this page.
                     </p>
 
                     <div className="landing-themes-grid">
@@ -377,7 +377,7 @@ const HomePage: React.FC = () => {
                             <LandingThemeCard
                                 key={preset.id}
                                 preset={preset}
-                                isActive={themeSource === 'preset' && activeThemeId === preset.id}
+                                isActive={!activeThemeId.startsWith('user_theme_') && activeThemeId === preset.id}
                                 onClick={() => handleThemeSelect(preset.id)}
                             />
                         ))}
