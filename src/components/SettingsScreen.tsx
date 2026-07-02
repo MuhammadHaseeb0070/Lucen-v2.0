@@ -1,17 +1,11 @@
 import React, { useState } from 'react';
-import { X, Palette, Info, Keyboard, Check, Activity, Shield, LogOut, Loader2, Trash2 } from 'lucide-react';
+import { X, Palette, Info, Keyboard, Activity, Shield, LogOut, Loader2 } from 'lucide-react';
 import { useThemeStore, THEME_PRESETS } from '../store/themeStore';
-import type { ThemePreset } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import UserUsageTab from './UserUsageTab';
 import ChatAppearanceSection from './ChatAppearanceSection';
 
-const CATEGORIES = [
-    { id: 'curated', label: 'Curated' },
-    { id: 'warm', label: 'Warm' },
-    { id: 'cool', label: 'Cool' },
-    { id: 'focus', label: 'Focus' },
-] as const;
+
 
 const TABS = [
     { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -21,116 +15,14 @@ const TABS = [
     { id: 'about', label: 'About', icon: Info },
 ] as const;
 
-// ─── Theme Card ───
-const ThemeCard: React.FC<{ preset: ThemePreset; isActive: boolean; onClick: () => void; onDelete?: () => void }> = ({
-    preset,
-    isActive,
-    onClick,
-    onDelete,
-}) => {
-    const c = preset.colors;
-    return (
-        <div style={{ position: 'relative' }}>
-            <button
-                className={`theme-card ${isActive ? 'theme-card--active' : ''}`}
-                onClick={onClick}
-                style={{ width: '100%' }}
-            >
-                <div className="theme-card__preview" style={{ background: c.bgBase }}>
-                <div className="theme-card__bar" style={{ background: c.bgSurface, borderBottom: `1px solid ${c.divider}` }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.accent }} />
-                    <span style={{ width: 18, height: 3, borderRadius: 2, background: c.textTertiary }} />
-                </div>
-                <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    <div style={{ width: '65%', height: 7, borderRadius: 4, alignSelf: 'flex-end', background: c.userBubbleBg }} />
-                    <div style={{ width: '75%', height: 10, borderRadius: 4, background: c.aiBubbleBg, border: `1px solid ${c.aiBubbleBorder}` }} />
-                    <div style={{ width: '55%', height: 7, borderRadius: 4, alignSelf: 'flex-end', background: c.userBubbleBg }} />
-                </div>
-            </div>
-            <div className="theme-card__label">
-                <span className="theme-card__emoji">🎨</span>
-                <span className="theme-card__name">{preset.name}</span>
-                {isActive && <Check size={14} className="theme-card__check" />}
-            </div>
-            </button>
-            {onDelete && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                    className="theme-card__delete-btn"
-                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.4)', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', zIndex: 2 }}
-                    title="Delete saved theme"
-                >
-                    <Trash2 size={12} />
-                </button>
-            )}
-        </div>
-    );
-};
+
 
 // ─── Appearance Tab ───
 const AppearanceTab: React.FC = () => {
-    const { activeThemeId, setTheme, savedThemes, deleteSavedTheme } = useThemeStore();
-
-    const handleSelect = (id: string) => {
-        setTheme(id);
-    };
 
     return (
         <div className="settings-tab-body settings-tab-body--appearance">
-            <p className="settings-desc">Pick a theme that feels right for you.</p>
 
-            <div className="theme-section">
-                <h4 className="theme-section__title">Your Themes</h4>
-                <div className="theme-grid">
-                    {savedThemes.map((st) => {
-                        const base = THEME_PRESETS.find((t) => t.id === st.basePresetId) || THEME_PRESETS[0];
-                        const preset: ThemePreset = {
-                            id: st.id,
-                            name: st.name,
-                            category: 'curated',
-                            isDark: base.isDark,
-                            colors: { ...base.colors, ...st.colors } as any
-                        };
-                        return (
-                            <ThemeCard
-                                key={preset.id}
-                                preset={preset}
-                                isActive={!activeThemeId.startsWith('user_theme_') && activeThemeId === preset.id}
-                                onClick={() => handleSelect(preset.id)}
-                                onDelete={() => deleteSavedTheme(preset.id)}
-                            />
-                        );
-                    })}
-                    <button
-                        className="theme-card"
-                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100px', background: 'var(--bg-muted)', borderStyle: 'dashed' }}
-                        onClick={() => useThemeStore.getState().createCustomTheme()}
-                    >
-                        <span style={{ fontSize: '1.2rem', marginBottom: '4px' }}>➕</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Create theme</span>
-                    </button>
-                </div>
-            </div>
-
-            {CATEGORIES.map((cat) => {
-                const themes = THEME_PRESETS.filter((t) => t.category === cat.id);
-                if (!themes.length) return null;
-                return (
-                    <div key={cat.id} className="theme-section">
-                        <h4 className="theme-section__title">{cat.label}</h4>
-                        <div className="theme-grid">
-                            {themes.map((p) => (
-                                <ThemeCard
-                                    key={p.id}
-                                    preset={p}
-                                    isActive={!activeThemeId.startsWith('user_theme_') && activeThemeId === p.id}
-                                    onClick={() => handleSelect(p.id)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                );
-            })}
             <ChatAppearanceSection />
         </div>
     );

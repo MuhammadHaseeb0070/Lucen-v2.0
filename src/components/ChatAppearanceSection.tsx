@@ -160,13 +160,18 @@ const ChatAppearanceSection: React.FC = () => {
                 ))}
             </div>
 
-            <div className="chat-appearance__section-title" style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Your Themes
+            <div className="chat-appearance__section-title" style={{ marginTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <div>
+                    Your Custom Themes
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 400, marginTop: '4px', maxWidth: '400px', lineHeight: 1.4 }}>
+                        You can create up to 3 custom themes. Either create from scratch or pick any premade theme and click edit to create a new version of it without replacing the original.
+                    </p>
+                </div>
                 <button 
                     className="chat-appearance__btn-secondary" 
                     onClick={handleCreateTheme}
                     disabled={savedThemes.length >= 3}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
                 >
                     <Plus size={14} /> Create New ({savedThemes.length}/3)
                 </button>
